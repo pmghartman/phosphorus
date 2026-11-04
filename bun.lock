@@ -4,12 +4,14 @@
   "workspaces": {
     "": {
       "name": "phosphorus",
-      "devDependencies": {
-        "@biomejs/biome": "2.6.3",
+      "dependencies": {
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/theme": "workspace:*",
         "@phosphorus/tools": "workspace:*",
         "@phosphorus/webapps": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.6.3",
         "@resvg/resvg-js": "^2.6.2",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",

@@ -88,7 +88,7 @@ function field(f: Record<string, any>): EnvField | undefined {
 
 export const runtipi: Adapter = {
   id: "runtipi",
-  name: "Runtipi appstore",
+  name: "Runtipi",
   repo: "runtipi/runtipi-appstore",
   licence: "GPL-3.0",
   split: (p) => {

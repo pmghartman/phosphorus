@@ -16,7 +16,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: 1.1rem 1.4rem 1.4rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   line-height: 1.45;
 }
 .store-front,
@@ -29,14 +29,14 @@
 }
 .store h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   color: var(--fg);
   letter-spacing: -0.01em;
 }
 .store h2 {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 400;
   color: var(--accent);
   letter-spacing: 0.04em;
@@ -74,7 +74,7 @@
   border-radius: var(--r-pop, 0);
   color: var(--muted);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -102,7 +102,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .store-search:focus-visible {
   outline: none;
@@ -117,7 +117,7 @@
   border: 0;
   color: var(--muted);
   font: inherit;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .store-link:is(:hover, :focus-visible) {
@@ -203,7 +203,7 @@
   white-space: nowrap;
 }
 .store-tile-sub {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 .store-tile-sub.on {
@@ -231,7 +231,7 @@
   right: 0;
   margin-top: 0.3rem;
   white-space: nowrap;
-  font-size: 0.66rem;
+  font-size: var(--fs-2xs);
   color: color-mix(in srgb, var(--accent) 65%, var(--fg));
   letter-spacing: 0.03em;
 }
@@ -256,14 +256,14 @@
   height: 2.1rem;
 }
 .store-icon.sm .store-mono {
-  font-size: 1rem;
+  font-size: var(--fs-lg);
 }
 .store-icon.xs {
   width: 1.4rem;
   height: 1.4rem;
 }
 .store-icon.xs .store-mono {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .store-icon.md {
   width: 3.8rem;
@@ -280,56 +280,17 @@
 }
 .store-mono {
   color: var(--tint);
-  font-size: 1.5rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
 }
 .store-icon.lg .store-mono {
   font-size: 2.4rem;
 }
-/* the pill: the store's one button, the thing it does in a word, its width the word's */
-.store-pill {
-  padding: 0.25rem 0.9rem;
-  text-align: center;
-  border-radius: 999px;
-  border: 1px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-  font: inherit;
-  font-size: 0.74rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
+
 .store-pill.big {
   min-width: 6.5rem;
-  padding: 0.4rem 1.3rem;
-  font-size: 0.8rem;
 }
-.store-pill:is(:hover, :focus-visible):not(:disabled) {
-  background: var(--accent);
-  color: var(--bg);
-}
-.store-pill.open {
-  border-color: var(--online);
-  color: var(--online);
-  background: color-mix(in srgb, var(--online) 12%, transparent);
-}
-.store-pill.open:is(:hover, :focus-visible):not(:disabled) {
-  background: var(--online);
-  color: var(--bg);
-}
-.store-pill.wait,
-.store-pill:disabled {
-  border-color: var(--border);
-  color: var(--muted);
-  background: none;
-  cursor: default;
-}
-.store-pill.wait:not(:disabled) {
-  animation: update-blink 1.2s ease-in-out infinite;
-}
+
 /* the page: back, a hero, two columns */
 /* a page's top line: the way back, then its icon and name; pinned over the page as it scrolls,
    the store's top padding taken into it so nothing shows above it */
@@ -360,7 +321,7 @@
   margin: 0;
   line-height: 1.2;
   color: var(--fg);
-  font-size: 0.95rem;
+  font-size: var(--fs-lg);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -387,7 +348,7 @@
   border: 0;
   color: var(--muted);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 .store-back:is(:hover, :focus-visible) {
@@ -436,7 +397,7 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.35rem 1rem;
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
 }
 .store-info dt {
   color: var(--muted);
@@ -469,7 +430,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
   border: 1px solid var(--border);
 }
 .store-host {
@@ -548,10 +509,10 @@
   padding: 0.1rem 0.55rem;
   background: none;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: calc(var(--r-ctl, 0px) * 99);
   color: var(--muted);
   font: inherit;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .store-host-btn:is(:hover, :focus-visible) {
@@ -568,7 +529,7 @@
 }
 .store-log-who {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 .store-log {
   margin: 0;
@@ -579,7 +540,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
   line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -628,7 +589,7 @@
 }
 .store-pick-why {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 .store-pick-why.hidden {
   display: none;
@@ -636,7 +597,7 @@
 .store-pick-note {
   margin: 0;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
 }
 .store-pick-note.warn {
   color: var(--sand);
@@ -648,7 +609,7 @@
   border: 1px solid var(--border);
   color: var(--offmesh);
   font: inherit;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .store-remove:is(:hover, :focus-visible):not(:disabled) {
@@ -658,15 +619,9 @@
   opacity: 0.5;
   cursor: default;
 }
-.store-empty {
-  color: var(--muted);
-  padding: 0.4rem 0;
-}
 .store-err {
   max-width: 62rem;
   margin: 0.8rem auto 0;
-  color: var(--offmesh);
-  overflow-wrap: anywhere;
 }
 .acct-editor {
   grid-template-columns: minmax(5rem, 1fr) 1fr 5.5rem;
@@ -696,10 +651,10 @@
   padding: 0.15rem 0.7rem;
   background: none;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: calc(var(--r-ctl, 0px) * 99);
   color: var(--muted);
   font: inherit;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .store-chip:is(:hover, :focus-visible) {
@@ -758,7 +713,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .store-repo-url:focus-visible,
 .store-env-input:focus-visible {
@@ -766,13 +721,11 @@
   border-color: var(--accent);
 }
 .store-repo-err {
-  color: var(--offmesh);
-  font-size: 0.74rem;
-  overflow-wrap: anywhere;
+  font-size: var(--fs-xs);
 }
 .store-repo-note {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
 }
 /* an installed service's backups, under its row */
 .store-run-role {
@@ -794,7 +747,7 @@
   align-items: center;
   gap: 0.4rem 1.2ch;
   padding: 0.45rem 0.9rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .store-route + .store-route {
   border-top: 1px solid var(--border);
@@ -829,7 +782,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.1rem 0.6ch;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
 }
 .store-route-more .store-tile-sub + .store-run-role {
   margin-left: 1.2ch;
@@ -850,7 +803,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
 }
 .store-route-tag {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   white-space: nowrap;
 }
 .store-route-tag.on {
@@ -876,7 +829,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
 .store-badge {
   display: inline-flex;
   border: 1px solid var(--border);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   text-decoration: none;
   overflow: hidden;
 }
@@ -888,7 +841,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
 .store-badge-lic {
   padding: 0 0.5rem;
   color: var(--accent);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 .store-badge:is(:hover, :focus-visible) {
   border-color: var(--accent);
@@ -966,7 +919,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
   border: 1px solid var(--border);
   overflow: auto;
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   white-space: pre;
 }
@@ -998,7 +951,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
   padding: 0.3rem 0;
   border: 1px solid var(--border);
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   max-height: 32rem;
   overflow: auto;
 }
@@ -1054,7 +1007,7 @@ a.store-tree-name:hover {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
 }
 .store-check li {
   display: grid;
@@ -1101,16 +1054,16 @@ a.store-tree-name:hover {
 }
 .store-env-label {
   color: var(--fg);
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
 }
 .store-env-req {
   color: var(--sand);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 .store-env-name {
   color: var(--muted);
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.66rem;
+  font-size: var(--fs-2xs);
 }
 .store-go {
   gap: 0.4rem;
@@ -1118,9 +1071,7 @@ a.store-tree-name:hover {
 .store-go .store-pill {
   align-self: flex-start;
 }
-a.store-pill {
-  text-decoration: none;
-}
+
 .store-acts {
   display: flex;
   flex-wrap: wrap;
@@ -1129,7 +1080,7 @@ a.store-pill {
 }
 .store-acts .store-host-btn {
   padding: 0.2rem 0.75rem;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
 }
 .store-host-btn:disabled {
   opacity: 0.5;
@@ -1138,22 +1089,22 @@ a.store-pill {
 .store-role {
   padding: 0 0.45rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: calc(var(--r-ctl, 0px) * 99);
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: var(--fs-2xs);
 }
 .store-role.active {
   border-color: var(--online);
   color: var(--online);
 }
 .store-side .store-pick-list {
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
 }
 /* a list folded under one quiet line: the checks passed, the hosts that can't */
 .store-fold > summary {
   width: fit-content;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
   list-style: none;
 }
@@ -1186,7 +1137,7 @@ a.store-pill {
   border: 1px solid var(--border);
   border-radius: var(--r-pop, 0);
   background: var(--card);
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   overflow: hidden;
 }
 .store-fact {
@@ -1201,7 +1152,7 @@ a.store-pill {
 }
 .store-fact dt {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
 }
 .store-fact dd {
   margin: 0;
@@ -1232,7 +1183,7 @@ a.store-pill {
 }
 .store-listed-k {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
 }
 .store-side .store-host-top .store-host-acts {
   margin-left: auto;

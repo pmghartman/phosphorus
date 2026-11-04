@@ -1,15 +1,12 @@
 // this host's settings edited: its record in the store, etc/hosts/<host>/config.json,
-// every edit checked first; the old phosphorus.ini moved in once, then gone
-import { readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+// every edit checked first
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import * as store from "@phosphorus/store";
 import {
   configLines,
   configRel,
-  errText,
-  fromIni,
   type HostConfig,
-  LegacyIni,
   logf,
   normalize,
   SelfHost,
@@ -24,12 +21,11 @@ const rel = () => configRel(SelfHost);
 // this host's record as it stands, defaults filled
 export const current = (): HostConfig => normalize(store.read(rel()));
 
-// --- the move from phosphorus.ini ---------------------------------------------------
+// --- a host renamed on the tailnet --------------------------------------------------
 
 const lastName = join(StateDir, "config-host");
 
-// the old ini into the store unless a record is there, then removed; a record left
-// under this host's last name, renamed on the tailnet since, carried over
+// a record left under this host's last name carried over to its new one
 export function migrate() {
   if (!SelfHost) return;
   let before = "";
@@ -47,26 +43,6 @@ export function migrate() {
   try {
     writeFileSync(lastName + ".tmp", SelfHost + "\n", { mode: 0o644 });
     renameSync(lastName + ".tmp", lastName);
-  } catch {}
-  let text: string;
-  try {
-    text = readFileSync(LegacyIni, "utf8");
-  } catch {
-    return;
-  }
-  if (store.read(rel()) === undefined) {
-    // on disk before the ini goes
-    store.write(rel(), fromIni(text), true);
-    logf("[config] %s moved into the store as %s", LegacyIni, rel());
-  } else logf("[config] %s left over, the store's record kept", LegacyIni);
-  try {
-    rmSync(LegacyIni, { force: true });
-  } catch (e) {
-    logf("[config] couldn't remove %s: %s", LegacyIni, errText(e));
-  }
-  // config/ gone too when it held nothing else
-  try {
-    rmdirSync(dirname(LegacyIni));
   } catch {}
 }
 
@@ -153,7 +129,7 @@ export function modelValues(c = current()): Record<string, string> {
   };
 }
 
-// editKey one key set, blank dropping it: [files] dir and priv in step, as the ini had them
+// editKey one key set, blank dropping it: files dir and priv, comma lists in step
 export function editKey(section: string, key: string, value: string, dry: boolean): [string, string] {
   const keys = Keys[section];
   if (!keys) return ["no section " + section + ", only " + Object.keys(Keys).sort().join(", "), ""];

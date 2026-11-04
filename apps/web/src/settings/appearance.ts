@@ -182,7 +182,7 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
     return box;
   };
   const btn = (label: string, act: () => void, cls = '') => {
-    const b = Object.assign(el('button', `dk-ap-btn${cls ? ` ${cls}` : ''}`, label), { type: 'button' });
+    const b = Object.assign(el('button', `btn dk-ap-btn${cls ? ` ${cls}` : ''}`, label), { type: 'button' });
     b.addEventListener('click', act);
     return b;
   };

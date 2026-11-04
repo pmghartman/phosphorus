@@ -5,7 +5,7 @@
   position: absolute;
   left: 50%;
   top: 42%;
-  z-index: 100001;
+  z-index: var(--z-switcher);
   transform: translate(-50%, -50%);
   min-width: 20rem;
   max-width: 80%;
@@ -13,7 +13,7 @@
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--drop);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   animation: pop-in 0.08s ease-out;
 }
 .dk-sw-row {
@@ -39,7 +39,7 @@
 }
 .dk-sw-s {
   color: var(--dim);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 .dk-sw-row.cur {
   background: var(--accent);
@@ -69,7 +69,7 @@
 .dk-ov-cells {
   position: absolute;
   inset: 0;
-  z-index: 100000;
+  z-index: var(--z-overview);
   pointer-events: auto;
 }
 .dk-ov-cell {
@@ -97,7 +97,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 .dk-ov-cell:hover .dk-ov-t {
@@ -109,7 +109,7 @@
   bottom: 100%;
   padding: 0 0.3rem 0.2rem;
   color: var(--dim);
-  font-size: 0.9rem;
+  font-size: var(--fs-base);
   line-height: 1;
 }
 .dk-ov-x:hover {
@@ -120,7 +120,7 @@
 .dk-spot-veil {
   position: absolute;
   inset: 0;
-  z-index: 100002;
+  z-index: var(--z-spot);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -155,7 +155,7 @@
   border-bottom: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--fs-lg);
 }
 .dk-spot-find:focus {
   outline: none;
@@ -180,7 +180,7 @@
   border: 0;
   color: var(--fg);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
 }
@@ -221,7 +221,7 @@
   flex: none;
   margin-left: auto;
   color: var(--dim);
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
 }
 .dk-spot-row.cur {
   background: var(--accent);
@@ -233,9 +233,8 @@
   color: var(--bg);
 }
 .dk-spot-none {
-  padding: 0.5rem 0.9rem;
-  color: var(--muted);
-  font-size: 0.8rem;
+  padding-inline: 0.9rem;
+  font-size: var(--fs-md);
 }
 .dk-bar .dk-spot-btn {
   width: 1.9rem;

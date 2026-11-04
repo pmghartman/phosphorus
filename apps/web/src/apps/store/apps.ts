@@ -48,7 +48,7 @@ export function facts(a: StoreApp): Facts {
 // the one button an app store has: get, open, update; what it does right now while it does
 export function pill(a: StoreApp, f: Facts, big = false): HTMLElement {
   const admin = !!st.acct?.admin;
-  const b = Object.assign(el('button', `store-pill${big ? ' big' : ''}`), { type: 'button' });
+  const b = Object.assign(el('button', `btn store-pill${big ? ' big primary' : ''}`), { type: 'button' });
   const set = (label: string, cls: string, go: (() => void) | null, title = '') => {
     b.textContent = label;
     b.className += ` ${cls}`;

@@ -229,8 +229,7 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
           lines: configText(),
           services: listed(),
           shares: filesInfo().shares,
-          // the form's values, the key older desktops read
-          ini: configValues(),
+          values: configValues(),
         },
       ];
     }
@@ -247,9 +246,7 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
       [why, diff] = editService(str(p.name), set, truthy(p.remove), dry);
       break;
     }
-    // "ini" the name older peers send
     case "key":
-    case "ini":
       [why, diff] = editKey(str(p.section), str(p.key), str(p.value), dry);
       break;
     case "shares": {

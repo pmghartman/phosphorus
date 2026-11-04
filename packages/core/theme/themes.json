@@ -1401,8 +1401,8 @@
     },
     {
       "id": "catppuccin",
-      "label": "Catppuccin",
-      "about": "Mocha pastels in the dark, Latte in the light",
+      "label": "catppuccin",
+      "about": "mocha pastels in the dark, latte in the light",
       "look": "vscode",
       "icons": "default",
       "round": true,
@@ -1541,8 +1541,8 @@
     },
     {
       "id": "dracula",
-      "label": "Dracula",
-      "about": "Purple and pink Classic, with an Alucard light variant",
+      "label": "dracula",
+      "about": "purple and pink, with the alucard light variant",
       "look": "vscode",
       "icons": "default",
       "round": true,
@@ -1681,8 +1681,8 @@
     },
     {
       "id": "nord",
-      "label": "Nord",
-      "about": "Arctic blues with a Snow Storm light variant",
+      "label": "nord",
+      "about": "arctic blues, with the snow storm light variant",
       "look": "vscode",
       "icons": "default",
       "round": true,
@@ -1821,8 +1821,8 @@
     },
     {
       "id": "tokyo-night",
-      "label": "Tokyo Night",
-      "about": "Deep indigo Night, with a crisp Day variant",
+      "label": "tokyo night",
+      "about": "deep indigo night, with a crisp day variant",
       "look": "vscode",
       "icons": "default",
       "round": true,

@@ -156,13 +156,13 @@ export const forgejo: AppDef = {
   archs: ["amd64", "arm64"],
   compose: forgejoCompose,
   env: envFields(forgejoCompose, [
-    { name: "HTTP_PORT", label: "Web port on the host", default: "3001" },
+    { name: "HTTP_PORT", label: "web port on the host", default: "3001" },
     { name: "SSH_PORT", label: "SSH port on the host", default: "2222" },
-    { name: "SECRET_KEY", label: "Secret key", secret: true },
-    { name: "INTERNAL_TOKEN", label: "Internal token", secret: true },
+    { name: "SECRET_KEY", label: "secret key", secret: true },
+    { name: "INTERNAL_TOKEN", label: "internal token", secret: true },
     { name: "COMPOSE_PROFILES", label: "Actions runner", default: "none", options: ["none", "runner"] },
-    { name: "RUNNER_CAPACITY", label: "Runner's jobs at once", default: "2" },
-    { name: "RUNNER_SECRET", label: "Runner's shared secret", secret: true },
+    { name: "RUNNER_CAPACITY", label: "runner's jobs at once", default: "2" },
+    { name: "RUNNER_SECRET", label: "runner's shared secret", secret: true },
   ]),
   manifest: {
     volumes: [
@@ -322,7 +322,7 @@ export const circuit: AppDef = {
   licence: "Apache-2.0",
   archs: ["amd64", "arm64"],
   compose: circuitCompose,
-  env: envFields(circuitCompose, [{ name: "HTTP_PORT", label: "Web port on the host", default: "8099" }]),
+  env: envFields(circuitCompose, [{ name: "HTTP_PORT", label: "web port on the host", default: "8099" }]),
   manifest: {
     volumes: [],
     health: { service: "circuit", path: "/api/version", port: 8099 },
@@ -369,8 +369,8 @@ export const jellyfin: AppDef = {
   archs: ["amd64", "arm64"],
   compose: jellyfinCompose,
   env: envFields(jellyfinCompose, [
-    { name: "HTTP_PORT", label: "Web port on the host", default: "8096" },
-    { name: "MEDIA_DIR", label: "Media folder on the host", default: "/srv/media" },
+    { name: "HTTP_PORT", label: "web port on the host", default: "8096" },
+    { name: "MEDIA_DIR", label: "media folder on the host", default: "/srv/media" },
   ]),
   manifest: {
     volumes: [
@@ -421,8 +421,8 @@ export const audiobookshelf: AppDef = {
   archs: ["amd64", "arm64"],
   compose: audiobookshelfCompose,
   env: envFields(audiobookshelfCompose, [
-    { name: "HTTP_PORT", label: "Web port on the host", default: "13378" },
-    { name: "AUDIOBOOKS_DIR", label: "Audiobooks folder on the host", default: "/srv/media/audiobooks" },
+    { name: "HTTP_PORT", label: "web port on the host", default: "13378" },
+    { name: "AUDIOBOOKS_DIR", label: "audiobooks folder on the host", default: "/srv/media/audiobooks" },
   ]),
   manifest: {
     volumes: [
@@ -487,8 +487,8 @@ export const jupyterlab: AppDef = {
   archs: ["amd64", "arm64"],
   compose: jupyterlabCompose,
   env: envFields(jupyterlabCompose, [
-    { name: "HTTP_PORT", label: "Web port on the host", default: "8888" },
-    { name: "JUPYTER_TOKEN", label: "Token to sign in with (type one to know it)", secret: true },
+    { name: "HTTP_PORT", label: "web port on the host", default: "8888" },
+    { name: "JUPYTER_TOKEN", label: "token to sign in with (type one to know it)", secret: true },
   ]),
   manifest: {
     volumes: [{ service: "jupyterlab", target: "/lab", kind: "data" }],
@@ -501,7 +501,7 @@ export const apps: AppDef[] = [forgejo, tavern, circuit, jellyfin, audiobookshel
 
 export const source: SourceInfo = {
   id: "phosphorus",
-  name: "Phosphorus",
+  name: "phosphorus",
   repo: "https://github.com/pmghartman/phosphorus",
   licence: "Apache-2.0",
   apps: apps.length,

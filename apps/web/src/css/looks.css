@@ -122,7 +122,7 @@
   max-width: none;
   padding: 0 0 0.4rem;
   background: none;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: 0;
   color: var(--fg);
@@ -188,7 +188,7 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-menu {
   padding: 4px;
   min-width: 12rem;
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
 }
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-menu button {
   padding: 0.28rem 0.7rem;
@@ -198,8 +198,7 @@
   margin: 4px 6px;
 }
 /* push buttons: filled, the primary in the accent */
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .join-key-btn) {
+:root:is([data-palette="macos"], [data-palette="win11"]) .btn {
   padding: 0.25rem 0.8rem;
   background: var(--ctl);
   color: var(--fg);
@@ -207,40 +206,30 @@
   border: 1px solid var(--ctl-edge);
   border-bottom-color: var(--ctl-edge-lo);
 }
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .join-key-btn):hover:not(
-    :disabled
-  ) {
+:root:is([data-palette="macos"], [data-palette="win11"]) .btn:hover:not(:disabled) {
   background: var(--ctl-hover);
   color: var(--fg);
   border-color: var(--ctl-edge);
   border-bottom-color: var(--ctl-edge-lo);
 }
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button):is(
-    .primary,
-    .primary:hover:not(:disabled)
-  ) {
+:root:is([data-palette="macos"], [data-palette="win11"]) .btn:is(.primary, .primary:hover:not(:disabled)) {
   background: var(--accent);
   color: var(--on-accent);
   border-color: transparent;
   font-weight: 500;
 }
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.update-actions button, .acct-pane button, .acct-users button).danger {
+:root:is([data-palette="macos"], [data-palette="win11"]) .btn.danger {
   color: color-mix(in srgb, var(--offmesh) 72%, var(--fg));
 }
 /* the wizard's section heads: macOS's blue too light on white */
 :root[data-palette="macos"] .store h2 {
   color: color-mix(in srgb, var(--accent) 80%, var(--fg));
 }
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.update-actions button, .acct-pane button, .acct-users button).danger:hover:not(:disabled) {
+:root:is([data-palette="macos"], [data-palette="win11"]) .btn.danger:hover:not(:disabled) {
   background: var(--offmesh);
   color: #fff;
 }
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button):active:not(:disabled) {
+:root:is([data-palette="macos"], [data-palette="win11"]) .btn:active:not(:disabled) {
   transform: none;
 }
 /* fields */
@@ -272,7 +261,7 @@
 /* --- macos ------------------------------------------------------------------------------------ */
 
 :root[data-palette="macos"] body {
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 :root[data-palette="macos"] .dk-win {
   border: 0;
@@ -285,7 +274,7 @@
     gap: 8px;
     background: var(--tabbar);
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    font-size: var(--fs-md);
   }
   :root[data-palette="macos"] .dk-win:not(.focused) .dk-head {
     background: var(--bg);
@@ -323,8 +312,7 @@
   background: var(--offmesh);
   color: #fff;
 }
-:root[data-palette="macos"]
-  :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .join-key-btn) {
+:root[data-palette="macos"] .btn {
   box-shadow:
     0 0 0 0.5px rgb(0 0 0 / 0.2),
     0 0.5px 1px rgb(0 0 0 / 0.12);
@@ -379,7 +367,7 @@
     gap: 8px;
     background: var(--tabbar);
     border-bottom: 0;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   :root[data-palette="win11"] .dk-win:not(.focused) .dk-head {
     background: var(--bg);
@@ -511,7 +499,7 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) .fm-side-head {
   padding: 0.5rem 0.5rem 0.2rem;
   font-weight: 600;
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
 }
 :root:is([data-palette="macos"], [data-palette="win11"]) .fm-place {
   padding: 0.25rem 0.5rem;

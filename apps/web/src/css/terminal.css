@@ -148,7 +148,7 @@
   align-items: center;
   justify-content: center;
   color: var(--dim);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .dk-terms-empty:not(:only-child) {
   display: none;
@@ -209,7 +209,7 @@
   .dk-tab.active {
     height: 2.25rem;
     min-width: 6.5rem;
-    font-size: 0.85rem;
+    font-size: var(--fs-base);
   }
   .dk-tab-x {
     width: 2rem;

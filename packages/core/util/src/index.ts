@@ -35,15 +35,12 @@ export const RepoDir = env("PHOSPHORUS_REPO_DIR", env("PHOSPHORUS_HOME", "/var/l
 export const StateDir = env("STATE_DIR", join(RepoDir, "state"));
 // the replicated store, never inside a user's reach
 export const SysDir = env("PHOSPHORUS_SYS_DIR", join(RepoDir, "sys"));
-// the retired per-host file, read until the service moves it into the store
-export const LegacyIni = env("PHOSPHORUS_INI_FILE", join(RepoDir, "config", "phosphorus.ini"));
 
 export const now = () => Date.now();
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // this host's settings, re-read only when changed
-export const hostConfig = (): HostConfig =>
-  readConfig({ sys: SysDir, ini: LegacyIni, state: StateDir, self: SelfHost });
+export const hostConfig = (): HostConfig => readConfig({ sys: SysDir, state: StateDir, self: SelfHost });
 
 // a file's JSON, undefined on any failure
 export function readJSON<T = any>(file: string): T | undefined {

@@ -26,7 +26,7 @@
     width: auto;
     min-width: 0;
     padding: 0.35rem 0.15rem;
-    font-size: 0.75rem;
+    font-size: var(--fs-sm);
     -webkit-tap-highlight-color: transparent;
   }
   .dk-icon .dk-tile {
@@ -62,7 +62,7 @@
     gap: 0.25rem;
     border-width: 1px 0 0;
     box-shadow: none;
-    font-size: 0.8rem;
+    font-size: var(--fs-md);
   }
   .dk-home {
     display: flex;
@@ -122,7 +122,7 @@
   .dk-head {
     height: 2.75rem;
     padding: 0 0 0 0.85rem;
-    font-size: 0.85rem;
+    font-size: var(--fs-base);
     touch-action: manipulation;
   }
   .dk-btns button,
@@ -199,7 +199,7 @@
   }
   .fm-row {
     padding: 0.55rem 0.75rem;
-    font-size: 0.85rem;
+    font-size: var(--fs-base);
   }
   /* the apps' views closer to the screen's edges */
   .dk-app .dk-body > .view {

@@ -36,7 +36,7 @@ export function fmRender(fm: Fm) {
   fm.badge.hidden = !fm.loc || fmCan(fm, 'w');
   // the path bar: the place, then each folder, any one a jump
   const crumbs: HTMLElement[] = [];
-  const top = !fm.loc ? '' : isHome(fm.loc) ? 'Home' : `${fm.loc.host}: ${shareLabel(fm.loc.root!)}`;
+  const top = !fm.loc ? '' : isHome(fm.loc) ? 'home' : `${fm.loc.host}: ${shareLabel(fm.loc.root!)}`;
   if (fm.loc) {
     const parts = fm.dir ? fm.dir.split('/') : [];
     [top, ...parts].forEach((name, i) => {

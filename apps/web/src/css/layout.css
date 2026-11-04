@@ -68,7 +68,7 @@
     background: color-mix(in srgb, var(--tabbar) 88%, transparent);
     backdrop-filter: blur(20px);
     box-shadow: var(--drop);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-tasks {
     align-self: stretch;
@@ -134,7 +134,7 @@
     border-radius: calc(var(--r-win, 0px) * 1.4);
     background: color-mix(in srgb, var(--tabbar) 88%, transparent);
     box-shadow: var(--drop);
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   :root[data-l-bar-style="dock"][data-l-bar="bottom"][data-l-menubar="bottom"] .dk-menubar-app {
     display: none;
@@ -155,7 +155,7 @@
     background: color-mix(in srgb, var(--tabbar) 92%, transparent);
     backdrop-filter: blur(20px);
     box-shadow: none;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-tasks {
     align-self: stretch;
@@ -514,11 +514,11 @@
   }
   :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar) {
     position: absolute;
-    z-index: 40;
+    z-index: var(--z-bar);
     transition: transform 0.18s ease;
   }
   :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar.dk-menubar {
-    z-index: 41;
+    z-index: calc(var(--z-bar) + 1);
   }
   /* a dock keeps its own width, centered on its edge */
   :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar-style="dock"]:is(

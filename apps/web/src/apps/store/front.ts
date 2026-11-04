@@ -104,7 +104,7 @@ function stackTile(list: AppSummary[]): HTMLElement {
   const side = el('span', 'store-tile-side');
   const more = list.length - 1;
   side.append(
-    el('span', `store-pill${on ? ' open' : ''}`, on ? 'installed' : 'view'),
+    el('span', `btn store-pill${on ? ' primary' : ''}`, on ? 'installed' : 'view'),
     Object.assign(el('span', 'store-tile-badge', `${SOURCE_NAMES[a.source]}${more ? ` +${more}` : ''}`), {
       title: more
         ? `in ${list.map((x) => SOURCE_NAMES[x.source]).join(', ')}; ${on ? 'installed' : 'shown'} from ${SOURCE_NAMES[a.source]}, ${a.licence}`
@@ -132,7 +132,7 @@ function repoOpener(): HTMLElement {
   });
   input.addEventListener('keydown', (e) => e.stopPropagation());
   const go = Object.assign(
-    el('button', `store-pill${repoBox.busy ? ' wait' : ''}`, repoBox.busy ? 'opening' : 'open'),
+    el('button', `btn store-pill${repoBox.busy ? ' wait' : ''}`, repoBox.busy ? 'opening' : 'open'),
     {
       type: 'submit',
       disabled: repoBox.busy,
@@ -224,7 +224,7 @@ function foundTile(f: Discovered): HTMLElement {
     el('span', 'store-tile-tag', `${f.host}:${f.port}`),
     el('span', 'store-tile-sub new', `publishes as ${f.name}`),
   );
-  const go = Object.assign(el('button', `store-pill${busy ? ' wait' : ''}`, busy ? 'publishing' : 'publish'), {
+  const go = Object.assign(el('button', `btn store-pill${busy ? ' wait' : ''}`, busy ? 'publishing' : 'publish'), {
     type: 'button',
     disabled: !!stateVars.busyId,
     title: `publish ${f.host}:${f.port} as ${f.name}, behind the phosphorus login`,
@@ -249,15 +249,15 @@ function foundTile(f: Discovered): HTMLElement {
 const TABS = {
   services: {
     title: 'services',
-    lead: 'Self-hosted apps from open catalogues or any GitHub repo, installed onto a host you pick, with backup hosts that take over when it fails.',
+    lead: 'self-hosted apps from open catalogues or any GitHub repo, installed onto a host you pick, with backup hosts that take over if it fails',
   },
   apps: {
     title: 'apps',
-    lead: 'Extras for the desktop. Get an app and every host serves its own copy, beside this desktop.',
+    lead: 'extras for the desktop: get one and every host serves its own copy',
   },
   running: {
     title: 'running',
-    lead: 'What the mesh runs now: the services installed from here, every host’s published services, the pages found listening to publish, and the apps got for the desktop.',
+    lead: 'what the mesh runs now: installed services, every host’s published pages, pages found listening, and the desktop’s apps',
   },
 } as const;
 
@@ -416,7 +416,7 @@ function servicesTab(wrap: HTMLElement, q: string) {
             : 'no catalogue fetched yet',
       ),
     );
-  const credit = Object.assign(el('button', 'store-link store-credit', 'sources and licences'), { type: 'button' });
+  const credit = Object.assign(el('button', 'store-link store-credit', 'sources and licenses'), { type: 'button' });
   credit.addEventListener('click', () => storeShow('sources'));
   wrap.append(credit);
 }
@@ -535,7 +535,7 @@ export function front(): HTMLElement {
     type: 'button',
     title: onApps ? 'ask each release feed again' : 'read the catalogues again',
   });
-  refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'), onApps ? 'check for updates' : 'refresh');
+  refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'), 'refresh');
   refresh.addEventListener('click', () => (onApps ? read(true) : readCatalog()));
   const tools = el('div', 'store-tools');
   tools.append(search(), refresh);

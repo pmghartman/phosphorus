@@ -55,8 +55,8 @@ function ask(title: string, body: (HTMLElement | string)[], action: string, dang
       veil.remove();
       resolve(v);
     };
-    const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
-    const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+    const go = Object.assign(el('button', danger ? 'btn danger' : 'btn primary', action), { type: 'submit' });
+    const no = Object.assign(el('button', 'btn', 'cancel'), { type: 'button' });
     no.addEventListener('click', () => end(false));
     const acts = el('div', 'update-actions');
     acts.append(no, go);
@@ -145,7 +145,7 @@ function viewer(key: string, page: AppPage): HTMLElement {
       sec.append(md);
     }
   } else if (pane === 'compose') {
-    if (!page.def.compose.trim()) sec.append(el('div', 'store-empty bad', 'No compose file found.'));
+    if (!page.def.compose.trim()) sec.append(el('div', 'store-empty bad', 'no compose file found'));
     else sec.append(el('pre', 'store-code', page.def.compose));
   } else sec.append(tree(page));
   return sec;
@@ -233,7 +233,7 @@ function info(key: string, def: AppDef, v?: StackView): HTMLElement {
       ? link(def.ref, def.repo)
       : link(src?.name ?? SOURCE_NAMES[def.source], src?.repo ?? def.repo),
   );
-  row('licence', def.licence || 'none given', def.licence ? '' : 'dim');
+  row('license', def.licence || 'none given', def.licence ? '' : 'dim');
   if (def.source !== 'github' && def.repo) row('project', link(def.repo.replace(/^https?:\/\/(www\.)?/, ''), def.repo));
   const m = def.manifest;
   const web = v?.web ?? m.web;
@@ -408,7 +408,7 @@ function hostSec(key: string, page: AppPage, check: CheckResult): HTMLElement {
     return li;
   };
   if (!fit.length) {
-    sec.append(el('div', 'store-verdict bad', 'No host can run it'), el('p', 'store-pick-note', 'Each host and why:'));
+    sec.append(el('div', 'store-verdict bad', 'no host can run it'), el('p', 'store-pick-note', 'each host and why'));
     const ul = el('ul', 'store-pick-list');
     ul.append(...unfit.map(why));
     sec.append(ul);
@@ -466,7 +466,7 @@ function installSec(key: string, page: AppPage): HTMLElement[] {
   if (backups) out.push(backups);
   const sec = el('section', 'store-sec store-go');
   const go = Object.assign(
-    el('button', `store-pill big store-install${f.busy ? ' wait' : ''}`, f.busy ? 'installing' : 'install'),
+    el('button', `btn primary store-pill big store-install${f.busy ? ' wait' : ''}`, f.busy ? 'installing' : 'install'),
     {
       type: 'button',
       disabled: !canInstall(key, page.def, check),
@@ -476,14 +476,14 @@ function installSec(key: string, page: AppPage): HTMLElement[] {
   sec.append(go);
   const missing = wanting(page.def, f.env);
   const why = !st.acct?.admin
-    ? 'An admin installs apps.'
+    ? 'an admin installs apps'
     : check.verdict === 'blocked'
-      ? 'The check above says why it can’t.'
+      ? 'the check above says why'
       : !f.active
-        ? 'No host to install it on.'
+        ? 'no host to install it on'
         : missing.length
-          ? `Fill in ${missing.join(', ')} first.`
-          : `Onto ${f.active}${f.standbys.length ? `, with ${f.standbys.join(', ')} as backup` : ''}.`;
+          ? `fill in ${missing.join(', ')} first`
+          : `onto ${f.active}${f.standbys.length ? `, with ${f.standbys.join(', ')} as backup` : ''}`;
   sec.append(el('p', 'store-pick-note', why));
   if (f.error) sec.append(el('p', 'store-repo-err', f.error));
   out.push(sec);
@@ -592,7 +592,7 @@ async function changeHosts(v: StackView, page: AppPage | undefined) {
   const body: (HTMLElement | string)[] = [
     BACKUP_WORDS,
     pick.el,
-    el('p', 'store-pick-note', 'Unticked hosts stop it, data kept.'),
+    el('p', 'store-pick-note', 'unticked hosts stop it, its data kept'),
   ];
   if (await ask(`hosts for ${v.summary.name}`, body, 'save'))
     stackAct(v.summary.id, 'standbys', { active: live, standbys: pick.picked() });
@@ -662,7 +662,7 @@ async function settings(v: StackView, page: AppPage | undefined) {
     inputs.set(x.name, input);
   }
   if (!inputs.size) form.append(el('p', 'store-pick-note', 'nothing to set but its secrets'));
-  const body = [form, el('p', 'store-pick-note', `Saving restarts it on ${liveHost(v)}; its backups follow.`)];
+  const body = [form, el('p', 'store-pick-note', `saving restarts it on ${liveHost(v)}; its backups follow`)];
   if (!(await ask(`${v.summary.name} settings`, body, 'save')) || !inputs.size) return;
   const env: Record<string, string> = {};
   for (const [k, input] of inputs) if (input.value !== (now[k] ?? '')) env[k] = input.value;
@@ -694,7 +694,7 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
   const row = el('div', 'store-acts');
   if (web && st.meshDomain && f.active?.running)
     row.append(
-      Object.assign(el('a', 'store-pill open', 'open'), {
+      Object.assign(el('a', 'btn primary store-pill', 'open'), {
         href: `https://${id}.${st.meshDomain}/`,
         target: '_blank',
         rel: 'noopener',
@@ -714,7 +714,7 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
       if (
         await pageAsk({
           title: `update ${v.summary.name}`,
-          message: `Its images are pulled again and it restarts on ${f.live}; its backups pull them too.`,
+          message: `its images pulled again, it restarts on ${f.live}; its backups pull them too`,
           action: 'update',
         })
       )
@@ -810,7 +810,7 @@ export function stackPage(key: string): HTMLElement {
   else if (twin) {
     const go = Object.assign(el('button', 'store-link', 'its page'), { type: 'button' });
     go.addEventListener('click', () => storeShow(`stack:${keyOf(twin.summary.source, twin.summary.ref)}`));
-    const note = el('p', 'store-pick-note', `Already on the mesh from ${SOURCE_NAMES[twin.summary.source]}: `);
+    const note = el('p', 'store-pick-note', `already on the mesh from ${SOURCE_NAMES[twin.summary.source]}: `);
     note.append(go);
     side.append(note);
   } else if (page && f.busy) side.append(el('div', 'store-verdict wait', `installing onto ${f.active}`));

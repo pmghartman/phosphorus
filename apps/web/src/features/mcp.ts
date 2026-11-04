@@ -222,7 +222,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
     }, 1800);
   };
   const button = (label: string, cls: string, act: (x: HTMLButtonElement) => void) => {
-    const x = Object.assign(el('button', `dk-cl-key ${cls}`, label), { type: 'button' });
+    const x = Object.assign(el('button', `btn dk-cl-key ${cls}`, label), { type: 'button' });
     x.dataset.label = label;
     x.addEventListener('click', () => act(x));
     return x;
@@ -264,7 +264,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
     if (drawn === done) return;
     drawn = done;
     // the whole server address, key and all, so the agent needs no sign-in
-    const url = button('copy mcp', done ? 'quiet half' : 'half', async (x) => {
+    const url = button('copy mcp', done ? 'half' : 'half primary', async (x) => {
       const r = await mcpKey(mcpStat.url);
       if (!r) return;
       flash(x, r.copied ? 'copied' : 'copy it below');
@@ -272,7 +272,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
     });
     url.title = 'the mcp address, your key in it';
     // the claude skill, no key: the connector does the calling
-    const skill = button('download skill', 'quiet half', async (x) => {
+    const skill = button('download skill', 'half', async (x) => {
       x.disabled = true;
       const ok = await mcpSkill();
       x.disabled = false;

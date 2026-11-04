@@ -1,19 +1,21 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-modeld-"));
 process.env.STATE_DIR = dir;
-process.env.PHOSPHORUS_INI_FILE = join(dir, "phosphorus.ini");
+process.env.PHOSPHORUS_SYS_DIR = join(dir, "sys");
+process.env.SELF_HOST = "mike";
 const url = "https://huggingface.co/org/repo/blob/main/q4.gguf";
+mkdirSync(join(dir, "sys", "etc", "hosts", "mike"), { recursive: true });
 writeFileSync(
-  process.env.PHOSPHORUS_INI_FILE,
-  `[model]\nurl = ${url}\nctx = 8192.7\nslots = 2.9\nhost = true\ngpu = false\n`,
+  join(dir, "sys", "etc", "hosts", "mike", "config.json"),
+  JSON.stringify({ t: Date.now(), h: "mike", c: "x", data: { model: { url, ctx: 8192.7, slots: 2.9, host: true } } }),
 );
 const { deviceRe, gpuLostRe, modelLink, readConfig } = await import("@phosphorus/modeld");
-// util's ini file is fixed on its first import, another test's in a whole run
-const iniTaken = readConfig().raw === url;
+// util's places are fixed on its first import, another test's in a whole run
+const ours = readConfig().raw === url;
 
 // torus's llama-server, 2026-10-26: Vulkan's device lost, then every decode failing
 test("gpu lost", () => {
@@ -59,7 +61,7 @@ test("devices", () => {
 });
 
 // ctx truncated, slots floored, the blob page taken as its file
-test.skipIf(!iniTaken)("config", () => {
+test.skipIf(!ours)("config", () => {
   expect(readConfig()).toEqual({
     raw: url,
     url: "https://huggingface.co/org/repo/resolve/main/q4.gguf",

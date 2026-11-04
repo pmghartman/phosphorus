@@ -9,7 +9,7 @@
 }
 .st-wait {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .st-page {
   --st-r: var(--set-r, 0px);
@@ -28,7 +28,7 @@
 .st-page.waiting::after {
   content: attr(data-note);
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
 }
 .st-mesh-page.waiting > .st-facts {
   display: none;
@@ -37,7 +37,7 @@
 /* the facts: a quiet line over the headlines */
 .st-facts {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
 }
 .st-name {
@@ -98,12 +98,12 @@
 }
 .st-stat-k {
   color: var(--st-hue);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
 .st-stat-v {
   color: var(--fg);
-  font-size: 1.25rem;
+  font-size: var(--fs-xl);
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
@@ -111,7 +111,7 @@
 .st-stat-d {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -135,7 +135,7 @@
   min-width: 0;
   padding: 0.5rem 0.9rem;
   border-bottom: 1px solid var(--border);
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
   white-space: nowrap;
 }
 .st-panel-head > .st-dim {
@@ -154,7 +154,7 @@
   gap: 0.3rem;
   min-height: 0;
   padding: 0.6rem 0.9rem 0.7rem;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
 }
 
@@ -277,7 +277,7 @@
 .st-probe {
   position: absolute;
   visibility: hidden;
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   white-space: pre;
 }
 
@@ -418,7 +418,7 @@
     padding: 0.55rem 0.7rem 0.65rem;
   }
   .st-stat-v {
-    font-size: 1.05rem;
+    font-size: var(--fs-lg);
   }
   .st-graphs {
     min-height: 0;

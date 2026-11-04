@@ -23,7 +23,7 @@ import { dkAsk } from './dialogs.ts';
 import { fmCan, fmPicked } from './list.ts';
 
 // where a view's folder is, for a dialog
-const fmWhere = (v: FmView) => (isHome(v.loc) ? filesJoin('Home', v.dir) : filesPath(v.loc!.host, v.loc!.root!, v.dir));
+const fmWhere = (v: FmView) => (isHome(v.loc) ? filesJoin('home', v.dir) : filesPath(v.loc!.host, v.loc!.root!, v.dir));
 
 export async function fmMkdir(v: FmView) {
   if (!fmCan(v, 'w')) return v.say('read-only', true);

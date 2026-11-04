@@ -20,7 +20,7 @@ const sharedVar = (dir: string) => `${dir.toUpperCase().replace(/[^A-Z0-9]+/g, "
 
 export const casaos: Adapter = {
   id: "casaos",
-  name: "CasaOS AppStore",
+  name: "CasaOS",
   repo: "IceWhaleTech/CasaOS-AppStore",
   licence: "Apache-2.0",
   split: (p) => {

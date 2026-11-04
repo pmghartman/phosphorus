@@ -55,13 +55,13 @@ test("its fields: the ports defaulted, the secrets generated, the runner off, no
     "SSH_PORT",
   ]);
   expect(forgejo.env).toEqual([
-    { name: "HTTP_PORT", label: "Web port on the host", default: "3001" },
+    { name: "HTTP_PORT", label: "web port on the host", default: "3001" },
     { name: "SSH_PORT", label: "SSH port on the host", default: "2222" },
-    { name: "SECRET_KEY", label: "Secret key", secret: true },
-    { name: "INTERNAL_TOKEN", label: "Internal token", secret: true },
+    { name: "SECRET_KEY", label: "secret key", secret: true },
+    { name: "INTERNAL_TOKEN", label: "internal token", secret: true },
     { name: "COMPOSE_PROFILES", label: "Actions runner", default: "none", options: ["none", "runner"] },
-    { name: "RUNNER_CAPACITY", label: "Runner's jobs at once", default: "2" },
-    { name: "RUNNER_SECRET", label: "Runner's shared secret", secret: true },
+    { name: "RUNNER_CAPACITY", label: "runner's jobs at once", default: "2" },
+    { name: "RUNNER_SECRET", label: "runner's shared secret", secret: true },
   ]);
 });
 
@@ -139,7 +139,7 @@ test("Circuit: its port a field, nothing kept, the version asked for health", ()
   expect(ports(rendered(circuit, { HTTP_PORT: "8100" }).services.circuit!)).toEqual([{ host: 8100, container: 8099 }]);
   expect(environment(s)).toEqual({ PORT: "8099", CIRCUIT_UPDATES: "off" });
   expect(s.volumes).toBeUndefined();
-  expect(circuit.env).toEqual([{ name: "HTTP_PORT", label: "Web port on the host", default: "8099" }]);
+  expect(circuit.env).toEqual([{ name: "HTTP_PORT", label: "web port on the host", default: "8099" }]);
   expect(circuit.manifest).toEqual({
     volumes: [],
     health: { service: "circuit", path: "/api/version", port: 8099 },

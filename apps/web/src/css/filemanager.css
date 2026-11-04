@@ -41,7 +41,7 @@
   padding: 0 0.4rem;
   margin: 0 0.2rem;
   border: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   overflow-x: auto;
   scrollbar-width: none;
   white-space: nowrap;
@@ -71,7 +71,7 @@
   padding: 0 0.35rem;
   border: 1px solid var(--border);
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
   line-height: 1.4rem;
 }
 .dk-fm .dk-body {
@@ -100,12 +100,12 @@
   padding: 0.3rem 0;
   border-right: 1px solid var(--border);
   background: var(--card);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
 }
 .fm-side-head {
   padding: 0.2rem 0.6rem 0.3rem;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.04em;
 }
 .fm-place {
@@ -155,7 +155,7 @@
 }
 .fm-items {
   min-height: 100%;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 .fm-row {
   display: grid;
@@ -181,7 +181,7 @@
   border: 0;
   color: var(--muted);
   font: inherit;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .fm-col:hover {
@@ -224,7 +224,7 @@
 .fm-c-mtime,
 .fm-c-size {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -234,11 +234,6 @@
 }
 .fm-cols .fm-c-size {
   text-align: right;
-}
-.fm-empty {
-  padding: 1.5rem;
-  text-align: center;
-  color: var(--muted);
 }
 .fm-dir {
   color: var(--sand);
@@ -274,7 +269,7 @@
   border-top: 1px solid var(--border);
   background: var(--card);
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   white-space: nowrap;
 }
 .fm-note {
@@ -297,7 +292,7 @@
 /* the page's own ask, over everything, any user's */
 .fm-veil.page-veil {
   position: fixed;
-  z-index: 1200;
+  z-index: var(--z-veil);
   padding-top: 18vh;
 }
 .fm-ask {
@@ -309,7 +304,7 @@
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--drop);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   animation: pop-in 0.1s ease-out;
 }
 .fm-ask p {
@@ -327,7 +322,7 @@
 }
 .dk-pick-head {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 @media (max-width: 720px) {
   .dk-row {

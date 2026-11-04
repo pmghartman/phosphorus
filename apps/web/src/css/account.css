@@ -5,6 +5,22 @@
   gap: 0.4rem;
   width: min(22rem, calc(100% - 2rem));
 }
+/* setup: the first admin's form stacked as the login's, the way out under it */
+.acct-setup .acct-new {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.acct-setup .acct-new .btn {
+  align-self: flex-end;
+}
+.acct-setup .update-actions {
+  justify-content: flex-start;
+}
 .acct-login input,
 .acct-unlock input,
 .acct-new input {
@@ -14,7 +30,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .acct-login input:focus,
 .acct-unlock input:focus,
@@ -59,7 +75,7 @@
   align-items: center;
   gap: 0.3rem;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
 }
 .acct-check input {
   accent-color: var(--accent);
@@ -69,63 +85,12 @@
   margin-top: 0.3rem;
   white-space: normal;
 }
-.acct-pane button,
-.acct-users button,
-.acct-unlock button {
-  white-space: nowrap;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--fg);
-  background: none;
-  border: 1px solid var(--muted);
-  padding: 0.2rem 0.65rem;
-  cursor: pointer;
-}
-.acct-pane button:hover:not(:disabled),
-.acct-users button:hover:not(:disabled),
-.acct-unlock button:hover:not(:disabled) {
-  background: var(--fg);
-  color: var(--bg);
-  border-color: var(--fg);
-}
-.acct-pane button.danger,
-.acct-users button.danger {
-  color: var(--offmesh);
-  border-color: var(--offmesh);
-}
-.acct-pane button.danger:hover:not(:disabled),
-.acct-users button.danger:hover:not(:disabled) {
-  background: var(--offmesh);
-  color: var(--bg);
-}
+
 /* a danger button that can't be pressed, as you deleting yourself, greyed like any other */
-.acct-pane button.danger:disabled,
-.acct-users button.danger:disabled {
-  color: var(--dim);
-  border-color: var(--border);
-  cursor: default;
-}
-.acct-pane button.primary,
-.acct-users button.primary,
-.acct-unlock button.primary {
-  color: var(--accent);
-  border-color: var(--accent);
-  font-weight: 600;
-}
-.acct-pane button.primary:hover,
-.acct-users button.primary:hover,
-.acct-unlock button.primary:hover {
-  background: var(--accent);
-  color: var(--bg);
-}
-.acct-pane button:disabled,
-.acct-users button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+
 .acct-unlock {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
   width: 15rem;
   padding: 0.6rem;
   display: flex;
@@ -305,12 +270,12 @@
    its title inside the top edge in sage */
 .dk-pop {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
 }
 .dk-menu-title {
   padding: 0.35rem 0.75rem 0.4rem;
   line-height: 1;
   color: var(--sage);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
 }

@@ -1,7 +1,7 @@
 // the catalogues: each one tarball off GitHub's codeload, read as it streams in, only
 // its index kept under state/catalogs/<source>/; asked again at most daily with its
 // ETag; a failed fetch keeps the last good index
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { errText, logf, now, readJSON, StateDir, writeJSONAtomic } from "@phosphorus/util";
 import type { AppDef, AppSummary, SourceInfo, TreeEntry } from "@phosphorus/wire";
@@ -116,8 +116,6 @@ export function refresh(a: Adapter, force = false): Promise<void> {
   if (cur) return cur;
   const p = (async () => {
     const m = meta(a);
-    // an older release's kept tarball, never read again
-    rmSync(join(dirOf(a), "catalog.tar.gz"), { force: true });
     const ix = load(a);
     if (!force && ix && now() - m.checkedAt < DayMS) return;
     const next: Meta = { ...m, checkedAt: now() };

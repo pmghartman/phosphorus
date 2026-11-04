@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { casaos } from "../src/adapters/casaos.ts";
@@ -33,9 +33,7 @@ beforeEach(() => {
 });
 
 test("fetched once, cached, asked again with its ETag", async () => {
-  // an older release's kept tarball swept, none kept now
-  mkdirSync(join(root, "casaos"), { recursive: true });
-  writeFileSync(join(root, "casaos", "catalog.tar.gz"), "old");
+  // only the index kept, never the tarball
   await refresh(casaos);
   expect(existsSync(join(root, "casaos", "catalog.tar.gz"))).toBe(false);
   expect(existsSync(join(root, "casaos", "index.json"))).toBe(true);

@@ -89,9 +89,6 @@ export async function install(payload: string, update: boolean) {
   writeFileSync(at(".phosphorus-installed"), v + "\n", { mode: 0o644 });
 }
 
-// per host, never overwritten once there
-export const kept = (f: string) => f.startsWith("config/") || f.startsWith("files/");
-
 // every file under dir, slash-separated and relative, .phosphorus-* ones skipped
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -108,13 +105,11 @@ function walk(dir: string): string[] {
   return out;
 }
 
-// every release file into dst, what the last one shipped and this one doesn't
-// removed, this host's config and share left alone
+// every release file into dst, what the last one shipped and this one doesn't removed
 export function syncPayload(src: string, dst: string) {
   const next = walk(src);
   for (const f of next) {
     const to = join(dst, f);
-    if (kept(f) && fileExists(to)) continue;
     if (same(join(src, f), to)) continue;
     copyFile(join(src, f), to);
   }
@@ -128,7 +123,7 @@ export function syncPayload(src: string, dst: string) {
     old = readFileSync(manifest, "utf8");
   } catch {}
   for (const f of old.replaceAll("\r\n", "\n").split("\n")) {
-    if (!f || want.has(f) || f.startsWith("config/") || f.startsWith("files/")) continue;
+    if (!f || want.has(f)) continue;
     const p = join(dst, f);
     rmSync(p, { force: true });
     // its folders too, once nothing else is in them

@@ -169,11 +169,10 @@ test("the index survives a restart, an unchanged home no new versions", async ()
   expect(again.digest()).toBe(d);
 });
 
-test("upload temps, trash and the store's folder never sync", async () => {
+test("upload temps and trash never sync", async () => {
   const a = host("alpha");
   put(a, "ann/.phosphorus-upload-abc", "half");
   put(a, "ann/.trash/gone.txt", "t");
-  put(a, ".sys/etc/x.json", "{}");
   put(a, "ann/real.txt", "r");
   expect((await a.scan()).sort()).toEqual(["ann", "ann/real.txt"]);
 });

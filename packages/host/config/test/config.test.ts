@@ -1,30 +1,31 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-config-"));
 process.env.PHOSPHORUS_REPO_DIR = dir;
 process.env.SELF_HOST = "mike";
-const ini = join(dir, "config", "phosphorus.ini");
 const store = await import("@phosphorus/store");
 const util = await import("@phosphorus/util");
+const { configRel } = util;
 const { configValues, current, editKey, editModel, editShares, Keys, lineDiff, linkOk, migrate, wholeAtLeast } =
   await import("@phosphorus/config");
 
-test("the old ini moved into the store once, then gone", () => {
-  mkdirSync(join(dir, "config"), { recursive: true });
-  writeFileSync(
-    ini,
-    "[git]\nhost = false\n\n[files]\ndir = /srv/media/, /data\npriv = r\n\n[model]\nhost = true\nctx = 4096\n\n[stacks]\ntz = UTC\n\n[apps]\ncode_key = RWabc\n",
-  );
-  // until moved: read off the ini
-  expect(util.hostConfig().shares).toEqual([
-    { dir: "/srv/media", perms: "r" },
-    { dir: "/data", perms: "rwd" },
-  ]);
+test("a record under the host's last name carried over once it's renamed", () => {
+  mkdirSync(join(dir, "state"), { recursive: true });
+  writeFileSync(join(dir, "state", "config-host"), "oldname\n");
+  store.write(configRel("oldname"), {
+    shares: [
+      { dir: "/srv/media", perms: "r" },
+      { dir: "/data", perms: "rwd" },
+    ],
+    model: { host: true, ctx: 4096 },
+    stacks: { tz: "UTC" },
+    apps: { code: { key: "RWabc" } },
+  });
   migrate();
-  expect(existsSync(ini)).toBe(false);
+  expect(store.read(configRel("oldname"))).toBeUndefined();
   expect(current()).toEqual({
     shares: [
       { dir: "/srv/media", perms: "r" },
@@ -34,14 +35,7 @@ test("the old ini moved into the store once, then gone", () => {
     stacks: { tz: "UTC", puid: "", pgid: "" },
     apps: { code: { key: "RWabc" } },
   });
-  // config/ gone with it
-  expect(existsSync(join(dir, "config"))).toBe(false);
-  // a second ini later ignored, the record kept
-  mkdirSync(join(dir, "config"), { recursive: true });
-  writeFileSync(ini, "[files]\ndir = /other\n");
-  migrate();
-  expect(existsSync(ini)).toBe(false);
-  expect(current().shares[0]!.dir).toBe("/srv/media");
+  expect(readFileSync(join(dir, "state", "config-host"), "utf8")).toBe("mike\n");
 });
 
 test("editKey holds to Keys, files dir and priv in step", () => {
@@ -120,5 +114,5 @@ test("settings › hosts: shares and model written whole and checked", async () 
   expect(editModel({ host: "true" }, false)).toEqual(["", ""]);
   // on disk for every process once written
   await util.flushWrites();
-  expect(util.readConfig({ sys: store.Root, ini, state: join(dir, "state"), self: "mike" }).model.slots).toBe(2);
+  expect(util.readConfig({ sys: store.Root, state: join(dir, "state"), self: "mike" }).model.slots).toBe(2);
 });

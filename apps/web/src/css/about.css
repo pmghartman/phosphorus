@@ -33,7 +33,7 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1.3;
   letter-spacing: 0.04em;
 }
@@ -86,7 +86,7 @@
   background: var(--bg);
   color: var(--sage);
   line-height: 1;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
 }
 
@@ -99,12 +99,12 @@
 .about-key {
   color: var(--accent-2);
   letter-spacing: 0.04em;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 
 .about-val {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   line-height: 1.4;
 }
 

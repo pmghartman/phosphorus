@@ -39,9 +39,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  version:
+  # the version, the plan, the notices and the web client, once, for every job after
+  prep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       builds: ${{ steps.plan.outputs.builds }}
@@ -78,17 +79,9 @@ jobs:
           [ "$WIN" = true ] && builds+=('{"name":"windows-x86_64","runner":"windows-2022","arch":"amd64"}')
           [ ${#builds[@]} -gt 0 ] || { echo "::error::check at least one OS"; exit 1; }
           echo "builds=[$(IFS=,; echo "${builds[*]}")]" | tee -a "$GITHUB_OUTPUT"
-
-  # the web client built once, from the workspace's pinned packages, for every
-  # job that embeds it
-  web:
-    needs: version
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/bun
-      # the notices first, so the page's copy (about links it) is this release's
+      # every production dependency under an allowed license, the notices and SBOM
+      # shipped in each installer; first, so the page's copy (about links it) is this release's
       - run: bun scripts/licenses.ts notices
       # a binary without it serves nothing but 404s
       - run: bun run web && test -f packages/server/webstatic/dist/index.html
@@ -99,11 +92,16 @@ jobs:
             packages/server/webstatic/dist/
             packages/server/webstatic/src/manifest.ts
           retention-days: 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: notices
+          path: notices/
+          retention-days: 1
 
-  # types, the formatter and tests on the web job's build, beside the builds: only
+  # types, the formatter and tests on prep's build, at once, beside the builds: only
   # the publishing waits on it
   check:
-    needs: web
+    needs: prep
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -114,44 +112,36 @@ jobs:
         with:
           name: web-dist
           path: packages/server/webstatic
-      - run: bun run check
-      # the formatter's word on the whole tree
-      - run: bun run lint
-      - run: bun run test
-
-  # every production dependency under an allowed license, and the shipped notices
-  # and SBOM generated from them and the pinned tools, beside the builds
-  licenses:
-    needs: version
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/bun
-      - run: bun scripts/licenses.ts notices
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: notices
-          path: notices/
-          retention-days: 1
+      - name: check, lint, test
+        run: |
+          bun run check > check.log 2>&1 & c=$!
+          bun run lint > lint.log 2>&1 & l=$!
+          ok=0
+          bun run test || ok=1
+          wait $c || { cat check.log; ok=1; }
+          wait $l || { cat lint.log; ok=1; }
+          exit $ok
 
   # one job per OS: Linux's host the .deb around the binary, macOS's and
   # Windows' the menu bar app beside it, in a .dmg and a setup .exe
   build:
-    needs: [version, web, licenses]
+    needs: prep
     strategy:
       # one OS's failure leaves the others' builds, and their caches, finished
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.version.outputs.builds) }}
+        include: ${{ fromJSON(needs.prep.outputs.builds) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
-      VER: ${{ needs.version.outputs.ver }}
+      VER: ${{ needs.prep.outputs.ver }}
       APP: packaging/host
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # the compile needs no dev tools (biome, tsc, resvg)
       - uses: ./.github/actions/bun
+        with:
+          production: "true"
       # apt key's public half, into the host package
       - name: apt key
         if: startsWith(matrix.name, 'linux')
@@ -236,13 +226,13 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, build, check]
+    needs: [prep, build, check]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
     env:
-      VER: ${{ needs.version.outputs.ver }}
+      VER: ${{ needs.prep.outputs.ver }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -285,17 +275,20 @@ jobs:
   # the update feed beside the release, not after it: nothing in it waits on the numbered
   # release's upload, and the upload nothing on it
   feed:
-    needs: [version, build, check]
+    needs: [prep, build, check]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
     env:
-      VER: ${{ needs.version.outputs.ver }}
+      VER: ${{ needs.prep.outputs.ver }}
     steps:
       # the tree first: a checkout cleans what's downloaded before it
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # the app bundles need no dev tools
       - uses: ./.github/actions/bun
+        with:
+          production: "true"
       # the .debs alone, for the apt index
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -362,7 +355,7 @@ jobs:
   # aside; only this workflow's two newest runs, this one included; of the bun
   # caches only this lockfile's
   prune:
-    needs: [version, release, feed]
+    needs: [prep, release, feed]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -381,7 +374,7 @@ jobs:
           done
       - name: caches
         env:
-          LOCK: ${{ needs.version.outputs.lock }}
+          LOCK: ${{ needs.prep.outputs.lock }}
         run: |
           gh cache list --limit 200 --json id,key --jq ".[] | select(.key | startswith(\"bun-\")) | select(.key | endswith(\"-$LOCK\") | not) | .id" |
           while read -r id; do

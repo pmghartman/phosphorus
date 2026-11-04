@@ -24,7 +24,7 @@
 
 .list li .meta {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   margin-left: 0.5rem;
 }
 .empty {

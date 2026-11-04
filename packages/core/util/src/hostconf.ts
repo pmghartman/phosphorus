@@ -1,5 +1,5 @@
 // this host's settings: its record in the store, etc/hosts/<host>/config.json, read
-// off disk by any process; the old phosphorus.ini until the service moves it in
+// off disk by any process
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -45,62 +45,9 @@ export function normalize(raw: unknown): HostConfig {
   return c;
 }
 
-// --- the old phosphorus.ini ------------------------------------------------------
-
-// "section\0key" to value, first wins, quotes stripped, ; and # comment lines
-export function parseIni(text: string): Map<string, string> {
-  const keys = new Map<string, string>();
-  let cur = "";
-  for (const line of text.split(/\r?\n/)) {
-    if (/^\s*[;#]/.test(line)) continue;
-    const h = /^\s*\[\s*(.+?)\s*\]\s*$/.exec(line);
-    if (h) {
-      cur = h[1]!;
-      continue;
-    }
-    const m = /^\s*([^=]+?)\s*=\s*(.*?)\s*$/.exec(line);
-    const k = m && cur + "\0" + m[1];
-    if (k && !keys.has(k)) keys.set(k, m[2]!.replace(/^"|"$/g, ""));
-  }
-  return keys;
-}
-
-const list = (v: string) =>
-  v
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-// what an ini said, as a record
-export function fromIni(text: string): HostConfig {
-  const k = parseIni(text);
-  const g = (sec: string, key: string) => k.get(sec + "\0" + key) ?? "";
-  const perms = g("files", "priv")
-    .split(",")
-    .map((x) => x.trim());
-  const c = emptyConfig();
-  c.shares = list(g("files", "dir")).map((dir, i) => ({
-    dir: dir.replace(/[/\\]+$/, "") || dir,
-    perms: perms[i] || "rwd",
-  }));
-  c.model = {
-    host: g("model", "host") === "true",
-    gpu: g("model", "gpu") === "true",
-    url: g("model", "url"),
-    ctx: Math.trunc(Number(g("model", "ctx"))) || 0,
-    slots: Math.trunc(Number(g("model", "slots"))) || 0,
-  };
-  c.stacks = { tz: g("stacks", "tz"), puid: g("stacks", "puid"), pgid: g("stacks", "pgid") };
-  for (const [key, v] of k) {
-    const m = /^apps\0([a-z0-9-]+)_key$/.exec(key);
-    if (m && v.trim()) c.apps[m[1]!] = { key: v.trim() };
-  }
-  return c;
-}
-
 // --- read off disk ----------------------------------------------------------------
 
-export type Places = { sys: string; ini: string; state: string; self: string };
+export type Places = { sys: string; state: string; self: string };
 
 const sigOf = (p: string) => {
   try {
@@ -125,11 +72,11 @@ export function selfName(p: Places): string {
 
 let memo: { sig: string; c: HostConfig } | undefined;
 
-// the record when there is one (a tombstone: nothing set), else the ini's
+// the record, nothing set when there's none or a tombstone
 export function readConfig(p: Places): HostConfig {
   const self = selfName(p);
   const rec = self ? join(p.sys, configRel(self)) : "";
-  const sig = `${rec}\n${rec ? sigOf(rec) : "-"}\n${p.ini}\n${sigOf(p.ini)}`;
+  const sig = `${rec}\n${rec ? sigOf(rec) : "-"}`;
   if (memo?.sig === sig) return memo.c;
   let c: HostConfig | undefined;
   const raw = rec ? text(rec) : undefined;
@@ -138,10 +85,7 @@ export function readConfig(p: Places): HostConfig {
       const f = JSON.parse(raw);
       c = f?.gone ? emptyConfig() : normalize(f?.data);
     } catch {}
-  if (!c) {
-    const ini = text(p.ini);
-    c = ini === undefined ? emptyConfig() : fromIni(ini);
-  }
+  c ??= emptyConfig();
   memo = { sig, c };
   return c;
 }

@@ -35,6 +35,27 @@ export function humanSize(n: number | null | undefined): string {
   return `${i ? v.toFixed(1) : v}${u[i]}`;
 }
 
+// a moment as the desktop writes it: Nov 3 10:38PM, the year in place of the time
+// when it isn't this one; withDay the weekday first, as the clock shows it
+export function when(ms: number, withDay = false): string {
+  const d = new Date(ms);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  const tail = d.getFullYear() === new Date().getFullYear() ? `${p.hour}:${p.minute}${p.dayPeriod}` : p.year;
+  return `${withDay ? `${p.weekday} ` : ''}${p.month} ${p.day} ${tail}`;
+}
+
 export function ago(sec: number): string {
   if (sec < 60) return `${sec}s`;
   if (sec < 3600) return `${Math.floor(sec / 60)}m`;

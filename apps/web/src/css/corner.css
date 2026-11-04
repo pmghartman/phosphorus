@@ -2,7 +2,7 @@
 .toasts {
   position: fixed;
   right: 0.75rem;
-  z-index: 1100;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -17,7 +17,7 @@
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
   box-shadow: var(--drop);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   animation: toast-in 0.18s ease-out;
 }
 .toast.go {
@@ -58,7 +58,7 @@
   border: 0;
   color: var(--dim);
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--fs-lg);
   line-height: 1.2;
   cursor: pointer;
 }

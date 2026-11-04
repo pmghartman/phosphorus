@@ -3,7 +3,7 @@
 
 /* the mesh: the graph and pings, a column up from the button, its corner a grip */
 .dk-mesh-pop {
-  z-index: 20;
+  z-index: var(--z-pop);
   display: flex;
   animation: pop-in 0.16s ease-out;
 }
@@ -45,7 +45,7 @@
   box-shadow: var(--drop);
 }
 .dk-mesh-pop .mesh-header {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
 }
 .dk-mesh-pop .mesh-header > * {
   background: var(--card);
@@ -53,7 +53,7 @@
 
 /* the update: its pane a card as wide and tall as what it holds */
 .dk-update-pop {
-  z-index: 20;
+  z-index: var(--z-pop);
   display: flex;
 }
 .dk-update-pop[hidden] {
@@ -69,7 +69,7 @@
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--drop);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   animation: pop-in 0.16s ease-out;
 }
 .dk-update-pop .update-pane-body {
@@ -92,6 +92,9 @@
 .dk-update-pop .update-mesh {
   padding-bottom: 0.35rem;
 }
+.dk-update-pop .update-actions {
+  padding: 0.4rem 0.5rem 0.2rem;
+}
 
 /* the agent: its keys, steps, switch, state and calls straight in the popup's card */
 .dk-mcp-pop {
@@ -100,7 +103,7 @@
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--drop);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   animation: pop-in 0.12s ease-out;
 }
 .dk-mcp-pop[hidden] {

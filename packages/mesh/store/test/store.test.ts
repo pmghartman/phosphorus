@@ -147,19 +147,3 @@ test("pull runs the syncer once at a time", async () => {
   await Promise.all([store.pull(), store.pull()]);
   expect(runs).toBe(1);
 });
-
-test("the store moved out of home/ once, merged when both are there", async () => {
-  const { mkdirSync, writeFileSync } = await import("node:fs");
-  const old = store.OldRoot;
-  mkdirSync(join(old, "etc", "m"), { recursive: true });
-  mkdirSync(join(old, "var", "chat"), { recursive: true });
-  const t = Date.now();
-  writeFileSync(join(old, "etc", "m", "new.json"), JSON.stringify({ t, h: "zulu", c: "n", data: "from old" }));
-  writeFileSync(join(old, "etc", "m", "new.json.123.tmp"), "half");
-  writeFileSync(join(old, "var", "chat", "x"), "media");
-  store.mergeOld();
-  expect(existsSync(old)).toBe(false);
-  expect(store.read("etc/m/new.json")).toBe("from old");
-  expect(readFileSync(join(store.Root, "var", "chat", "x"), "utf8")).toBe("media");
-  expect(existsSync(join(store.Root, "etc", "m", "new.json"))).toBe(true);
-});

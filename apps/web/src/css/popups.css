@@ -5,7 +5,7 @@
   position: absolute;
   top: calc(var(--header-h) + 0.4rem);
   left: 0.75rem;
-  z-index: 20;
+  z-index: var(--z-pop);
 }
 
 .modal[hidden] {
@@ -41,7 +41,7 @@
   justify-content: space-between;
   line-height: 1;
   pointer-events: none;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
 }
 .modal-header > * {
@@ -55,7 +55,7 @@
 
 .modal-close {
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--fs-lg);
   line-height: 1;
   color: var(--muted);
   background: none;
@@ -79,11 +79,11 @@
   row-gap: 0.15rem;
   align-items: baseline;
   padding: 0.3rem 0.75rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .update-head {
   padding: 0.45rem 0.75rem 0.1rem;
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.04em;
   color: var(--sage);
 }
@@ -94,7 +94,7 @@
 }
 .update-ver,
 .update-state {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
@@ -140,7 +140,7 @@
 .update-versions li.empty {
   grid-column: 1 / -1;
   padding: 0.3rem 0.75rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .update-confirm {
@@ -148,7 +148,7 @@
 }
 .update-confirm p {
   margin: 0 0 0.75rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
 }
 
 /* the gate on starting a chain, red once a wrong one has been tried */
@@ -161,7 +161,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
 }
 .update-pass[hidden] {
   display: none;
@@ -194,7 +194,7 @@
   display: flex;
   color: var(--accent);
   white-space: pre;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
 }
 /* ░ in the off tone, as the files transfer bar */
 .update-progress-cells {
@@ -212,7 +212,7 @@
 
 .update-progress-label {
   flex: none;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   color: var(--muted);
   white-space: nowrap;
 }
@@ -222,70 +222,11 @@
   justify-content: flex-end;
   gap: 0.5rem;
 }
-.update-actions button.force {
-  color: var(--warn);
-  border-color: var(--warn);
-}
-.update-actions button.force:hover {
-  background: var(--warn);
-  color: var(--bg);
-}
-
-/* [ label ], like a terminal prompt's choices, hover inverting as a selection would */
-.update-actions button {
-  white-space: nowrap;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--fg);
-  background: none;
-  border: 1px solid var(--muted);
-  padding: 0.2rem 0.65rem;
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s,
-    border-color 0.15s,
-    transform 0.1s;
-}
-.update-actions button:active:not(:disabled) {
-  transform: translateY(1px);
-}
-.update-actions button:hover {
-  background: var(--fg);
-  color: var(--bg);
-  border-color: var(--fg);
-}
-.update-actions button.danger {
-  color: var(--offmesh);
-  border-color: var(--offmesh);
-}
-.update-actions button.danger:hover {
-  background: var(--offmesh);
-  color: var(--bg);
-}
-.update-actions button.primary {
-  color: var(--accent);
-  border-color: var(--accent);
-  font-weight: 600;
-}
-.update-actions button.primary:hover {
-  background: var(--accent);
-  color: var(--bg);
-}
 
 .update-os {
   color: var(--teal);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   margin-left: 0.5rem;
-}
-.update-actions button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-.update-actions button:disabled:hover {
-  background: none;
-  color: var(--accent);
-  border-color: var(--accent);
 }
 
 /* every host and its version, with the button that starts the chain */

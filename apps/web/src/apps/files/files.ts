@@ -3,6 +3,7 @@
 import { dkFocus, dkWin } from '../../desktop/windows.ts';
 import { type DropTarget, dkFms, type Fm, fileOpen } from '../../features/home/home.ts';
 import { DK_UI, dkGlyph, el, icon } from '../../lib/dom.ts';
+import { when } from '../../lib/util.ts';
 import { fmDropZone, fmMkdir, fmUpload } from './actions.ts';
 import { fmCan, fmKeys, fmPaintSel, fmRender } from './list.ts';
 import { fmMenu } from './menu.ts';
@@ -15,16 +16,7 @@ export const FM_COLS: [string, string][] = [
   ['size', 'size'],
   ['mtime', 'modified'],
 ];
-export const fmDate = (ms: number | null | undefined) =>
-  ms
-    ? new Date(ms).toLocaleString([], {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '';
+export const fmDate = (ms: number | null | undefined) => (ms ? when(ms) : '');
 
 // a line in the status bar, gone after a while unless a transfer is still going
 export function fmSay(fm: Fm, text: string, bad?: boolean) {

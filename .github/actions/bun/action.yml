@@ -1,7 +1,13 @@
-# bun at package.json's pin and the workspace installed; its package cache in one
-# place on every OS, kept between runs, a new lockfile starting from the last one's
+# bun at package.json's pin and the workspace installed, without dev tools when asked;
+# its package cache in one place on every OS, kept between runs, a new lockfile
+# starting from the last one's
 name: bun
 description: Set up bun and install the workspace
+
+inputs:
+  production:
+    description: "true: without devDependencies, for jobs that only compile or sign"
+    default: "false"
 
 runs:
   using: composite
@@ -12,7 +18,7 @@ runs:
     - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: .bun-cache
-        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.production }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.production }}-
     - shell: bash
-      run: bun install --frozen-lockfile
+      run: bun install --frozen-lockfile ${{ inputs.production == 'true' && '--production' || '' }}

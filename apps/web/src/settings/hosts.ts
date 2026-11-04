@@ -159,8 +159,8 @@ function configurePart(pane: HTMLElement): () => void {
       go.addEventListener('click', () => dkSettings('profile'));
       rest.append(
         list.length
-          ? `Not signed in, so not configured from here: ${others.join(', ')}. `
-          : `You aren’t signed into any host, so none is configured from here. `,
+          ? `not signed in, so not configured from here: ${others.join(', ')}; `
+          : `not signed into any host, so none is configured from here; `,
         go,
       );
     }
@@ -178,13 +178,13 @@ function configFor(host: string): HTMLElement[] {
   const body = el('div', 'set-host-body acct-pane');
   body.append(el('p', 'dk-note', 'reading its config'));
   void cfgCall(host).then((r) => {
-    if (!r.ok || !r.ini) {
+    if (!r.ok || !r.values) {
       body.replaceChildren(
         el('p', 'dk-state bad', r.ok ? `${host} runs an older phosphorus: update the mesh first` : r.error),
       );
       return;
     }
-    body.replaceChildren(...hostForm(host, r.ini as HostIni));
+    body.replaceChildren(...hostForm(host, r.values as HostIni));
   });
   return [body];
 }
@@ -235,7 +235,7 @@ function hostForm(host: string, ini: HostIni): HTMLElement[] {
     say.className = `dk-state ${r.ok ? 'ok' : 'bad'}`;
     say.textContent = r.ok ? r.note || 'saved' : r.error;
   };
-  const btn = (label: string, cls = '') => Object.assign(el('button', cls, label), { type: 'button' });
+  const btn = (label: string, cls = '') => Object.assign(el('button', `btn ${cls}`.trim(), label), { type: 'button' });
   const head = (t: string) => el('div', 'dk-pick-head', t);
 
   // shares: none by default, each an admin's own opt-in
@@ -346,7 +346,7 @@ function hostForm(host: string, ini: HostIni): HTMLElement[] {
   };
   return cardify([
     head('shared folders'),
-    el('p', 'dk-note', 'Nothing is shared until you add it: each folder shows in files for the mesh’s users.'),
+    el('p', 'dk-note', 'nothing is shared until you add it; each folder shows in files for the mesh’s users'),
     list,
     addRow,
     acts(saveShares),

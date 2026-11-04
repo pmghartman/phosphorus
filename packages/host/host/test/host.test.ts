@@ -10,20 +10,8 @@ const base = await import("../src/base.ts");
 const { durText, lastLine, setHome, splitLines, sshInclude } = base;
 const { plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
-const {
-  absTo,
-  bakeEnv,
-  deadState,
-  envFileText,
-  migrateHome,
-  oldHomes,
-  readEnvFile,
-  signature,
-  splitComma,
-  tidy,
-  withPath,
-} = await import("../src/native.ts");
-const { kept, packaged, same, syncPayload } = await import("../src/install.ts");
+const { absTo, bakeEnv, envFileText, readEnvFile, signature, splitComma, withPath } = await import("../src/native.ts");
+const { packaged, same, syncPayload } = await import("../src/install.ts");
 const { field } = await import("../src/upgrade.ts");
 const { keySet } = await import("../src/start.ts");
 const { desktopURLs, frontPage } = await import("../src/front.ts");
@@ -161,13 +149,20 @@ test("the baked env file round-trips, PATH gets the tools first", () => {
   expect(absTo("/h", "/abs/")).toBe("/abs");
 });
 
-test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
+test("bakeEnv from this host's settings record, missing share dirs skipped", () => {
   setHome(dir);
-  mkdirSync(join(dir, "config"), { recursive: true });
   mkdirSync(join(dir, "share"), { recursive: true });
+  mkdirSync(join(dir, "state"), { recursive: true });
+  mkdirSync(join(dir, "sys", "etc", "hosts", "mike"), { recursive: true });
+  writeFileSync(join(dir, "state", "self-host"), "mike\n");
+  const shares = [
+    { dir: "share/", perms: "r" },
+    { dir: "nope", perms: "" },
+    { dir: "/", perms: "rw" },
+  ];
   writeFileSync(
-    join(dir, "config", "phosphorus.ini"),
-    "[files]\ndir = share/, nope, /\npriv = r,,rw\n[model]\nhost = true\n",
+    join(dir, "sys", "etc", "hosts", "mike", "config.json"),
+    JSON.stringify({ t: Date.now(), h: "mike", c: "x", data: { shares, model: { host: true } } }),
   );
   const m = bakeEnv();
   expect(m.PHOSPHORUS_HOME).toBe(dir);
@@ -181,33 +176,26 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
   expect(s1).toMatch(/^[0-9a-f]{64}$/);
 });
 
-test("syncPayload copies the release, keeps this host's config, prunes the last release's files", () => {
+test("syncPayload copies the release, prunes the last release's files", () => {
   const src = join(dir, "payload"),
     dst = join(dir, "home");
-  mkdirSync(join(src, "config"), { recursive: true });
   mkdirSync(join(src, "web", "assets"), { recursive: true });
   writeFileSync(join(src, "VERSION"), "2\n");
-  writeFileSync(join(src, "config", "phosphorus.ini"), "new\n");
   writeFileSync(join(src, "web", "assets", "a.js"), "a");
   writeFileSync(join(src, ".phosphorus-installed"), "x");
-  mkdirSync(join(dst, "config"), { recursive: true });
   mkdirSync(join(dst, "old", "deep"), { recursive: true });
   writeFileSync(join(dst, "old", "deep", "gone.js"), "g");
   writeFileSync(join(dst, "old", "stay.txt"), "s");
-  writeFileSync(join(dst, ".phosphorus-manifest"), "old/deep/gone.js\nconfig/phosphorus.ini\nfiles/x\n");
+  writeFileSync(join(dst, ".phosphorus-manifest"), "old/deep/gone.js\n");
   syncPayload(src, dst);
   expect(readFileSync(join(dst, "VERSION"), "utf8")).toBe("2\n");
-  expect(readFileSync(join(dst, "config", "phosphorus.ini"), "utf8")).toBe("new\n");
   expect(readFileSync(join(dst, "web", "assets", "a.js"), "utf8")).toBe("a");
   expect(existsSync(join(dst, ".phosphorus-installed"))).toBe(false);
   expect(existsSync(join(dst, "old", "deep"))).toBe(false);
   expect(existsSync(join(dst, "old", "stay.txt"))).toBe(true);
   expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe(
-    `VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nweb/assets/a.js\n`,
+    `VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nweb/assets/a.js\n`,
   );
-  expect(kept("config/phosphorus.ini")).toBe(true);
-  expect(kept("files/a/b")).toBe(true);
-  expect(kept("web/a")).toBe(false);
 });
 
 test("an unchanged file left as it is, a changed one copied", () => {
@@ -231,16 +219,6 @@ test("an unchanged file left as it is, a changed one copied", () => {
   expect(packaged("/var/lib/phosphorus/bin/phosphorus")).toBe(false);
 });
 
-test("tidy sweeps state no release reads", () => {
-  setHome(dir);
-  mkdirSync(join(dir, "state"), { recursive: true });
-  for (const f of deadState) writeFileSync(join(dir, "state", f), "x");
-  writeFileSync(join(dir, "state", "native-sig"), "keep");
-  tidy();
-  for (const f of deadState) expect(existsSync(join(dir, "state", f))).toBe(false);
-  expect(existsSync(join(dir, "state", "native-sig"))).toBe(true);
-});
-
 test("small helpers", () => {
   expect(field("phosphorus:\n  Installed: 1.0\n  Candidate: 1.1\n", "Candidate:")).toBe("1.1");
   expect(field("x", "Installed:")).toBe("");
@@ -258,31 +236,4 @@ test("small helpers", () => {
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);
   expect(sshInclude()).toBe(`Include "${join(dir, "state", "ssh_config").replaceAll("\\", "/")}"`);
-});
-
-test("the home moved once into <phosphorus>/home, files/ gone, a clash left behind", () => {
-  setHome(dir);
-  mkdirSync(join(dir, "config"), { recursive: true });
-  writeFileSync(join(dir, "config", "phosphorus.ini"), "[home]\ndir = big\n");
-  mkdirSync(join(dir, "files", "home", "ann", "Desktop"), { recursive: true });
-  writeFileSync(join(dir, "files", "home", "ann", "Desktop", "a.txt"), "a");
-  mkdirSync(join(dir, "big", "home", "ann"), { recursive: true });
-  writeFileSync(join(dir, "big", "home", "ann", "b.txt"), "b");
-  mkdirSync(join(dir, "home", "bob"), { recursive: true });
-  writeFileSync(join(dir, "home", "bob", "c.txt"), "c");
-  writeFileSync(join(dir, "big", "home", "bob.txt"), "old");
-  writeFileSync(join(dir, "home", "bob.txt"), "new");
-  const old = oldHomes();
-  expect(old).toEqual([join(dir, "big", "home"), join(dir, "files", "home")]);
-  migrateHome(old);
-  for (const [p, t] of [
-    ["ann/Desktop/a.txt", "a"],
-    ["ann/b.txt", "b"],
-    ["bob/c.txt", "c"],
-    ["bob.txt", "new"],
-  ])
-    expect(readFileSync(join(dir, "home", p!), "utf8")).toBe(t!);
-  expect(existsSync(join(dir, "files"))).toBe(false);
-  expect(readFileSync(join(dir, "big", "home", "bob.txt"), "utf8")).toBe("old");
-  expect(oldHomes()).toEqual([join(dir, "big", "home")]);
 });

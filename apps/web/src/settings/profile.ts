@@ -22,7 +22,7 @@ export function profileSection(pane: HTMLElement): void {
         ? names.map((h) => {
             const li = el('li', 'dk-row acct-user');
             const saved = acct.vault.hosts[h];
-            const act = Object.assign(el('button', saved ? 'danger' : '', saved ? 'forget' : 'log in'), {
+            const act = Object.assign(el('button', saved ? 'btn danger' : 'btn', saved ? 'forget' : 'log in'), {
               type: 'button',
             });
             act.addEventListener('click', () => {
@@ -51,9 +51,9 @@ export function profileSection(pane: HTMLElement): void {
         ? keys.map((k) => {
             const p = acct.vault.pages[k]!;
             const li = el('li', 'dk-row acct-page');
-            const cu = Object.assign(el('button', '', 'copy user'), { type: 'button' });
-            const cp = Object.assign(el('button', '', 'copy pass'), { type: 'button' });
-            const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button' });
+            const cu = Object.assign(el('button', 'btn', 'copy user'), { type: 'button' });
+            const cp = Object.assign(el('button', 'btn', 'copy pass'), { type: 'button' });
+            const del = Object.assign(el('button', 'btn danger', 'delete'), { type: 'button' });
             cu.addEventListener('click', () => copyText(p.user));
             cp.addEventListener('click', () => copyText(p.pass));
             del.addEventListener('click', () => {
@@ -76,7 +76,7 @@ export function profileSection(pane: HTMLElement): void {
     opts.replaceChildren(...loginable.map((r) => Object.assign(el('option'), { value: r.name })));
     const pUser = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false }));
     const pPass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
-    const pAdd = Object.assign(el('button', 'primary', 'save'), { type: 'button' });
+    const pAdd = Object.assign(el('button', 'btn primary', 'save'), { type: 'button' });
     pAdd.addEventListener('click', () => {
       const k = pName.value.trim();
       if (!k || !pUser.value) return;
@@ -91,7 +91,7 @@ export function profileSection(pane: HTMLElement): void {
     const pw = el('form', 'dk-row acct-new');
     const old = noFill(Object.assign(el('input'), { placeholder: 'current password' }), true);
     const neu = noFill(Object.assign(el('input'), { placeholder: 'new password' }), true);
-    const pwGo = Object.assign(el('button', 'primary', 'change password'), { type: 'submit' });
+    const pwGo = Object.assign(el('button', 'btn primary', 'change password'), { type: 'submit' });
     const pwWhy = el('div', 'dk-state');
     pw.append(old, neu, pwGo);
     pw.addEventListener('submit', async (e) => {
@@ -107,7 +107,7 @@ export function profileSection(pane: HTMLElement): void {
 
     // signed in as whom, log out beside it; the bar's profile may be hidden
     const me = el('div', 'dk-row acct-me');
-    const out = Object.assign(el('button', 'danger', 'log out'), { type: 'button' });
+    const out = Object.assign(el('button', 'btn danger', 'log out'), { type: 'button' });
     out.addEventListener('click', () => void acctLogout());
     me.append(el('span', 'dk-host', acct.user), el('span', 'dk-state', acct.admin ? 'admin' : 'user'), out);
 

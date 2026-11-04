@@ -24,8 +24,6 @@ export const Trash = ".trash";
 export const fullPerms = "rwd";
 export const Desktop = "Desktop";
 export const Shared = "shared";
-// the store's old place in the home, hidden and never synced
-export const Sys = ".sys";
 // what a path nobody may see answers, the same as one that is not there
 export const Gone = "no such file or folder";
 

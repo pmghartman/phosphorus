@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import { open, readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { adopt, mkdirAll, ownerAt, Sys, Trash, uploadTmp } from "@phosphorus/files";
+import { adopt, mkdirAll, ownerAt, Trash, uploadTmp } from "@phosphorus/files";
 import { hlc } from "@phosphorus/store";
 import { logf, writeFileAtomic } from "@phosphorus/util";
 
@@ -50,10 +50,9 @@ const relOk = (rel: string) =>
   !rel.includes("\0") &&
   rel.split("/").every((p) => p !== "" && p !== "." && p !== "..");
 
-// what the home keeps to each host: the store's own folder, trash, half-written uploads
+// what the home keeps to each host: trash, half-written uploads
 export function skipped(rel: string): boolean {
   const parts = rel.split("/");
-  if (parts[0]!.toLowerCase() === Sys) return true;
   if (parts.some((p) => p.toLowerCase() === Trash)) return true;
   return parts[parts.length - 1]!.startsWith(uploadTmp);
 }

@@ -40,7 +40,7 @@
 }
 .dk-cl-steps code {
   color: var(--fg);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   overflow-wrap: anywhere;
 }
 .dk-cl-check {
@@ -73,46 +73,13 @@
   background: var(--bg);
   color: var(--fg);
   font: inherit;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 .dk-cl-key {
   flex: 1;
   min-width: 0;
-  padding: 0.45rem 0.6rem;
-  font: inherit;
-  cursor: pointer;
-  border: 1px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-  transition:
-    border-color 0.15s,
-    color 0.15s,
-    background 0.15s;
 }
-.dk-cl-key:hover,
-.dk-cl-key:focus-visible {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-  outline: none;
-}
-/* set up, the key buttons stay grey until pointed at or focused; a finger's hover never sticks */
-@media (hover: hover) {
-  .dk-cl-key.quiet:hover {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent);
-  }
-}
-.dk-cl-key.quiet {
-  border-color: var(--border);
-  background: none;
-  color: var(--muted);
-}
-.dk-cl-key.quiet:focus-visible,
-.dk-cl-key.quiet:active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-}
+
 .dk-cl-head {
   display: flex;
   justify-content: space-between;
@@ -239,8 +206,4 @@
 }
 .dk-cl-call.bad .dk-cl-out {
   color: var(--accent-2);
-}
-.dk-cl-none {
-  padding: 0.3rem 0.7rem;
-  color: var(--muted);
 }

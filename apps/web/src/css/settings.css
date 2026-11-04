@@ -33,7 +33,7 @@
 .set-group {
   padding: 0.85rem 0.65rem 0.3rem;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
 .set-group:first-child {
@@ -85,7 +85,7 @@
 .set-nav .set-subtab {
   padding: 0.3rem 0.6rem;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .set-nav .set-subtab:is(:hover, :focus-visible) {
   color: var(--fg);
@@ -126,7 +126,7 @@
   padding: 0;
   border: 0;
   color: var(--fg);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -184,7 +184,7 @@
   display: flex;
   align-items: center;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
 }
 /* a row of fields adding to a list: its card's foot, else a card of its own */
 .set-body .acct-new {
@@ -211,35 +211,7 @@
   background: var(--bg);
 }
 /* the account panes' buttons as the rest of settings: outlined, quiet on hover */
-.set-body :is(.acct-pane, .acct-users) button {
-  padding: 0.3rem 0.8rem;
-  border-color: var(--border);
-  border-radius: var(--set-r);
-}
-.set-body :is(.acct-pane, .acct-users) button:hover:not(:disabled) {
-  background: var(--tab-hover);
-  color: var(--fg);
-  border-color: var(--accent);
-}
-.set-body :is(.acct-pane, .acct-users) button.danger {
-  color: var(--offmesh);
-  border-color: color-mix(in srgb, var(--offmesh) 45%, var(--border));
-}
-.set-body :is(.acct-pane, .acct-users) button.danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--offmesh) 12%, transparent);
-  color: var(--offmesh);
-  border-color: var(--offmesh);
-}
-.set-body :is(.acct-pane, .acct-users) button.primary {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-}
-.set-body :is(.acct-pane, .acct-users) button.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 85%, var(--fg));
-  color: var(--bg);
-  border-color: var(--accent);
-}
+
 /* the update's hosts and their releases, a card of rows */
 .set-body .update-versions {
   border: 1px solid var(--border);
@@ -310,7 +282,7 @@
   animation: none;
 }
 .set-mesh .mesh-header {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
 }
 
 /* profile, users and each host's config: the account's own rows, in the page's flow */
@@ -346,7 +318,7 @@
 /* the connector: its keys, steps and calls, at the page's own width */
 .set-cl {
   border: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
 }
 .set-cl .dk-cl-key.half {
   flex-basis: auto;
@@ -386,7 +358,7 @@
   border-radius: var(--set-r);
   color: var(--muted);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   cursor: pointer;
 }
@@ -428,7 +400,7 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.2rem 0.9rem 0.9rem 1.6rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .set-host-body .dk-note {
   margin: 0;
@@ -437,7 +409,7 @@
   grid-template-columns: minmax(0, 1fr) 10rem 5.5rem;
 }
 .set-host-body select.dk-ap-in {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .set-shares .dk-host {
   flex: 1;
@@ -457,7 +429,7 @@
   flex-direction: column;
   gap: 0.2rem;
   padding: 0.4rem 0;
-  font-size: 0.68rem;
+  font-size: var(--fs-2xs);
 }
 .dk-ctl-row {
   position: relative;

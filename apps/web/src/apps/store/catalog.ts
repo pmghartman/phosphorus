@@ -87,7 +87,7 @@ export function why(status: number, error: string): string {
     return status === 429 && error
       ? error
       : `GitHub's limit on unsigned calls is spent for now: ${error || `status ${status}`}`;
-  if (/compose/i.test(error) && /\bno\b|not found|without|none/i.test(error)) return 'This repo has no compose file.';
+  if (/compose/i.test(error) && /\bno\b|not found|without|none/i.test(error)) return 'this repo has no compose file';
   if (status === 404) return error || 'not found';
   return error || `status ${status}`;
 }
@@ -392,7 +392,7 @@ export function sourceOf(id: SourceId): SourceInfo | undefined {
   return catalog?.sources.find((s) => s.id === id);
 }
 export const SOURCE_NAMES: Record<SourceId, string> = {
-  phosphorus: 'Phosphorus',
+  phosphorus: 'phosphorus',
   casaos: 'CasaOS',
   runtipi: 'Runtipi',
   cosmos: 'Cosmos',

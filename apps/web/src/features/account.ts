@@ -44,7 +44,7 @@ function acctLogin(setup: boolean, as = '') {
     autocomplete: 'current-password' as const,
   });
   const why = el('span', 'dk-state bad');
-  const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
+  const go = Object.assign(el('button', 'btn primary', 'log in'), { type: 'submit' });
   const actions = el('div', 'update-actions');
   actions.append(why, go);
   form.append(
@@ -276,16 +276,16 @@ export async function acctLogout(as = ''): Promise<void> {
 // the setup admin: only the users list, then out
 function acctSetup() {
   dkLogout();
-  const box = el('div', 'dk-login');
-  const out = Object.assign(el('button', '', 'log out'), { type: 'button' });
+  const box = el('div', 'dk-login acct-login acct-setup');
+  const out = Object.assign(el('button', 'btn', 'log out'), { type: 'button' });
   out.addEventListener('click', () => acctLogout());
   const actions = el('div', 'update-actions');
   actions.appendChild(out);
   box.append(
-    el('div', 'home-col-head', 'setup admin'),
-    el('p', 'dk-note', 'make the first admin'),
+    el('div', 'home-col-head', 'set up phosphorus'),
+    el('p', 'dk-note', 'create the first admin, then log in as them'),
     // the first admin made: the setup admin's done, the login asked of them
-    acctUsers((name, admin) => admin && acctLogout(name)),
+    acctUsers((name, admin) => admin && acctLogout(name), true),
     actions,
   );
   const stage = el('div', 'dk-stage');
@@ -295,24 +295,27 @@ function acctSetup() {
   dkView.replaceChildren(desk);
 }
 
-// the users list and a new user's form, for admins; added told of each user made
-export function acctUsers(added?: (name: string, admin: boolean) => void): HTMLElement {
+// the users list and a new user's form, for admins; added told of each user made;
+// first: setup's form alone, the one it makes an admin
+export function acctUsers(added?: (name: string, admin: boolean) => void, first = false): HTMLElement {
   const wrap = el('div', 'acct-users');
   const list = el('ul', 'dk-rows');
   const name = noFill(
     Object.assign(el('input'), { placeholder: 'new user', spellcheck: false, autocapitalize: 'off' }),
   );
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
-  const admin = Object.assign(el('input'), { type: 'checkbox' });
+  const admin = Object.assign(el('input'), { type: 'checkbox', checked: first });
   const adminLabel = el('label', 'acct-check');
   adminLabel.append(admin, ' admin');
-  const add = Object.assign(el('button', 'primary', 'add'), { type: 'button' });
+  adminLabel.hidden = first;
+  const add = Object.assign(el('button', 'btn primary', first ? 'create' : 'add'), { type: 'button' });
   const why = el('div', 'dk-state bad');
   const row = el('div', 'dk-row acct-new');
   row.append(name, pass, adminLabel, add);
   const draw = (r: { ok: boolean; error?: string; users?: UserRow[] }) => {
     why.textContent = r.ok ? '' : r.error || 'no answer';
     if (!r.users) return;
+    list.hidden = first && !r.users.length;
     list.replaceChildren(
       ...(r.users.length
         ? r.users.map((u) => {
@@ -327,7 +330,7 @@ export function acctUsers(added?: (name: string, admin: boolean) => void): HTMLE
             box.addEventListener('change', async () =>
               draw(await acctCall('/api/users/admin', { name: u.name, admin: box.checked })),
             );
-            const del = Object.assign(el('button', 'danger', 'delete'), {
+            const del = Object.assign(el('button', 'btn danger', 'delete'), {
               type: 'button',
               disabled: u.name === st.acct!.user,
             });
@@ -386,7 +389,7 @@ export function dkUnlock(host: string, chip: Chip, then?: () => void): void {
   );
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const why = el('span', 'dk-state');
-  const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
+  const go = Object.assign(el('button', 'btn primary', 'log in'), { type: 'submit' });
   pop.append(el('div', 'home-col-head', host), user, pass, why, go);
   pop.classList.add('dk-pop');
   const close = () => {

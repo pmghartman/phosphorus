@@ -4,9 +4,9 @@
 // versions when their digests differ (the link lives in peers)
 
 import { createHash } from "node:crypto";
-import { cpSync, type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { type Dirent, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { errText, logf, markHot, RepoDir, SelfHost, SysDir, writeFileDurable, writeSoon } from "@phosphorus/util";
+import { logf, markHot, SelfHost, SysDir, writeFileDurable, writeSoon } from "@phosphorus/util";
 import { ahead as aheadOf, contentHash, newer, sameVer, seen, tick, type Ver, wall } from "./hlc.ts";
 
 // the clock itself, for an index kept beside the store (the synced home)
@@ -17,8 +17,6 @@ export const ahead = (t: unknown) => typeof t === "number" && aheadOf(t);
 
 // <phosphorus>/sys, root's alone, outside every user's files
 export const Root = SysDir;
-// where releases before 3.7 kept it, inside the users' home
-export const OldRoot = join(RepoDir, "home", ".sys");
 
 const relRe = /^(etc|home)(\/[a-z0-9][a-z0-9._-]{0,63}){1,5}\.json$/;
 // a replicated path
@@ -138,36 +136,7 @@ function load(dir: string, rel: string) {
   });
 }
 
-// the store from inside home/ moved to its own place once: renamed whole, or file by
-// file with the newest winning when both are there, var/ merged, the old gone after
-function renameOld() {
-  if (!existsSync(OldRoot) || existsSync(Root)) return;
-  try {
-    mkdirSync(dirname(Root), { recursive: true });
-    renameSync(OldRoot, Root);
-    logf("[sys] the store moved from %s to %s", OldRoot, Root);
-  } catch {}
-}
-
-// what renameOld couldn't, merged into the loaded tree
-export function mergeOld() {
-  if (!existsSync(OldRoot)) return;
-  walk(OldRoot, "", (r, f) => {
-    if (wins(r, f, f.c)) put(r, f, true);
-  });
-  const ov = join(OldRoot, "var");
-  if (existsSync(ov))
-    try {
-      cpSync(ov, join(Root, "var"), { recursive: true, force: false, errorOnExist: false });
-    } catch (e) {
-      logf("[sys] couldn't copy all of %s: %s, it stays", ov, errText(e));
-      return;
-    }
-  rmSync(OldRoot, { recursive: true, force: true });
-  logf("[sys] the store merged from %s into %s", OldRoot, Root);
-}
-
-// sync: on disk before it returns, for a move that deletes the source after
+// sync: on disk before it returns
 function put(rel: string, f: File, sync = false) {
   tree.set(rel, f);
   digestMemo = "";
@@ -341,10 +310,8 @@ let started = false;
 export function start() {
   if (started) return;
   started = true;
-  renameOld();
   mkdirSync(Root, { recursive: true, mode: 0o700 });
   load(Root, "");
-  mergeOld();
   prune();
   setInterval(prune, pruneEveryMs);
 }

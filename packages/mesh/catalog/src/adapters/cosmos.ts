@@ -44,7 +44,7 @@ const ctxName = (cond: string) => {
 
 export const cosmos: Adapter = {
   id: "cosmos",
-  name: "Cosmos servapps",
+  name: "Cosmos",
   repo: "azukaar/cosmos-servapps-official",
   licence: "AGPL-3.0",
   split: (p) => {

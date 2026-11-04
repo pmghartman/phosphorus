@@ -7,6 +7,7 @@ import { toastPlace } from '../features/notes.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
+import { when } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
 import { dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
@@ -61,21 +62,7 @@ export const dkBarSide = (bar: HTMLElement): string =>
       : layoutNow().bar;
 
 export function dkClock(): void {
-  if (!dk.clock) return;
-  const d = new Date();
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    })
-      .formatToParts(d)
-      .map((x) => [x.type, x.value]),
-  );
-  dk.clock.textContent = `${p.weekday} ${p.month} ${p.day} ${p.hour}:${p.minute}${p.dayPeriod}`;
+  if (dk.clock) dk.clock.textContent = when(Date.now(), true);
 }
 
 // the logged in hosts, the one serving this page purple, a press moving it there

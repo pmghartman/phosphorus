@@ -21,7 +21,7 @@
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--drop);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   animation: pop-in 0.12s ease-out;
 }
 .dk-note-pop[hidden],
@@ -34,7 +34,7 @@
   align-items: center;
   padding: 0.5rem 0.7rem 0.35rem;
   color: var(--sage);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
 }
 .dk-note-clear {
@@ -91,11 +91,6 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.dk-note-none {
-  padding: 0.9rem 0.7rem 1rem;
-  color: var(--muted);
-  text-align: center;
-}
 /* settings, one row */
 .dk-ctl-row {
   display: flex;
@@ -137,7 +132,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   text-align: right;
 }
 .dk-ctl-row-ch {

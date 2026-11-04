@@ -20,7 +20,7 @@
 .dk-note {
   margin: 0 0 0.5rem 0.2rem;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
 }
 .dk-rows {
   list-style: none;
@@ -38,7 +38,7 @@
 }
 .dk-host {
   color: var(--sage);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -51,7 +51,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 .dk-row input:focus,
 .fm-ask input:focus {
@@ -59,7 +59,7 @@
   border-color: var(--accent);
 }
 .dk-state {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -147,7 +147,7 @@
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 50;
+  z-index: var(--z-drag);
   pointer-events: none;
   opacity: 0.85;
 }
@@ -163,7 +163,7 @@
   padding: 0 0.25rem;
   background: var(--accent);
   color: var(--bg);
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
   text-align: center;
 }
 /* the files tab's square buttons, grown, a label under */
@@ -177,7 +177,7 @@
   background: none;
   border: 1px solid transparent;
   color: var(--fg);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .dk-tile {
@@ -255,7 +255,7 @@
 }
 .dk-sub {
   color: var(--muted);
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
 }
 
 .dk-wins {
@@ -427,7 +427,7 @@
 }
 .dk-snap {
   position: absolute;
-  z-index: 99999;
+  z-index: var(--z-snap);
   pointer-events: none;
   opacity: 0;
   border: 1px dashed var(--accent);
@@ -452,7 +452,7 @@
   padding: 0 0.15rem 0 0.55rem;
   background: var(--card);
   border-bottom: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   cursor: default;
   user-select: none;
   touch-action: none;
@@ -633,7 +633,7 @@
   gap: 0.6rem;
   padding: 0 0.35rem;
   border: 1px solid var(--border);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   background: color-mix(in srgb, var(--tabbar) 82%, transparent);
   backdrop-filter: blur(10px) saturate(1.2);
   box-shadow: var(--drop);
@@ -769,7 +769,7 @@ span.dk-chip {
 /* right click menus, on the page above every window */
 .dk-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
   min-width: 11rem;
   padding: 0.2rem 0;
   display: flex;
@@ -777,7 +777,7 @@ span.dk-chip {
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--drop);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   animation: pop-in 0.08s ease-out;
 }
 .dk-menu[hidden] {

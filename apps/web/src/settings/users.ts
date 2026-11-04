@@ -14,17 +14,17 @@ export function usersSection(pane: HTMLElement): void {
 // as a guest, reaching the game servers and nothing it isn't granted
 function invite(): HTMLElement {
   const box = el('div', 'join-key');
-  const go = Object.assign(el('button', 'join-key-btn', 'request guest key'), {
+  const go = Object.assign(el('button', 'btn primary join-key-btn', 'request guest key'), {
     type: 'button',
     title: 'single use, lasts 3 days',
   });
-  const get = Object.assign(el('a', '', 'install tailscale'), {
+  const get = Object.assign(el('a', 'btn', 'install tailscale'), {
     href: 'https://tailscale.com/download',
     target: '_blank',
     rel: 'noopener',
   });
   const out = el('div', 'join-key-out');
-  box.append(el('p', 'dk-note', 'Install Tailscale on the device, then run this.'), go, get, out);
+  box.append(el('p', 'dk-note', 'install Tailscale on the device, then run this'), go, get, out);
   go.addEventListener('click', async () => {
     out.replaceChildren();
     go.disabled = true;

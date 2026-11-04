@@ -34,9 +34,7 @@ export async function fmLoad(fm: Fm): Promise<void> {
   try {
     const body = await filesCall(fm.loc, 'list', undefined, { path: fm.dir });
     if (fm.loading !== want) return;
-    // the store's old place, there only if its move failed
-    const top = fm.loc.share === 'home' && (!fm.dir || fm.dir === '/');
-    fm.entries = top ? body.entries.filter((e: { name: string }) => e.name !== '.sys') : body.entries;
+    fm.entries = body.entries;
     fm.error = body.truncated ? 'truncated' : '';
   } catch (err) {
     if (fm.loading !== want) return;

@@ -247,7 +247,7 @@ export const agentTools = (): Tool[] => [
       adminOf(m);
       const h = knownHost(a);
       return pressed(
-        src.actions.config(h, { op: "ini", section: a.section, key: a.key, value: a.value, dry_run: a.dry_run }),
+        src.actions.config(h, { op: "key", section: a.section, key: a.key, value: a.value, dry_run: a.dry_run }),
       );
     },
   },

@@ -53,7 +53,7 @@ state/      this host's own: logs, caches, the baked env, update status
 .env        keys, root only
 ```
 
-A host's settings are edited in settings › hosts or with the MCP `config_set` tool, from any host. Releases before 3.7 kept them in `config/phosphorus.ini` and the store in `home/.sys`; both move in on first start.
+A host's settings are edited in settings › hosts or with the MCP `config_set` tool, from any host.
 
 ## Repository
 

@@ -5,7 +5,7 @@ import { existsSync, openSync, readFileSync, realpathSync, renameSync, rmSync, s
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import * as envfile from "@phosphorus/envfile";
-import { parseIni, readConfig, which } from "@phosphorus/util";
+import { readConfig, which } from "@phosphorus/util";
 import type { Subprocess } from "bun";
 
 export const isLinux = process.platform === "linux";
@@ -111,22 +111,9 @@ export const binPath = (name: string) => at("bin", isWindows ? name + ".exe" : n
 
 // --- this host's settings ---------------------------------------------------------------
 
-// the retired phosphorus.ini, read until the service moves it into the store
-export const iniFile = () => at("config", "phosphorus.ini");
-
-export const settings = () =>
-  readConfig({ sys: at("sys"), ini: iniFile(), state: at("state"), self: process.env.SELF_HOST ?? "" });
+export const settings = () => readConfig({ sys: at("sys"), state: at("state"), self: process.env.SELF_HOST ?? "" });
 
 export const isModelHost = () => settings().model.host;
-
-// the old ini's [home] dir, where a release before 3.0 kept home/
-export function legacyHomeDir(): string {
-  let text = "";
-  try {
-    text = readFileSync(iniFile(), "utf8");
-  } catch {}
-  return parseIni(text).get("home\0dir") ?? "";
-}
 
 export const has = (name: string) => which(name) !== "";
 

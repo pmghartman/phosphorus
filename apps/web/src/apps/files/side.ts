@@ -29,7 +29,7 @@ export async function fmSide(fm: Fm) {
     };
     const out: HTMLElement[] = [];
     if (st.acct && !st.acct.boot) {
-      const home = place(homeLoc(), 'Home', 'your home, the same on every host', ' fm-home');
+      const home = place(homeLoc(), 'home', 'your home, the same on every host', ' fm-home');
       // Home is one place on every host: here whichever host shows it
       home.classList.toggle('here', isHome(fm.loc));
       out.push(home);

@@ -26,11 +26,9 @@ import {
   fileExists,
   home,
   inDpkg,
-  iniFile,
   isLinux,
   isModelHost,
   isWindows,
-  legacyHomeDir,
   lockEnv,
   println,
   readTrim,
@@ -59,7 +57,6 @@ export function bakeEnv(): Record<string, string> {
     PHOSPHORUS_HOME: home,
     PHOSPHORUS_REPO_DIR: home,
     STATE_DIR: at("state"),
-    PHOSPHORUS_INI_FILE: iniFile(),
     PHOSPHORUS_ENV_FILE: envPath(),
     VERSION_FILE: at("VERSION"),
     REBUILD_CMD: binPath("phosphorus"),
@@ -205,23 +202,16 @@ export async function rebuild() {
     }
     mkdirSync(at("state"), { recursive: true });
     tidy();
-    const old = oldHomes();
     const env = bakeEnv();
     const sig = signature(env);
     await os.svcInstall();
-    let up = await os.svcActive();
-    if (up && !old.length && readTrim(at("state", "native-sig")) === sig) {
+    const up = await os.svcActive();
+    if (up && readTrim(at("state", "native-sig")) === sig) {
       say("already up to date, nothing to restart");
       return;
     }
     await os.tailscaleReady();
 
-    if (up && old.length) {
-      await notifyUpdating();
-      await os.svcStop();
-      up = false;
-    }
-    if (old.length) migrateHome(old);
     writeEnvFile(nativeEnvFile(), env);
     await os.tailscaleStart();
     if (up && inService()) {
@@ -255,21 +245,8 @@ export async function rebuild() {
 
 // --- the home kept safe and clean ---------------------------------------------------
 
-// state/ files no release reads any more
-export const deadState = [
-  "git-hosts-seen.json",
-  "git-roster.json",
-  "model-active.json",
-  "model-keys.json",
-  "model-roles.json",
-  "self-muon",
-  "seen-version.json",
-  "update-result.json",
-  "restart.log",
-];
-
 // what root runs from root's alone: a login owning state/ or bin/ could swap
-// native.env or the binary under the service; dead state swept
+// native.env or the binary under the service
 export function tidy() {
   if (isLinux && process.getuid?.() === 0)
     for (const d of [home, at("state"), at("bin"), at("sys")]) {
@@ -280,90 +257,6 @@ export function tidy() {
         if (st.mode & 0o022) chmodSync(d, st.mode & 0o755);
       } catch {}
     }
-  for (const f of deadState) rmSync(at("state", f), { force: true });
-}
-
-// removeOne a file, link or empty folder, as os.Remove did; anything else left
-function removeOne(p: string) {
-  try {
-    rmdirSync(p);
-  } catch {
-    try {
-      rmSync(p);
-    } catch {}
-  }
-}
-
-// --- the home's one move ---------------------------------------------------------------
-
-// oldHomes where earlier releases kept home/: files/home, or under an old [home] dir
-export function oldHomes(): string[] {
-  const dirs = [readTrim(at("state", "native-home")), legacyHomeDir(), at("files")];
-  const out: string[] = [];
-  for (const d of dirs) {
-    if (!d) continue;
-    const src = join(normalize(absTo(home, d)), "home");
-    if (src !== at("home") && fileExists(src) && !out.includes(src)) out.push(src);
-  }
-  return out;
-}
-
-// migrateHome every old home/ moved into <phosphorus>/home, what's there already kept,
-// a clash left where it was; files/ and the old [home] dir's record gone after
-export function migrateHome(srcs: string[]) {
-  const to = at("home");
-  for (const src of srcs) {
-    say(`moving home/ from ${src} to ${to}`);
-    try {
-      mergeMove(src, to);
-    } catch (e) {
-      say(`couldn't move all of ${src} (${e instanceof Error ? e.message : e}), what's left stays there`);
-    }
-  }
-  rmSync(at("state", "native-home"), { force: true });
-  try {
-    rmdirSync(at("files"));
-  } catch {}
-}
-
-// mergeMove src's entries into dst one by one, renamed or else copied, folders merged
-function mergeMove(src: string, dst: string) {
-  if (!fileExists(dst)) {
-    try {
-      renameSync(src, dst);
-      return;
-    } catch {}
-  }
-  mkdirSync(dst, { recursive: true });
-  for (const n of readdirSync(src)) {
-    const from = join(src, n),
-      to = join(dst, n);
-    if (!fileExists(to)) {
-      try {
-        renameSync(from, to);
-      } catch {
-        copyTree(from, to);
-        rmSync(from, { recursive: true, force: true });
-      }
-    } else if (lstatSync(from).isDirectory() && lstatSync(to).isDirectory()) mergeMove(from, to);
-    else say(`kept ${to}, ${from} left where it was`);
-  }
-  try {
-    rmdirSync(src);
-  } catch {}
-}
-
-export function copyTree(src: string, dst: string) {
-  const walk = (p: string) => {
-    const to = join(dst, relative(src, p));
-    const st = lstatSync(p);
-    if (st.isDirectory()) {
-      mkdirSync(to, { recursive: true });
-      for (const n of readdirSync(p)) walk(join(p, n));
-    } else if (st.isSymbolicLink()) symlinkSync(readlinkSync(p), to);
-    else copyFile(p, to);
-  };
-  walk(src);
 }
 
 // --- start, stop ------------------------------------------------------------------
