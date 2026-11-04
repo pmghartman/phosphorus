@@ -1,16 +1,18 @@
 // host desktop: any computer on the tailnet opened as its own desktop, as the
 // viewer's saved login for it; open to every signed in user with one
 
+import { join } from "node:path";
 import * as as from "@phosphorus/appstream";
 import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
 import * as users from "@phosphorus/users";
-import { errText, tailnetIP } from "@phosphorus/util";
-import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
-import { getPlatform, hostSSHHost, hostSSHPort, selfHost } from "./config.ts";
+import { DataDir, errText, tailnetIP } from "@phosphorus/util";
+import { type Conn, type Ctx, dial, upgrade } from "@phosphorus/wsock";
+import { getPlatform, hostSSHHost, hostSSHPort, port, selfHost, whoHeader } from "./config.ts";
 import {
   isLocalOrPeer,
+  isTailnet,
   maxJSONBody,
   maxSaveBody,
   onJSON,
@@ -150,6 +152,7 @@ export async function hostdeskRoute(
 ): Promise<Response | undefined> {
   if (!pathname.startsWith("/api/hostdesk")) return;
   if (!(await isLocalOrPeer(c))) return sendJSON(403, { error: "forbidden" });
+  if (q.has("hop")) return await hopList(c, pathname);
   const s = await users.Soon(c);
   if (!s || s.boot) return sendJSON(401, { error: "log in as a user" });
   const m = deskRe.exec(pathname);
@@ -190,6 +193,10 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     case "apps": {
       const apps = await hd.apps(s);
       remember(w, s);
+      // a Windows host's Sunshine or Apollo apps, in a group of their own
+      if (s.os === "windows" && phosphorusOn(w.host))
+        for (const t of await glowApps(w))
+          apps.push({ name: t, kind: "gui", path: `${hostAppPre}${t}`, group: "Sunshine" });
       return sendJSON(200, { apps }, nc);
     }
     case "icon": {
@@ -209,6 +216,9 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       return sendJSON(200, { images: await hd.images(s) }, nc);
     case "running": {
       const [login] = await users.HostLogin(w.s, w.host);
+      // a Windows host's apps run on its own phosphorus: asked there
+      if (w.host !== selfHost && osOf(w.host) === "windows" && phosphorusOn(w.host))
+        return sendJSON(200, { apps: await peerList(w, login) }, nc);
       const apps = as.list(keyOf(w, login)).map((a) => ({ id: a.id, title: a.title, name: a.start.name }));
       return sendJSON(200, { apps }, nc);
     }
@@ -343,8 +353,237 @@ async function entryOf(s: hd.Session, path: string): Promise<{ argv: string[]; n
   return { argv: as.parseExec(e.exec, { name: e.name, icon: e.icon, path }), name: e.name };
 }
 
-// /api/hostdesk/<host>/stream: one app's window; ?path= a desktop entry opens it,
-// ?id= takes up one already open
+// --- window apps on Windows: the host's own phosphorus and its Sunshine or Apollo ----------
+
+// a window app on Windows: its shortcut or program, started on the host as the shell would
+const winAppRe = /\.(lnk|exe|appref-ms|url)$/i;
+// one of the GameStream host's own apps, by its title in the host's list
+const hostAppPre = "sunshine:";
+
+// this machine's GameStream host, as glow reaches it
+let glowHost: as.GlowHost | undefined;
+const localGlow = () =>
+  (glowHost ??= new as.GlowHost(
+    join(DataDir, "glow"),
+    getPlatform() === "windows" ? as.windows : as.unixLike(getPlatform() === "darwin" ? "darwin" : "linux"),
+  ));
+
+// who's signed in at this Windows machine's console: the account the host's apps run as
+let consoleCache: { at: number; user: string } | undefined;
+async function consoleUser(): Promise<string> {
+  if (consoleCache && Date.now() - consoleCache.at < 10_000) return consoleCache.user;
+  const p = Bun.spawn(
+    [
+      "powershell.exe",
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "(Get-CimInstance Win32_ComputerSystem).UserName",
+    ],
+    {
+      stdout: "pipe",
+      stderr: "ignore",
+    },
+  );
+  const out = (await new Response(p.stdout).text()).trim();
+  const user = out.split("\\").pop()?.toLowerCase() ?? "";
+  consoleCache = { at: Date.now(), user };
+  return user;
+}
+
+// what a stream asks of the machine that runs it: the viewer, their login, the app
+type GlowAsk = { user: string; admin: boolean; host: string; login: string; path: string; name: string };
+
+const viewerOf = (ws: Conn): as.Viewer => ({
+  binary: (b) => void ws.binary(b),
+  json: (m) => void ws.json(m),
+  queued: () => ws.queued(),
+  close: (code) => ws.close(code),
+});
+
+// input for the app as it comes, held while the app opens
+function inputOf(ws: Conn) {
+  let app: as.AppSession | undefined;
+  const early: unknown[] = [];
+  ws.onMessage((d, bin) => {
+    if (bin) return;
+    let msg: unknown;
+    try {
+      msg = JSON.parse(String(d));
+    } catch {
+      return;
+    }
+    if (app) app.input(msg);
+    else if (early.length < 64) early.push(msg);
+  });
+  return (a: as.AppSession) => {
+    app = a;
+    for (const m of early.splice(0)) a.input(m);
+  };
+}
+
+const startOf = (q: URLSearchParams, argv: string[], name: string): as.Start => ({
+  argv,
+  name,
+  w: num(q, "w", 1280),
+  h: num(q, "h", 720),
+  sw: num(q, "sw", 1920),
+  sh: num(q, "sh", 1080),
+  scale: Math.min(3, num(q, "dpr", 1)),
+  full: q.get("full") === "1",
+  fps: q.has("fps") ? Math.min(240, num(q, "fps", 60)) : undefined,
+});
+
+// the app streamed from this machine's GameStream host: for a viewer here, or one on
+// a peer whose phosphorus checked the app against the viewer's login there
+async function runGlow(ws: Conn, g: GlowAsk, q: URLSearchParams) {
+  const v = viewerOf(ws);
+  const take = inputOf(ws);
+  let app: as.AppSession | undefined;
+  ws.onClose(() => app?.detach(v));
+  const owner = `${g.user}\0${g.host}\0${g.login}`;
+  try {
+    const id = q.get("id") ?? "";
+    if (idRe.test(id)) {
+      app = as.find(owner, id);
+      if (!app) throw new Coded(404, "that app has closed");
+    } else {
+      if (getPlatform() === "windows" && !g.admin) {
+        const at = await consoleUser();
+        const me = g.login.split("\\").pop()!.split("@")[0]!.toLowerCase();
+        if (!at) throw new Coded(409, `no one is signed in at ${g.host}: a window app runs in the signed-in session`);
+        if (at !== me)
+          throw new Coded(403, `${g.host}'s window apps run as ${at}, who's signed in there; save a login as them`);
+      }
+      const gh = localGlow();
+      const say = (s: string) => ws.json({ t: "note", s });
+      const ready = await gh.ready(say);
+      const live = gh.busy ? as.find(gh.busy.split("\n")[0]!, gh.busy.split("\n")[1]!) : undefined;
+      if (live)
+        throw new Coded(409, `${ready.info.hostname || g.host} streams one app at a time: close ${live.title} first`);
+      const title = g.path.startsWith(hostAppPre) ? g.path.slice(hostAppPre.length) : "";
+      const target = title ? "" : `"${g.path}"`;
+      ws.json({ t: "opening", name: g.name });
+      let mine = "";
+      const src = new as.GlowSource({
+        host: ready.host,
+        id: ready.id,
+        app: () => gh.appFor(ready, title ? { title } : { target }),
+        virtualDisplay: ready.info.virtualDisplay || ready.info.kind === "apollo",
+        label: ready.info.kind,
+        fresh: !title,
+        done: () => {
+          if (gh.busy === mine) gh.busy = "";
+        },
+      });
+      app = await as.launch(owner, src, startOf(q, [], g.name)).then(
+        (a) => (note(g.user, "host_app_open", { host: g.host, app: g.path }), a),
+        (err) => {
+          note(g.user, "host_app_open", { host: g.host, app: g.path }, err);
+          throw err;
+        },
+      );
+      mine = `${owner}\n${app.id}`;
+      gh.busy = mine;
+    }
+    if (!ws.open()) return;
+    app.attach(v);
+    take(app);
+  } catch (e) {
+    ws.json({ t: "error", s: errText(e) });
+    ws.close(1000);
+  }
+}
+
+// a viewer here, the app on a peer: its socket spliced onto the peer's, frames
+// dropped here to a keyframe while the viewer is behind
+async function forwardGlow(ws: Conn, g: GlowAsk, q: URLSearchParams) {
+  const early: string[] = [];
+  let up: Conn | undefined;
+  ws.onMessage((d, bin) => {
+    if (bin) return;
+    if (up?.open()) up.text(String(d));
+    else if (early.length < 64) early.push(String(d));
+  });
+  ws.onClose(() => up?.close(1000));
+  const ip = peers.peerIPs()[g.host] ?? (await tailnetIP(g.host));
+  if (!ip) {
+    ws.json({ t: "error", s: `${g.host} has no tailnet address here` });
+    return ws.close(1000);
+  }
+  const fq = new URLSearchParams(q);
+  fq.set("hop", "1");
+  try {
+    up = await dial(
+      `ws://${ip}:${port}/api/hostdesk/${g.host}/stream?${fq}`,
+      { [whoHeader]: users.SealGrant({ x: "glow", ...g }, 60_000) },
+      10_000,
+    );
+  } catch (e) {
+    ws.json({ t: "error", s: `${g.host}'s phosphorus didn't answer: ${errText(e)}` });
+    return ws.close(1000);
+  }
+  if (!ws.open()) return up.close(1000);
+  const u = up;
+  const pass = as.relayFrames(
+    { send: (d) => void (typeof d === "string" ? ws.text(d) : ws.binary(d)), queued: () => ws.queued() },
+    { send: (d) => void (typeof d === "string" ? u.text(d) : u.binary(d)), queued: () => u.queued() },
+  );
+  u.onMessage((d, bin) => pass(bin ? (d as Uint8Array) : String(d), bin));
+  u.onClose(() => ws.close(1000));
+  for (const m of early.splice(0)) u.text(m);
+}
+
+// the GameStream host's own apps on a Windows host: this machine's, or asked of the peer
+async function glowApps(w: Who): Promise<string[]> {
+  if (w.host === selfHost) return localGlow().listed();
+  const ip = peers.peerIPs()[w.host];
+  if (!ip) return [];
+  try {
+    const r = await fetch(`http://${ip}:${port}/api/hostdesk/${w.host}/glowapps?hop=1`, {
+      headers: { [whoHeader]: users.SealGrant({ x: "glowlist", user: w.s.user, host: w.host, login: "" }, 30_000) },
+      signal: AbortSignal.timeout(5000),
+    });
+    const j = (await r.json()) as { apps?: unknown[] };
+    return Array.isArray(j.apps) ? j.apps.filter((x): x is string => typeof x === "string").slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
+
+// the apps a viewer has open on a peer's GameStream host, asked of that peer
+async function peerList(w: Who, login: string): Promise<{ id: string; title: string; name: string }[]> {
+  const ip = peers.peerIPs()[w.host];
+  if (!ip) return [];
+  try {
+    const r = await fetch(`http://${ip}:${port}/api/hostdesk/${w.host}/running?hop=1`, {
+      headers: { [whoHeader]: users.SealGrant({ x: "glowlist", user: w.s.user, host: w.host, login }, 30_000) },
+      signal: AbortSignal.timeout(5000),
+    });
+    const j = (await r.json()) as { apps?: { id: string; title: string; name: string }[] };
+    return Array.isArray(j.apps) ? j.apps : [];
+  } catch {
+    return [];
+  }
+}
+
+// a peer asking for its viewer's apps open here
+async function hopList(c: Ctx, pathname: string): Promise<Response> {
+  const m = deskRe.exec(pathname);
+  if (!m || (m[2] !== "running" && m[2] !== "glowapps") || m[1] !== selfHost || !(await isTailnet(c)))
+    return sendJSON(403, { error: "forbidden" });
+  const g = users.OpenGrant(c.req.headers.get(whoHeader) ?? "");
+  if (!g || g.x !== "glowlist" || g.host !== selfHost) return sendJSON(403, { error: "forbidden" });
+  if (m[2] === "glowapps") return sendJSON(200, { apps: await localGlow().listed() }, { "Cache-Control": "no-store" });
+  const owner = `${str(g.user)}\0${selfHost}\0${str(g.login)}`;
+  const apps = as.list(owner).map((a) => ({ id: a.id, title: a.title, name: a.start.name }));
+  return sendJSON(200, { apps }, { "Cache-Control": "no-store" });
+}
+
+// /api/hostdesk/<host>/stream: one app's window; ?path= a desktop entry, shortcut or
+// program the host listed opens it, ?id= takes up one already open. ?hop=1: a peer's
+// viewer, the app on this machine
 export async function streamSocket(
   c: Ctx,
   pathname: string,
@@ -352,6 +591,24 @@ export async function streamSocket(
 ): Promise<Response | undefined | false> {
   const m = streamRe.exec(pathname);
   if (!m) return false;
+  if (q.has("hop")) {
+    if (m[1] !== selfHost || !(await isTailnet(c))) return refuse(403);
+    const g = users.OpenGrant(c.req.headers.get(whoHeader) ?? "");
+    if (!g || g.x !== "glow" || g.host !== selfHost) return refuse(403);
+    const ask: GlowAsk = {
+      user: str(g.user),
+      admin: g.admin === true,
+      host: selfHost,
+      login: str(g.login),
+      path: str(g.path),
+      name: str(g.name),
+    };
+    const ok = upgrade(c, (ws) => {
+      ws.keepAlive();
+      void runGlow(ws, ask, q);
+    });
+    return ok ? undefined : refuse(400);
+  }
   if (!sameOrigin(c)) return refuse(403);
   const u = await users.Soon(c);
   if (!u || u.boot) return refuse(401);
@@ -365,31 +622,21 @@ export async function streamSocket(
 }
 
 async function runStream(ws: Conn, w: Who, q: URLSearchParams) {
-  const v: as.Viewer = {
-    binary: (b) => void ws.binary(b),
-    json: (m) => void ws.json(m),
-    queued: () => ws.queued(),
-    close: (code) => ws.close(code),
-  };
+  // input that comes before a listener is set waits on the socket for the first one
+  let s: hd.Session | undefined;
+  try {
+    if (osOf(w.host) !== "windows" && !(w.host === selfHost && getPlatform() === "windows")) s = await session(w);
+    if (!s || s.os === "windows") return await streamWindows(ws, w, q);
+  } catch (e) {
+    ws.json({ t: "error", s: errText(e) });
+    return ws.close(1000);
+  }
+  const v = viewerOf(ws);
+  const take = inputOf(ws);
   let app: as.AppSession | undefined;
-  // input that came while the app was opening, played once it's there
-  const early: unknown[] = [];
-  ws.onMessage((d, bin) => {
-    if (bin) return;
-    let msg: unknown;
-    try {
-      msg = JSON.parse(String(d));
-    } catch {
-      return;
-    }
-    if (app) app.input(msg);
-    else if (early.length < 64) early.push(msg);
-  });
   ws.onClose(() => app?.detach(v));
   const path = q.get("path") ?? "";
   try {
-    const s = await session(w);
-    if (s.os !== "linux") throw new Coded(400, `app streaming runs on Linux hosts for now; ${w.host} runs Windows`);
     const [login] = await users.HostLogin(w.s, w.host);
     const owner = keyOf(w, login);
     const id = q.get("id") ?? "";
@@ -399,33 +646,47 @@ async function runStream(ws: Conn, w: Who, q: URLSearchParams) {
     } else {
       const p = allowed(s, path);
       const e = await entryOf(s, p);
-      const dpr = Math.min(3, num(q, "dpr", 1));
       ws.json({ t: "opening", name: e.name });
-      app = await as
-        .launch(owner, runnerOf(s), {
-          argv: e.argv,
-          name: e.name,
-          w: num(q, "w", 1280),
-          h: num(q, "h", 720),
-          sw: num(q, "sw", 1920),
-          sh: num(q, "sh", 1080),
-          scale: dpr,
-          full: q.get("full") === "1",
-          fps: Math.min(120, num(q, "fps", 60)),
-        })
-        .then(
-          (a) => (note(w.s.user, "host_app_open", { host: w.host, app: p }), a),
-          (err) => {
-            note(w.s.user, "host_app_open", { host: w.host, app: p }, err);
-            throw err;
-          },
-        );
+      const st = startOf(q, e.argv, e.name);
+      st.fps ??= 60;
+      app = await as.launch(owner, runnerOf(s), st).then(
+        (a) => (note(w.s.user, "host_app_open", { host: w.host, app: p }), a),
+        (err) => {
+          note(w.s.user, "host_app_open", { host: w.host, app: p }, err);
+          throw err;
+        },
+      );
     }
     if (!ws.open()) return;
     app.attach(v);
-    for (const m of early.splice(0)) app.input(m);
+    take(app);
   } catch (e) {
     ws.json({ t: "error", s: errText(e) });
     ws.close(1000);
   }
+}
+
+// a Windows host's window app: checked here against the viewer's login (its start menu
+// listed it), run by that host's own phosphorus, this one's or a peer's
+async function streamWindows(ws: Conn, w: Who, q: URLSearchParams): Promise<void> {
+  if (!phosphorusOn(w.host))
+    throw new Coded(409, `window apps stream from a Windows host through its own phosphorus; ${w.host} doesn't run it`);
+  const [login, , saved] = await users.HostLogin(w.s, w.host);
+  if (!saved) throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
+  const g: GlowAsk = { user: w.s.user, admin: w.s.admin, host: w.host, login, path: "", name: "" };
+  if (!idRe.test(q.get("id") ?? "")) {
+    const path = q.get("path") ?? "";
+    if (path.startsWith(hostAppPre)) {
+      g.path = path.slice(0, 200);
+      g.name = path.slice(hostAppPre.length, 200);
+    } else {
+      const s = await session(w);
+      const p = allowed(s, path);
+      if (!winAppRe.test(p)) throw new Coded(400, "not a window app");
+      g.path = p;
+      g.name = (p.split(/[\\/]/).pop() ?? p).replace(winAppRe, "");
+    }
+  }
+  if (w.host === selfHost) return runGlow(ws, g, q);
+  return forwardGlow(ws, g, q);
 }
