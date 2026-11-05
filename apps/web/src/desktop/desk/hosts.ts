@@ -8,6 +8,8 @@ export interface Item {
   name: string;
   kind: Kind;
   path?: string;
+  // the desk's own file where path is what it names (a shortcut's target): what a delete takes
+  file?: string;
   icon?: string;
   iv?: string;
   run?: string;

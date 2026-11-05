@@ -11,13 +11,17 @@ export function winItem(o: Record<string, any>, psShell: boolean): Item {
   const kind: Kind = kinds.has(o.kind) ? o.kind : "file";
   const it: Item = { name: s(o.name) || baseName(s(o.path)), kind };
   if (s(o.path)) it.path = s(o.path);
+  if (s(o.file) && s(o.file) !== it.path) it.file = s(o.file);
   if (s(o.icon)) it.icon = s(o.icon);
   if (s(o.iv)) it.iv = s(o.iv);
   if (s(o.group)) it.group = s(o.group);
   if (s(o.id)) it.id = s(o.id);
   if (kind === "web") it.url = s(o.url);
   if (kind === "cli") it.run = winRun(s(o.target) || s(o.path), s(o.args), psShell);
-  if (kind === "file" && s(o.target)) it.path = s(o.target);
+  if (kind === "file" && s(o.target)) {
+    it.file = s(o.path);
+    it.path = s(o.target);
+  }
   return it;
 }
 

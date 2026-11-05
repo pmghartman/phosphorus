@@ -6,7 +6,7 @@
 
 import { el } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
-import { dkClose, dkSize, dkWin } from '../windows.ts';
+import { type DkWin, dkClose, dkSize, dkWin } from '../windows.ts';
 import { api, type Item, iconSrc } from './hosts.ts';
 import { dkSay } from './wallpaper.ts';
 
@@ -234,16 +234,45 @@ const fullOK = (async () => {
 // a streamed app's window key, by the host and the app's id or path
 const winKey = (host: string, at: string) => `stream:${host}:${at}`;
 
-// a window app opened, or one already open (by its id) taken up again, in a phosphorus window
-// of its own: moved, resized, snapped and minimized as any service's, the app sized to it
-export function streamWin(host: string, it: Item | { id: string; name: string }) {
+// what each stream window shows: the host, the pid it was attached to, the app's windows
+const shown = new Map<DkWin, { host: string; pid: number; wids: Set<number> }>();
+const streamsChanged = new Set<() => void>();
+// told when a stream window opens, learns its app's windows or closes (hosttasks.ts)
+export const onStreams = (f: () => void) => void streamsChanged.add(f);
+const tellStreams = () => {
+  for (const f of streamsChanged) f();
+};
+
+// the pids and host windows a host's streams show here already
+export function streamedOn(host: string): { pids: Set<number>; wids: Set<number> } {
+  const pids = new Set<number>();
+  const wids = new Set<number>();
+  for (const s of shown.values())
+    if (s.host === host) {
+      if (s.pid) pids.add(s.pid);
+      for (const id of s.wids) wids.add(id);
+    }
+  return { pids, wids };
+}
+
+// a process already running on the host, from its task list: taken up where it runs
+export type Attach = { pid: number; started: number; name: string };
+
+// a window app opened, one already open (by its id) taken up again, or one running on the
+// host attached to, in a phosphorus window of its own: moved, resized, snapped and minimized
+// as any service's, the app sized to it
+export function streamWin(host: string, it: Item | { id: string; name: string } | Attach) {
   if (typeof VideoDecoder === 'undefined' || typeof OffscreenCanvas === 'undefined')
     return dkSay('this browser has no WebCodecs: app streaming needs Chrome, Edge, Firefox 130 or Safari 26');
   if (!dk.desk) return;
   const byId = 'id' in it && !('kind' in it) ? it.id : '';
   const path = 'path' in it ? (it.path ?? '') : '';
-  const w = dkWin(winKey(host, byId || path), it.name, host, 'stream');
+  const attach = 'pid' in it ? it : undefined;
+  const w = dkWin(winKey(host, byId || path || `pid:${attach?.pid}:${attach?.started}`), it.name, host, 'stream');
   if (!w) return;
+  const seen = { host, pid: attach?.pid ?? 0, wids: new Set<number>() };
+  shown.set(w, seen);
+  tellStreams();
   dkSize(w, 960, 600);
   const head = w.head;
   const body = w.body;
@@ -308,7 +337,11 @@ export function streamWin(host: string, it: Item | { id: string; name: string })
   };
   const open = (first: boolean) => {
     const { w, h, k } = size();
-    const q: Record<string, string> = id ? { id } : { path };
+    const q: Record<string, string> = id
+      ? { id }
+      : attach
+        ? { pid: String(attach.pid), started: String(attach.started), name: attach.name }
+        : { path };
     Object.assign(q, {
       w: String(w),
       h: String(h),
@@ -335,6 +368,8 @@ export function streamWin(host: string, it: Item | { id: string; name: string })
     ended = true;
     worker.postMessage({ t: 'stop' });
     ro.disconnect();
+    shown.delete(w);
+    tellStreams();
   };
   const shut = () => {
     ended = true;
@@ -375,6 +410,8 @@ export function streamWin(host: string, it: Item | { id: string; name: string })
           ...list.map(([wid, t]) => Object.assign(el('option', '', t || it.name), { value: String(wid) })),
         );
         pick.value = String(m.main);
+        seen.wids = new Set(list.map(([wid]) => wid));
+        tellStreams();
         break;
       }
       case 'clip':
@@ -566,12 +603,14 @@ export function streamWin(host: string, it: Item | { id: string; name: string })
     if (!(e.target as Element).closest('select')) setTimeout(() => ime.focus({ preventScroll: true }), 0);
   });
   // the close button asks the app to close, as its own would, and it may ask to save first;
-  // the window goes anyway when it isn't up yet or doesn't answer
+  // the window goes anyway when it isn't up yet or doesn't answer. An app attached to was
+  // running on the host before: it's let go instead, back on the host's screen, still running
   let asked = false;
+  if (attach) w.node.querySelector('.dk-close')?.setAttribute('title', `stop showing it here: it runs on on ${host}`);
   w.holdClose = () => {
     if (ended || !id || asked) return false;
     asked = true;
-    send(['close']);
+    send([attach ? 'let-go' : 'close']);
     setTimeout(() => !ended && shut(), 3000);
     return true;
   };

@@ -22,6 +22,7 @@ import { hostIcons, hostTerm, isShared, setShared, streamPick } from '../spaces.
 import type { Pop } from '../taskbar.ts';
 import { type DkWin, dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
 import { hostInfo, wallSrc } from './hosts.ts';
+import { hostCan, recycleIcon } from './hosttasks.ts';
 import {
   DK_GX,
   DK_GY,
@@ -141,6 +142,10 @@ export function dkDeskMenu(icons: HTMLElement) {
               true,
             ] as MenuItem,
           ]
+        : []),
+      // a host's desk icon, the file it is (a shortcut, not what it names) to the host's Recycle Bin
+      ...(ha && sp === ha.host && hostCan(ha.host, 'delete') && (ha.it.file || ha.it.path)
+        ? [['delete', () => void recycleIcon(ha.host, ha.it), true] as MenuItem]
         : []),
       ...(svc && st.acct?.admin
         ? [[svc.public ? 'make private' : 'make public', () => dkSetPublic(svc, !svc.public), true] as MenuItem]

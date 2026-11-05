@@ -2,7 +2,7 @@
 // viewer's saved login for it; open to every signed in user with one
 
 import { join } from "node:path";
-import { AfterglowSource, pathsOf, readLink } from "@phosphorus/afterglow";
+import { AfterglowSource, Link, type Proc, pathsOf, readLink } from "@phosphorus/afterglow";
 import * as as from "@phosphorus/appstream";
 import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
@@ -152,7 +152,7 @@ export async function hostdeskRoute(
 ): Promise<Response | undefined> {
   if (!pathname.startsWith("/api/hostdesk")) return;
   if (!(await isLocalOrPeer(c))) return sendJSON(403, { error: "forbidden" });
-  if (q.has("hop")) return await hopList(c, pathname);
+  if (q.has("hop")) return await hopRoute(c, pathname, method);
   const s = await users.Soon(c);
   if (!s || s.boot) return sendJSON(401, { error: "log in as a user" });
   const m = deskRe.exec(pathname);
@@ -214,6 +214,9 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     }
     case "roots":
       return sendJSON(200, { roots: await hd.roots(s) }, nc);
+    case "tasks":
+      // a Windows host's windows as its own task bar has them, from its afterglow
+      return sendJSON(200, await deskOp(w, { op: "tasks" }), nc);
     case "running": {
       const [login] = await users.HostLogin(w.s, w.host);
       // a Windows host's apps run on its own phosphorus: asked there
@@ -297,6 +300,25 @@ async function postOp(w: Who, op: string, c: Ctx, q: URLSearchParams): Promise<R
       if (op === "fs-copy")
         return audited("host_files_copy", { from, to }, async () => (await hd.copyFile(s, from, to), {}));
       return audited("host_files_move", { from, to }, async () => (await hd.rename(s, from, to), {}));
+    }
+    case "end": {
+      const pid = Number(p.pid);
+      const started = Number(p.started) || 0;
+      if (!Number.isSafeInteger(pid) || pid <= 0) throw new Coded(400, "bad pid");
+      const a: DeskAsk = { op: "end", pid, started, kill: p.kill === true, shell: p.shell === true };
+      return audited("host_app_end", { pid, name: str(p.name), kill: a.kill, shell: a.shell }, () => deskOp(w, a));
+    }
+    case "recycle": {
+      // a desk icon's own file (a shortcut, never what it names) to the host user's Recycle
+      // Bin, by afterglow as them: only what the desktop shows, read again now
+      const path = allowed(s, str(p.path));
+      if (!deskWin(w.host)) throw new Coded(409, `only a Windows host's desk icons go to its Recycle Bin`);
+      const desk = await hd.desktop(s);
+      remember(w, s);
+      const own = (i: hd.Item) => hd.norm(i.file ?? i.path ?? "", true);
+      if (!desk.icons.some((i) => i.kind !== "bin" && own(i) === path))
+        throw new Coded(400, `${path} isn't on ${w.host}'s desktop`);
+      return audited("host_files_recycle", { path }, () => deskOp(w, { op: "recycle", path }));
     }
     case "fs-delete": {
       const path = allowed(s, deskAbs(str(p.path)));
@@ -411,7 +433,17 @@ const localAfterglow = () =>
 let afterglowBusy = "";
 
 // what a stream asks of the machine that runs it: the viewer, their login, the app
-type StreamAsk = { user: string; admin: boolean; host: string; login: string; path: string; name: string };
+// pid and started: a process already running taken up in place of path (attached to)
+type StreamAsk = {
+  user: string;
+  admin: boolean;
+  host: string;
+  login: string;
+  path: string;
+  name: string;
+  pid?: number;
+  started?: number;
+};
 
 const viewerOf = (ws: Conn): as.Viewer => ({
   binary: (b) => void ws.binary(b),
@@ -467,13 +499,7 @@ async function runAfterglow(ws: Conn, g: StreamAsk, q: URLSearchParams) {
       app = as.find(owner, id);
       if (!app) throw new Coded(404, "that app has closed");
     } else {
-      if (getPlatform() === "windows" && !g.admin) {
-        const at = await consoleUser();
-        const me = g.login.split("\\").pop()!.split("@")[0]!.toLowerCase();
-        if (!at) throw new Coded(409, `no one is signed in at ${g.host}: a window app runs in the signed-in session`);
-        if (at !== me)
-          throw new Coded(403, `${g.host}'s window apps run as ${at}, who's signed in there; save a login as them`);
-      }
+      await asConsole(g);
       const link = localAfterglow();
       if (!link)
         throw new Coded(409, `afterglow isn't set up on ${g.host} yet: its next phosphorus update installs it`);
@@ -481,21 +507,37 @@ async function runAfterglow(ws: Conn, g: StreamAsk, q: URLSearchParams) {
       if (live) throw new Coded(409, `${g.host} streams one app at a time: close ${live.title} first`);
       ws.json({ t: "opening", name: g.name });
       let mine = "";
-      const src = new AfterglowSource({
+      // the desktop's own link let go first: afterglow takes one driver at a time
+      await idleOpening?.catch(() => {});
+      dropIdle();
+      const src: AfterglowSource = new AfterglowSource({
         link,
-        target: g.path,
+        target: g.pid ? "" : g.path,
+        ...(g.pid ? { attach: { pid: g.pid, ...(g.started ? { started: g.started } : {}) } } : {}),
         virtualDisplay: true,
         done: () => {
           if (afterglowBusy === mine) afterglowBusy = "";
+          if (liveSrc === src) liveSrc = undefined;
         },
       });
-      app = await as.launch(owner, src, startOf(q, [], g.name)).then(
-        (a) => (note(g.user, "host_app_open", { host: g.host, app: g.path }), a),
-        (err) => {
-          note(g.user, "host_app_open", { host: g.host, app: g.path }, err);
-          throw err;
-        },
-      );
+      liveSrc = src;
+      const [tool, what] = g.pid
+        ? ["host_app_attach", { host: g.host, pid: g.pid, app: g.name }]
+        : ["host_app_open", { host: g.host, app: g.path }];
+      const going = as.launch(owner, src, startOf(q, [], g.name));
+      liveOpening = going;
+      app = await going
+        .then(
+          (a) => (note(g.user, tool, what), a),
+          (err) => {
+            note(g.user, tool, what, err);
+            if (liveSrc === src) liveSrc = undefined;
+            throw err;
+          },
+        )
+        .finally(() => {
+          if (liveOpening === going) liveOpening = undefined;
+        });
       mine = `${owner}\n${app.id}`;
       afterglowBusy = mine;
     }
@@ -563,13 +605,25 @@ async function peerList(w: Who, login: string): Promise<{ id: string; title: str
   }
 }
 
-// a peer asking for its viewer's apps open here
-async function hopList(c: Ctx, pathname: string): Promise<Response> {
+// a peer asking for its viewer's apps open here, or of this machine's desktop through afterglow
+async function hopRoute(c: Ctx, pathname: string, method: string): Promise<Response> {
   const m = deskRe.exec(pathname);
-  if (!m || m[2] !== "running" || m[1] !== selfHost || !(await isTailnet(c)))
+  if (!m || (m[2] !== "running" && m[2] !== "desk") || m[1] !== selfHost || !(await isTailnet(c)))
     return sendJSON(403, { error: "forbidden" });
   const g = users.OpenGrant(c.req.headers.get(whoHeader) ?? "");
-  if (!g || g.x !== "running" || g.host !== selfHost) return sendJSON(403, { error: "forbidden" });
+  if (!g || g.x !== m[2] || g.host !== selfHost) return sendJSON(403, { error: "forbidden" });
+  if (m[2] === "desk") {
+    if (method !== "POST") return sendJSON(405, { error: "method" });
+    const a = deskAskOf(g);
+    if (!a) return sendJSON(400, { error: "bad ask" });
+    try {
+      return sendJSON(200, await deskHere({ user: str(g.user), admin: g.admin === true, login: str(g.login) }, a), {
+        "Cache-Control": "no-store",
+      });
+    } catch (e) {
+      return sendJSON(...fail(e));
+    }
+  }
   const owner = `${str(g.user)}\0${selfHost}\0${str(g.login)}`;
   const apps = as.list(owner).map((a) => ({ id: a.id, title: a.title, name: a.start.name }));
   return sendJSON(200, { apps }, { "Cache-Control": "no-store" });
@@ -596,6 +650,8 @@ export async function streamSocket(
       login: str(g.login),
       path: str(g.path),
       name: str(g.name),
+      pid: posInt(g.pid),
+      started: posInt(g.started),
     };
     const ok = upgrade(c, (ws) => {
       ws.keepAlive();
@@ -668,7 +724,14 @@ async function streamWindows(ws: Conn, w: Who, q: URLSearchParams): Promise<void
   const [login, , saved] = await users.HostLogin(w.s, w.host);
   if (!saved) throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
   const g: StreamAsk = { user: w.s.user, admin: w.s.admin, host: w.host, login, path: "", name: "" };
-  if (!idRe.test(q.get("id") ?? "")) {
+  const pid = posInt(q.get("pid"));
+  if (pid && !idRe.test(q.get("id") ?? "")) {
+    // a window already up on the host, taken up where it runs: its pid and start time from
+    // the host's task list, afterglow refusing one that has gone or isn't the viewer's
+    g.pid = pid;
+    g.started = posInt(q.get("started"));
+    g.name = (q.get("name") ?? "").slice(0, 120) || `pid ${pid}`;
+  } else if (!idRe.test(q.get("id") ?? "")) {
     const s = await session(w);
     const p = allowed(s, q.get("path") ?? "");
     if (!winAppRe.test(p)) throw new Coded(400, "not a window app");
@@ -677,4 +740,186 @@ async function streamWindows(ws: Conn, w: Who, q: URLSearchParams): Promise<void
   }
   if (w.host === selfHost) return runAfterglow(ws, g, q);
   return forwardAfterglow(ws, g, q);
+}
+
+// --- a Windows host's own desktop through its afterglow: the windows up on it listed, each
+// ended as its close button would or killed, a desk icon's file put in the Recycle Bin. All
+// as the user signed in at its console, the viewer's login checked against them as a stream is
+
+const posInt = (v: unknown) => {
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n > 0 ? n : 0;
+};
+
+// a host whose desktop afterglow serves: a Windows host running phosphorus
+const deskWin = (h: string) =>
+  h === selfHost ? getPlatform() === "windows" : osOf(h) === "windows" && phosphorusOn(h);
+
+type DeskAsk =
+  | { op: "tasks" }
+  | { op: "end"; pid: number; started: number; kill: boolean; shell: boolean }
+  | { op: "recycle"; path: string };
+
+// one of the host's windows as the task bar shows it: the process, its windows topmost first
+export type Task = {
+  pid: number;
+  started: number;
+  name: string;
+  exe: string;
+  windows: [number, string][];
+  // the desktop shell: ended only when the viewer says so, never streamed
+  shell: boolean;
+};
+
+const shellRe = /^explorer\.exe$/i;
+const taskOf = (p: Proc): Task => ({
+  pid: p.pid,
+  started: p.started,
+  name: p.name,
+  exe: p.exe,
+  windows: p.windows.slice(0, 16).map(([id, t]) => [id, String(t).slice(0, 200)]),
+  shell: shellRe.test(p.name),
+});
+
+function deskAskOf(g: Record<string, unknown>): DeskAsk | undefined {
+  if (g.op === "tasks") return { op: "tasks" };
+  if (g.op === "end" && posInt(g.pid))
+    return {
+      op: "end",
+      pid: posInt(g.pid),
+      started: posInt(g.started),
+      kill: g.kill === true,
+      shell: g.shell === true,
+    };
+  if (g.op === "recycle" && typeof g.path === "string" && g.path) return { op: "recycle", path: g.path };
+}
+
+// the viewer acts as whoever is signed in at this Windows machine's console, as an admin may
+async function asConsole(g: { admin: boolean; login: string; host?: string }) {
+  if (getPlatform() !== "windows" || g.admin) return;
+  const h = g.host || selfHost;
+  const at = await consoleUser();
+  const me = g.login.split("\\").pop()!.split("@")[0]!.toLowerCase();
+  if (!at) throw new Coded(409, `no one is signed in at ${h}: a window app runs in the signed-in session`);
+  if (at !== me) throw new Coded(403, `${h}'s window apps run as ${at}, who's signed in there; save a login as them`);
+}
+
+// the link the desktop's asks take: the streaming app's own while one is up, else one of
+// the desktop's, kept a minute after its last ask
+let liveSrc: AfterglowSource | undefined;
+let liveOpening: Promise<unknown> | undefined;
+let idleLink: { link: Link; t: ReturnType<typeof setTimeout> } | undefined;
+let idleOpening: Promise<Link> | undefined;
+const idleMs = 60_000;
+
+function dropIdle() {
+  const i = idleLink;
+  idleLink = undefined;
+  if (!i) return;
+  clearTimeout(i.t);
+  i.link.close("a stream took the link");
+}
+
+async function deskLink(): Promise<Link> {
+  // an app starting: its link, once it's up, never one opened over it
+  if (liveOpening) await liveOpening.catch(() => {});
+  const on = liveSrc?.linkNow;
+  if (on) return on;
+  const i = idleLink;
+  if (i?.link.alive) {
+    clearTimeout(i.t);
+    i.t = setTimeout(() => i.link.close("idle"), idleMs);
+    return i.link;
+  }
+  idleOpening ??= (async () => {
+    const addr = localAfterglow();
+    if (!addr)
+      throw new Coded(409, `afterglow isn't set up on ${selfHost} yet: its next phosphorus update installs it`);
+    const link: Link = new Link(addr, {
+      message: () => {},
+      closed: () => {
+        if (idleLink?.link !== link) return;
+        clearTimeout(idleLink.t);
+        idleLink = undefined;
+      },
+    });
+    await link.open();
+    idleLink = { link, t: setTimeout(() => link.close("idle"), idleMs) };
+    return link;
+  })().finally(() => {
+    idleOpening = undefined;
+  });
+  return idleOpening;
+}
+
+// an ask over the desktop's link, once more on a fresh one when a stream took it mid-ask;
+// the host's refusal its own words
+async function withLink<T>(f: (l: Link) => Promise<T>): Promise<T> {
+  for (let n = 0; ; n++) {
+    try {
+      return await f(await deskLink());
+    } catch (e) {
+      if (e instanceof Coded) throw e;
+      const why = errText(e);
+      if (n === 0 && why.startsWith("afterglow closed the link")) continue;
+      throw new Coded(409, why);
+    }
+  }
+}
+
+// an ask of this machine's afterglow, for a viewer here or one a peer checked
+async function deskHere(
+  g: { user: string; admin: boolean; login: string },
+  a: DeskAsk,
+): Promise<Record<string, unknown>> {
+  if (getPlatform() !== "windows") throw new Coded(409, `${selfHost}'s desktop isn't served by afterglow`);
+  await asConsole(g);
+  return withLink(async (link) => {
+    const can = new Set(link.ready?.features ?? []);
+    const need = (f: string, what: string) => {
+      if (!can.has(f)) throw new Coded(409, `${selfHost}'s afterglow can't ${what} yet: update afterglow`);
+    };
+    switch (a.op) {
+      case "tasks": {
+        const features = [...can];
+        if (!can.has("processes")) return { features, list: [] };
+        const list = (await link.processes()).filter((p) => p.windows.length > 0).map(taskOf);
+        return { features, list };
+      }
+      case "end": {
+        need("processes", "end an app");
+        const r = await link.end(a.pid, { ...(a.started ? { started: a.started } : {}), kill: a.kill, shell: a.shell });
+        return { how: r.how, gone: r.gone };
+      }
+      case "recycle":
+        need("delete", "delete a file");
+        return { recycled: (await link.delete(a.path)).recycled };
+    }
+  });
+}
+
+// the ask where the host's afterglow is: here, or the Windows host's own phosphorus
+async function deskOp(w: Who, a: DeskAsk): Promise<Record<string, unknown>> {
+  if (!deskWin(w.host)) {
+    if (a.op === "tasks") return { features: [], list: [] };
+    throw new Coded(409, `${w.host}'s desktop isn't served by afterglow: a Windows host running phosphorus is`);
+  }
+  const [login] = await users.HostLogin(w.s, w.host);
+  if (w.host === selfHost) return deskHere({ user: w.s.user, admin: w.s.admin, login }, a);
+  const ip = peers.peerIPs()[w.host] ?? (await tailnetIP(w.host));
+  if (!ip) throw new Coded(404, `${w.host} has no tailnet address here`);
+  const grant = users.SealGrant({ x: "desk", user: w.s.user, admin: w.s.admin, host: w.host, login, ...a }, 30_000);
+  let r: Response;
+  try {
+    r = await fetch(`http://${ip}:${port}/api/hostdesk/${w.host}/desk?hop=1`, {
+      method: "POST",
+      headers: { [whoHeader]: grant },
+      signal: AbortSignal.timeout(a.op === "recycle" ? 160_000 : 45_000),
+    });
+  } catch (e) {
+    throw new Coded(502, `${w.host}'s phosphorus didn't answer: ${errText(e)}`);
+  }
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) throw new Coded(r.status, String(j.error ?? `${w.host} refused it`));
+  return j;
 }

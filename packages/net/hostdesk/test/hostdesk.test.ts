@@ -10,7 +10,7 @@ import * as L from "../src/linux.ts";
 import { norm, sftpPath } from "../src/paths.ts";
 import { bootLine, records, reply, request, shBootScript } from "../src/proto.ts";
 import { binName, writeInfo } from "../src/recycle.ts";
-import { abgrHex, winDesk, winLook, winRun } from "../src/windows.ts";
+import { abgrHex, winDesk, winItem, winLook, winRun } from "../src/windows.ts";
 
 test("protocol: a request and its reply", () => {
   expect(request(7, "icon", "a\tb")).toBe(`7\ticon\t${Buffer.from("a\tb").toString("base64")}\n`);
@@ -346,4 +346,22 @@ test("windows: the taskbar, clock and icons as the registry has them", () => {
   expect(l.widgets).toBe(false);
   expect(winLook({ edge: 0, search: 0 }, true)).toMatchObject({ edge: "bottom", search: "" });
   expect(winDesk({ build: 22631, search: 3 }, false).look.search).toBe("box");
+});
+
+test("a shortcut's own file kept beside the target it names, for a delete to take", () => {
+  const lnk = "C:\\Users\\ann\\Desktop\\notes.lnk";
+  const file = winItem({ name: "notes", kind: "file", path: lnk, target: "C:\\Users\\ann\\notes.txt" }, true);
+  expect(file).toMatchObject({ path: "C:\\Users\\ann\\notes.txt", file: lnk });
+  const dir = winItem(
+    { name: "proj", kind: "folder", path: "C:\\Users\\ann\\proj", file: "C:\\Users\\ann\\Desktop\\proj.lnk" },
+    true,
+  );
+  expect(dir).toMatchObject({ path: "C:\\Users\\ann\\proj", file: "C:\\Users\\ann\\Desktop\\proj.lnk" });
+  // a plain launcher's file is its path
+  const app = winItem(
+    { name: "app", kind: "gui", path: "C:\\Users\\ann\\Desktop\\app.lnk", target: "C:\\a\\app.exe" },
+    true,
+  );
+  expect(app.file).toBeUndefined();
+  expect(app.path).toBe("C:\\Users\\ann\\Desktop\\app.lnk");
 });

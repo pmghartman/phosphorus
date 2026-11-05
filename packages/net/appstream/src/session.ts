@@ -244,6 +244,9 @@ export class AppSession {
         return this.restart("slow");
       case "close":
         return this.source.close();
+      case "let-go":
+        // the stream ended, the app left running: an app attached to, put back on the host's screen
+        return this.end("let go");
       default:
         return this.source.input(m, this.w, this.h);
     }

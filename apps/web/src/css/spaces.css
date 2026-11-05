@@ -505,3 +505,15 @@
 .dk-app-k-settings .dk-app-ic .ic {
   color: var(--sage);
 }
+
+/* a Windows host's own windows on its task bar, before phosphorus's: each streamed here on a press */
+.dk-htasks {
+  display: contents;
+}
+.dk-htask {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.dk-htask:hover {
+  border-color: color-mix(in srgb, var(--fg) 22%, transparent);
+}
