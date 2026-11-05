@@ -16,7 +16,8 @@ cmake -B build -G Ninja -S . \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_DOCS=OFF \
   -DBUILD_TESTS=OFF
-ninja -C build afterglow sunshinesvc
+# the CMake targets keep Apollo's names; their outputs are afterglow.exe and afterglowsvc.exe
+ninja -C build sunshine sunshinesvc
 
 # the link's own tests, the one part built from phosphorus's sources alone
 c++ -std=c++20 -Wall -Wextra -Werror -Isrc test/wire_test.cpp -o build/wire_test.exe
