@@ -2,6 +2,7 @@
 // host's state for peers, and the websockets
 
 import { busy as appsBusy, reapApps } from "@phosphorus/appstream";
+import { busy as webBusy, reap as reapWeb } from "@phosphorus/appweb";
 import * as catalog from "@phosphorus/catalog";
 import { migrate as migrateConfig } from "@phosphorus/config";
 import * as files from "@phosphorus/files";
@@ -70,7 +71,8 @@ export async function start(): Promise<Server<WSData>> {
   setInterval(reapShells, 60000);
   setInterval(() => {
     reapApps();
-    reapDesks(appsBusy);
+    reapWeb();
+    reapDesks((k) => appsBusy(k) || webBusy(k));
   }, 60000);
 
   // FRONTEND_BIND: one address alone, for a test mesh of several hosts on loopback

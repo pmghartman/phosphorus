@@ -22,6 +22,7 @@ import * as afterglow from "./afterglow.ts";
 import { appRoute } from "./apps.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
 import { haRoute } from "./ha.ts";
+import { appwebRoute } from "./appweb.ts";
 import { hostdeskRoute } from "./hostdesk.ts";
 import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
 import {
@@ -100,6 +101,11 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   const q = c.url.searchParams;
   const method = c.req.method;
 
+  // an app's own page, sandboxed on an origin of its own: its keys are the grant
+  if (pathname.startsWith("/api/appweb/r/") || pathname.startsWith("/api/appweb/x/")) {
+    const r = await appwebRoute(c, pathname);
+    if (r) return r;
+  }
   if (crossSite(c)) return forbidden();
   if (isUpgrade(c.req)) return onUpgrade(c, pathname, q);
 
