@@ -22,6 +22,16 @@ export const In = {
   raise: 0x0a,
   // ask the app to close as its own close button does
   close: 0x0b,
+  // the desktop (afterglow's docs/protocol.md, "The desktop"): JSON {all, id}, answered by
+  // Out.processes
+  processes: 0x0c,
+  // JSON {pid, started, shell, name, w, h, fps, ...}: a running process taken as the app,
+  // answered by Out.launched
+  attach: 0x0d,
+  // JSON {pid, started, kill, shell, wait_ms, id}: answered by Out.ended
+  end: 0x0e,
+  // JSON {path, permanent, id}: answered by Out.deleted
+  delete: 0x0f,
 } as const;
 
 export const Out = {
@@ -31,7 +41,13 @@ export const Out = {
   videoEnded: 0x84,
   // JSON {t: "title" | "windows" | "clip", ...}
   note: 0x85,
+  // JSON {ok, id, list} or {ok: false, id, error}
+  processes: 0x86,
+  // JSON {ok, id, pid, how, gone} or {ok: false, id, pid, error}
+  ended: 0x87,
   pong: 0x88,
+  // JSON {ok, id, path, recycled} or {ok: false, id, path, error}
+  deleted: 0x89,
   config: 0x90,
   frame: 0x91,
   cursor: 0x92,
@@ -135,7 +151,45 @@ export const cursorOf = (msg: Uint8Array) => ({
   png: msg.subarray(10),
 });
 
-export type Ready = { version: string; virtual_display: boolean; hostname: string; running: boolean; proto?: number };
+export type Ready = {
+  version: string;
+  proto?: number;
+  virtual_display: boolean;
+  hostname: string;
+  running: boolean;
+  // what the host's desktop can be asked: some of "processes", "attach", "delete"
+  features?: string[];
+};
+
+// one of the host user's processes: with the pid, `started` (ms since the epoch) says
+// which process it is, for an end or attach that mustn't reach another by that pid
+export type Proc = {
+  pid: number;
+  ppid: number;
+  exe: string;
+  name: string;
+  started: number;
+  // its windows, topmost first: [id, title]
+  windows: [number, string][];
+};
+
+export type EndOpts = {
+  // killed at once, rather than its windows asked to close
+  kill?: boolean;
+  // the desktop shell (explorer.exe, gnome-shell) may be ended too
+  shell?: boolean;
+  // from the process list: refused if the pid is another process by now
+  started?: number;
+  // how long the host waits for it to go (default 5 s, 2 s for a kill; at most 30 s)
+  waitMs?: number;
+};
+
+// "closed": its windows asked; "terminated": asked to end (Linux, no window);
+// "killed". gone: whether it had gone by the end of the wait
+export type Ended = { how: "closed" | "terminated" | "killed"; gone: boolean };
+
+// the replies matched to their asks by id
+const replies = new Set<number>([Out.processes, Out.ended, Out.deleted]);
 
 export type LinkEvents = {
   message(msg: Uint8Array): void;
@@ -163,6 +217,9 @@ export class Link {
   private waiting = new Map<number, ((m: Uint8Array) => void)[]>();
   // what each wait does when the link closes first: fail at once, not at its timeout
   private failers = new Set<(e: Error) => void>();
+  // the desktop's asks waiting for their replies, by id
+  private asks = new Map<number, (j: Record<string, unknown>) => void>();
+  private ids = 0;
   ready?: Ready;
 
   constructor(
@@ -245,6 +302,14 @@ export class Link {
   }
 
   private got(m: Uint8Array) {
+    if (replies.has(m[0]!)) {
+      const j = jsonOf(m);
+      const f = typeof j.id === "number" ? this.asks.get(j.id) : undefined;
+      if (f) {
+        this.asks.delete(j.id as number);
+        return f(j);
+      }
+    }
     const l = this.waiting.get(m[0]!);
     const f = l?.shift();
     if (f) return f(m);
@@ -277,6 +342,61 @@ export class Link {
       }
       this.queue.shift();
     }
+  }
+
+  // one of the desktop's asks, its reply matched by id; an error thrown with the
+  // host's reason when it says no
+  private ask(type: number, body: Record<string, unknown>, timeoutMs: number): Promise<Record<string, unknown>> {
+    return new Promise((res, rej) => {
+      if (this.closed) return rej(new Error("afterglow closed the link"));
+      const id = ++this.ids;
+      const fail = (e: Error) => {
+        clearTimeout(t);
+        this.asks.delete(id);
+        this.failers.delete(fail);
+        rej(e);
+      };
+      const t = setTimeout(() => fail(new Error("afterglow didn't answer")), timeoutMs);
+      this.failers.add(fail);
+      this.asks.set(id, (j) => {
+        clearTimeout(t);
+        this.failers.delete(fail);
+        if (j.ok === true) res(j);
+        else rej(new Error(String(j.error ?? "afterglow refused it")));
+      });
+      this.json(type, { ...body, id });
+    });
+  }
+
+  // the host user's processes: those with windows first, topmost first; with all, the
+  // rest too. Needs "processes" in ready.features
+  async processes(all = false, timeoutMs = 15_000): Promise<Proc[]> {
+    const j = await this.ask(In.processes, { all }, timeoutMs);
+    return Array.isArray(j.list) ? (j.list as Proc[]) : [];
+  }
+
+  // one of them asked to close as its close buttons would, or killed with o.kill
+  async end(pid: number, o: EndOpts = {}): Promise<Ended> {
+    const waitMs = o.waitMs ?? (o.kill ? 2000 : 5000);
+    const j = await this.ask(
+      In.end,
+      {
+        pid,
+        kill: !!o.kill,
+        shell: !!o.shell,
+        wait_ms: waitMs,
+        ...(o.started !== undefined ? { started: o.started } : {}),
+      },
+      waitMs + 15_000,
+    );
+    return { how: j.how as Ended["how"], gone: j.gone === true };
+  }
+
+  // a file or folder within the user's folders deleted: to the Recycle Bin (Linux: the
+  // trash) unless permanent. Needs "delete" in ready.features
+  async delete(path: string, permanent = false, timeoutMs = 150_000): Promise<{ recycled: boolean }> {
+    const j = await this.ask(In.delete, { path, permanent }, timeoutMs);
+    return { recycled: j.recycled === true };
   }
 
   get alive() {

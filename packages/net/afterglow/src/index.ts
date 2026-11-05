@@ -30,6 +30,8 @@ export {
 export {
   configOf,
   cursorOf,
+  type Ended,
+  type EndOpts,
   frameOf,
   In,
   jsonOf,
@@ -40,6 +42,7 @@ export {
   maxLen,
   message as linkMessage,
   Out,
+  type Proc,
   type Ready,
   type Transport,
 } from "./afterglow/link.ts";

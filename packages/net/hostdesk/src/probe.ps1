@@ -65,7 +65,7 @@ function Describe($p, $group) {
     $it.args = [string]$s.Arguments
     if (-not $t) { $it.kind = 'gui'; return $it }
     if ($t -match '^https?://') { $it.kind = 'web'; $it.url = $t; return $it }
-    if (Test-Path -LiteralPath $t -PathType Container) { $it.kind = 'folder'; $it.path = $t; return $it }
+    if (Test-Path -LiteralPath $t -PathType Container) { $it.kind = 'folder'; $it.file = $p; $it.path = $t; return $it }
     $te = [IO.Path]::GetExtension($t).ToLower()
     if ($te -eq '.exe' -or $te -eq '.com') {
       if ((Subsys $t) -eq 3) { $it.kind = 'cli' } else { $it.kind = 'gui' }

@@ -2,13 +2,15 @@
 // and AfterglowSource driven directly against a stand-in afterglow on a real loopback
 // socket: the token said first, the app launched, frames handed on with their room in
 // front, an earlier video's frames dropped, a keyframe asked for without a restart,
-// input as afterglow's packets, the app's exit
+// input as afterglow's packets, the app's exit; the desktop's asks matched to their
+// replies, a running process attached to
 
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   AfterglowSource,
   FrameRoom,
   In,
+  Link,
   LinkReader,
   linkMessage,
   type Opened,
@@ -299,5 +301,141 @@ describe("afterglow source", () => {
     });
     await expect(src.open(opened(640, 480), new Driver())).rejects.toThrow("afterglow closed the link");
     expect(performance.now() - t0).toBeLessThan(1000);
+  });
+});
+
+describe("the desktop", () => {
+  test("processes listed, ends and deletes matched to their asks by id, a refusal thrown", async () => {
+    const ends: Record<string, unknown>[] = [];
+    fake = new FakeAfterglow("t0ken-t0ken-t0ken-5", (f, type, body) => {
+      const j = bodyJson(body);
+      if (type === In.processes)
+        f.send(
+          jsonMessage(Out.processes, {
+            ok: true,
+            id: j.id,
+            list: [{ pid: 7, ppid: 1, exe: "C:\\x\\a.exe", name: "a.exe", started: 5, windows: [[18, "A"]] }],
+          }),
+        );
+      if (type === In.end) {
+        ends.push(j);
+        // the second answered first: each still reaches its own ask
+        if (ends.length === 2)
+          for (const e of [...ends].reverse())
+            f.send(
+              jsonMessage(Out.ended, { ok: true, id: e.id, pid: e.pid, how: e.kill ? "killed" : "closed", gone: true }),
+            );
+      }
+      if (type === In.delete)
+        f.send(
+          j.path.startsWith("C:\\Windows")
+            ? jsonMessage(Out.deleted, { ok: false, id: j.id, path: j.path, error: "outside the user's folders" })
+            : jsonMessage(Out.deleted, { ok: true, id: j.id, path: j.path, recycled: !j.permanent }),
+        );
+    });
+    const others: number[] = [];
+    const link = new Link(
+      { port: fake.port, token: fake.token },
+      { message: (m) => others.push(m[0]!), closed: () => {} },
+    );
+    await link.open();
+    const list = await link.processes(true);
+    expect(list).toEqual([{ pid: 7, ppid: 1, exe: "C:\\x\\a.exe", name: "a.exe", started: 5, windows: [[18, "A"]] }]);
+    expect(bodyJson(fake.sent(In.processes)[0]!.body)).toMatchObject({ all: true });
+
+    const [closed, killed] = await Promise.all([
+      link.end(7, { started: 5 }),
+      link.end(8, { kill: true, shell: true, waitMs: 100 }),
+    ]);
+    expect(closed).toEqual({ how: "closed", gone: true });
+    expect(killed).toEqual({ how: "killed", gone: true });
+    expect(ends[0]).toMatchObject({ pid: 7, started: 5, kill: false, shell: false, wait_ms: 5000 });
+    expect(ends[1]).toMatchObject({ pid: 8, kill: true, shell: true, wait_ms: 100 });
+    expect(ends[1]!.started).toBeUndefined();
+
+    expect(await link.delete("C:\\Users\\me\\Desktop\\x.txt")).toEqual({ recycled: true });
+    expect(await link.delete("C:\\Users\\me\\y", true)).toEqual({ recycled: false });
+    expect(bodyJson(fake.sent(In.delete)[1]!.body)).toMatchObject({ path: "C:\\Users\\me\\y", permanent: true });
+    await expect(link.delete("C:\\Windows\\win.ini")).rejects.toThrow("outside the user's folders");
+    // the replies never reached the link's other listeners
+    expect(others).toEqual([]);
+
+    // asks still open when the link closes fail at once
+    const pending = link.processes();
+    link.close("bye");
+    await expect(pending).rejects.toThrow("afterglow closed the link");
+  });
+
+  test("a process attached to rather than launched, closed through its windows", async () => {
+    fake = new FakeAfterglow("t0ken-t0ken-t0ken-6", (f, type, body) => {
+      if (type === In.attach) {
+        const j = bodyJson(body);
+        f.send(
+          jsonMessage(
+            Out.launched,
+            j.pid === 7
+              ? { ok: true, attached: true, features: ["close", "processes", "attach", "delete"] }
+              : { ok: false, attached: true, error: "pid 9 is another process now: list them again" },
+          ),
+        );
+      }
+      if (type === In.close) f.send(jsonMessage(Out.exited, {}));
+    });
+    const refused = new AfterglowSource({
+      link: { port: fake.port, token: fake.token },
+      target: "",
+      attach: { pid: 9, started: 1 },
+      virtualDisplay: true,
+    });
+    await expect(refused.open(opened(800, 600), new Driver())).rejects.toThrow(
+      "the app couldn't be attached to: pid 9 is another process now",
+    );
+
+    const src = new AfterglowSource({
+      link: { port: fake.port, token: fake.token },
+      target: "",
+      attach: { pid: 7, started: 1_700_000_000_000 },
+      virtualDisplay: true,
+    });
+    const d = new Driver();
+    await src.open(opened(1024, 768), d);
+    expect(fake.sent(In.launch).length).toBe(0);
+    expect(bodyJson(fake.sent(In.attach).at(-1)!.body)).toMatchObject({
+      pid: 7,
+      started: 1_700_000_000_000,
+      shell: false,
+      w: 1024,
+      h: 768,
+      virtual_display: true,
+    });
+    // the video starts as for a launched app
+    await settle();
+    expect(fake.sent(In.video).length).toBe(1);
+    src.close();
+    await settle();
+    expect(fake.sent(In.close).length).toBe(1);
+    expect(fake.sent(In.quit).length).toBe(0);
+    expect(d.exits).toEqual([""]);
+  });
+});
+
+describe("the desktop beside a stream", () => {
+  test("the stream's link offered for the desktop's asks while it's up, never once it has quit", async () => {
+    fake = new FakeAfterglow("t0ken-t0ken-t0ken-7", (f, type, body) => {
+      if (type === In.launch) f.send(jsonMessage(Out.launched, { ok: true, features: ["processes"] }));
+      if (type === In.processes) f.send(jsonMessage(Out.processes, { ok: true, id: bodyJson(body).id, list: [] }));
+    });
+    const src = new AfterglowSource({
+      link: { port: fake.port, token: fake.token },
+      target: "C:\\a.lnk",
+      virtualDisplay: true,
+    });
+    expect(src.linkNow).toBeUndefined();
+    await src.open(opened(800, 600), new Driver());
+    const link = src.linkNow!;
+    expect(link.ready?.version).toBeDefined();
+    expect(await link.processes()).toEqual([]);
+    src.quit();
+    expect(src.linkNow).toBeUndefined();
   });
 });

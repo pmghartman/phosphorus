@@ -9,6 +9,9 @@ export type Item = {
   kind: Kind;
   // where it is on the host, its .lnk or .desktop for a launcher
   path?: string;
+  // the desk's own file where path is what it names (a shortcut's folder or file): what a
+  // delete takes, never its target
+  file?: string;
   // an icon spec the probe issued, and its version
   icon?: string;
   iv?: string;
