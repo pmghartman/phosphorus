@@ -11,6 +11,11 @@
   stroke-linecap: var(--ic-cap, round);
   stroke-linejoin: var(--ic-join, round);
 }
+/* phosphorus's own mark: a shape, filled, never outlined */
+svg.ic.ic-fill {
+  fill: currentColor;
+  stroke: none;
+}
 /* each kind of thing its own muted hue */
 .ic-host {
   color: var(--rose);

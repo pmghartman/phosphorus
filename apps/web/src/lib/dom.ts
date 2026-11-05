@@ -47,10 +47,20 @@ export function icon(name: string): SVGSVGElement {
 }
 
 // the frontend's own stroked glyphs, a phrase of path data each
+// the glyphs drawn filled, not stroked: phosphorus's own mark
+const FILLED = new Set([DK_GLYPHS.phi]);
+
 export function dkGlyph(d: string, cls = ''): SVGSVGElement {
   const svg = svgEl('svg', { viewBox: '0 0 16 16', class: `ic ${cls}`, 'aria-hidden': 'true' });
   svg.appendChild(svgEl('path', { d }));
+  svg.classList.toggle('ic-fill', FILLED.has(d));
   return svg;
+}
+
+// a glyph already drawn, made another
+export function setGlyph(svg: Element, d: string): void {
+  svg.querySelector('path')?.setAttribute('d', d);
+  svg.classList.toggle('ic-fill', FILLED.has(d));
 }
 
 // copy, or the check once copied

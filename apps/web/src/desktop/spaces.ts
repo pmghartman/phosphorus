@@ -46,7 +46,6 @@ export function dkSpace(h: string, from?: HTMLElement | null): void {
     else dkSay(`log in to ${h} first`);
     return;
   }
-  const was = dk.space;
   dk.space = h;
   try {
     localStorage.setItem(SPACE_KEY, h);
@@ -61,17 +60,6 @@ export function dkSpace(h: string, from?: HTMLElement | null): void {
   dkChips();
   dkFocus(dkStack()[0] ?? null);
   tell();
-  if (was !== h && dk.desk.el.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
-    dk.desk.el.animate(
-      [
-        { opacity: 0.55, transform: 'scale(0.992)' },
-        { opacity: 1, transform: 'none' },
-      ],
-      {
-        duration: 200,
-        easing: 'cubic-bezier(.2,.7,.2,1)',
-      },
-    );
   if (h)
     void hostLoad(h, () => {
       const i = hostInfo(h);

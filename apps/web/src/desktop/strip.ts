@@ -10,7 +10,7 @@ import { hostInfo, hostPeek, wallSrc } from './desk/hosts.ts';
 import { wallMine } from './desk/wallpaper.ts';
 import { dkMenu } from './desk.ts';
 import { dkSpace, spaceGlyph, spaceName } from './spaces.ts';
-import { dkPopReg, dkPopsClose } from './taskbar.ts';
+import { dkBarSide, dkPopReg, dkPopsClose } from './taskbar.ts';
 
 let btn: HTMLButtonElement | undefined;
 let strip: HTMLElement | undefined;
@@ -30,10 +30,16 @@ export function dkStripPaint(): void {
   const hosts = dk.desk?.hosts;
   if (!hosts) return;
   if (!btn || !hosts.contains(btn)) {
-    if (!btn) dkPopReg('strip', show);
+    if (!btn) {
+      dkPopReg('strip', show);
+      // its cards built while the page is idle, the first press as quick as the rest
+      (window.requestIdleCallback ?? setTimeout)(() => {
+        if (make() && strip?.hidden) fill(false);
+      });
+    }
     btn = Object.assign(el('button', 'dk-space-btn'), {
       type: 'button',
-      title: 'desktops (ctrl+alt+page up or down)',
+      title: 'desktops',
       ariaLabel: 'desktops',
     });
     btn.setAttribute('aria-expanded', 'false');
@@ -48,8 +54,9 @@ export function dkStripPaint(): void {
   if (strip && !strip.hidden) fill();
 }
 
-function show(on: boolean) {
-  if (!dk.desk || !btn) return;
+// the shelf made once, hidden until asked for
+function make(): HTMLElement | undefined {
+  if (!dk.desk) return;
   if (!strip || !dk.desk.el.contains(strip)) {
     strip = Object.assign(el('div', 'dk-strip'), { hidden: true });
     strip.setAttribute('role', 'listbox');
@@ -57,23 +64,48 @@ function show(on: boolean) {
     strip.addEventListener('keydown', keys);
     dk.desk.el.append(strip);
   }
+  return strip;
+}
+
+function show(on: boolean) {
+  if (!btn || !make() || !strip) return;
   if (!on && strip.hidden) return;
   if (on) dkPopsClose('strip');
   strip.hidden = !on;
   btn.setAttribute('aria-expanded', String(on));
   if (!on) return;
-  place();
   fill();
   strip.querySelector<HTMLElement>('.dk-card.cur')?.focus({ preventScroll: true });
   strip.querySelector('.dk-card.cur')?.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
-// along the bottom, above a bar there
+// a shelf on the task bar: as wide as it, just above it, or below one at the top; a bar
+// down a side leaves it along the bottom, clear of the bar
+const GAP = 8;
 function place() {
   if (!strip || !dk.desk) return;
-  const bars = [dk.desk.bar, dk.desk.menubar].map((b) => b.getBoundingClientRect());
-  const low = bars.filter((r) => r.height && r.bottom >= innerHeight - 2).map((r) => r.top);
-  strip.style.bottom = `${(low.length ? innerHeight - Math.min(...low) : 0) + 10}px`;
+  const bar = dk.desk.bar;
+  const r = bar.getBoundingClientRect();
+  const side = dkBarSide(bar);
+  const st = strip.style;
+  st.top = st.bottom = st.left = st.width = '';
+  strip.dataset.side = side === 'top' ? 'top' : 'bottom';
+  if (side === 'top' || side === 'bottom') {
+    // as wide as the bar, wider for its cards where the bar is a dock, centred on it
+    const row = strip.querySelector<HTMLElement>('.dk-strip-row');
+    const need = row ? row.scrollWidth + (strip.offsetWidth - row.clientWidth) : 0;
+    const w = Math.min(innerWidth - 2 * GAP, Math.max(r.width, need));
+    const mid = r.left + r.width / 2;
+    st.left = `${Math.max(GAP, Math.min(innerWidth - GAP - w, mid - w / 2))}px`;
+    st.width = `${w}px`;
+    if (side === 'top') st.top = `${r.bottom + GAP}px`;
+    else st.bottom = `${innerHeight - r.top + GAP}px`;
+    return;
+  }
+  const left = side === 'left' ? r.right + GAP : GAP;
+  st.left = `${left}px`;
+  st.width = `${innerWidth - left - (side === 'right' ? innerWidth - r.left + GAP : GAP)}px`;
+  st.bottom = `${GAP}px`;
 }
 
 // a desktop's picture: its wallpaper, else phosphorus's or the OS's glyph on the desk's own colour
@@ -144,12 +176,17 @@ function card(h: string): HTMLButtonElement {
   return b;
 }
 
-function fill() {
+function fill(peek = true) {
   if (!strip) return;
   const ids = desktops();
-  strip.replaceChildren(...ids.map(card));
+  const head = el('div', 'dk-strip-head');
+  head.append(el('span', 'dk-strip-t', 'desktops'), el('span', 'dk-strip-hint', 'ctrl+alt+page up or down'));
+  const row = el('div', 'dk-strip-row');
+  row.append(...ids.map(card));
+  strip.replaceChildren(head, row);
+  place();
   // a logged in host never seen in this browser: its last desk asked for, its wallpaper then shown
-  for (const h of ids)
+  for (const h of peek ? ids : [])
     if (h && dk.creds.has(h) && !hostInfo(h).desk)
       void hostPeek(h).then((got) => {
         if (got && strip && !strip.hidden) fill();
@@ -159,12 +196,21 @@ function fill() {
 function keys(e: KeyboardEvent) {
   const cards = [...(strip?.querySelectorAll<HTMLElement>('.dk-card') ?? [])];
   const i = cards.indexOf(document.activeElement as HTMLElement);
-  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-    e.preventDefault();
-    const n = cards[Math.max(0, Math.min(cards.length - 1, i + (e.key === 'ArrowRight' ? 1 : -1)))];
-    n?.focus();
-    n?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-  }
+  const to =
+    e.key === 'ArrowRight'
+      ? i + 1
+      : e.key === 'ArrowLeft'
+        ? i - 1
+        : e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? cards.length - 1
+            : -2;
+  if (to === -2) return;
+  e.preventDefault();
+  const n = cards[Math.max(0, Math.min(cards.length - 1, to))];
+  n?.focus();
+  n?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
 }
 
 document.addEventListener(

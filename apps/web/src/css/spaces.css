@@ -319,34 +319,72 @@
 .dk-space-btn[aria-expanded="true"] .dk-space-chev {
   transform: rotate(180deg);
 }
+/* a bar at the top: the shelf opens down, the chevron saying so */
+:root[data-l-bar="top"] .dk-space-chev {
+  transform: rotate(180deg);
+}
+:root[data-l-bar="top"] .dk-space-btn[aria-expanded="true"] .dk-space-chev {
+  transform: none;
+}
 
-/* the filmstrip: every desktop a card of its own wallpaper, along the bottom of the screen */
+/* the filmstrip: a shelf on the task bar, every desktop a card of its own wallpaper; above
+   the bar's own layer, never under it */
 .dk-strip {
   position: fixed;
-  left: 50%;
-  z-index: var(--z-pop);
+  z-index: calc(var(--z-bar) + 1);
   display: flex;
-  gap: 8px;
-  max-width: calc(100vw - 24px);
-  padding: 8px;
-  overflow-x: auto;
-  transform: translateX(-50%);
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  backdrop-filter: blur(18px);
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-pop, 8px);
   box-shadow: var(--drop);
-  scrollbar-width: thin;
-  animation: strip-in 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: strip-up 0.1s ease-out;
+}
+.dk-strip[data-side="top"] {
+  animation-name: strip-down;
 }
 .dk-strip[hidden] {
   display: none;
 }
-@keyframes strip-in {
+@keyframes strip-up {
   from {
-    opacity: 0;
-    transform: translate(-50%, 10px);
+    opacity: 0.6;
+    transform: translateY(4px);
   }
+}
+@keyframes strip-down {
+  from {
+    opacity: 0.6;
+    transform: translateY(-4px);
+  }
+}
+.dk-strip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 4px;
+}
+.dk-strip-t {
+  color: var(--muted);
+  font-size: var(--fs-xs, 12px);
+  font-weight: 600;
+}
+.dk-strip-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs, 11px);
+  opacity: 0.8;
+}
+/* the cards in a row, centred while they fit, scrolled sideways once they don't */
+.dk-strip-row {
+  display: flex;
+  justify-content: safe center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .dk-card {
   flex: none;
@@ -435,6 +473,11 @@
 @media (prefers-reduced-motion: reduce) {
   .dk-strip {
     animation: none;
+  }
+}
+@media (max-width: 720px) {
+  .dk-strip-hint {
+    display: none;
   }
 }
 @media (max-width: 720px) {

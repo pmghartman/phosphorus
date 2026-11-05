@@ -1,7 +1,7 @@
 // the window manager: one window per terminal, files, service or app, moved, resized,
 // snapped, minimized into its task bar button and back
 
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile, setGlyph } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { dkAppsChanged, dkMenu, type MenuItem } from './desk.ts';
 import { dkSpace, spaceGlyph, spaceName } from './spaces.ts';
@@ -395,7 +395,7 @@ export function dkFocus(w: DkWin | null): void {
     dk.desk.app.querySelector('.dk-menubar-app-t')!.textContent = w
       ? w.task.querySelector('.dk-task-t')!.textContent
       : spaceName();
-    dk.desk.app.querySelector('path')!.setAttribute('d', w ? w.glyph : spaceGlyph());
+    setGlyph(dk.desk.app.querySelector('svg')!, w ? w.glyph : spaceGlyph());
   }
   if (!w) return;
   if (w.node.hidden) dkRestore(w);
