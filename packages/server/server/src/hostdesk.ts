@@ -2,6 +2,7 @@
 // viewer's saved login for it; open to every signed in user with one
 
 import { join } from "node:path";
+import { AfterglowSource, GlowHost, GlowSource, pathsOf, readLink, unixLike, windows } from "@phosphorus/afterglow";
 import * as as from "@phosphorus/appstream";
 import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
@@ -353,9 +354,9 @@ async function entryOf(s: hd.Session, path: string): Promise<{ argv: string[]; n
 }
 
 // --- window apps on Windows: the host's own phosphorus, its afterglow, or its Sunshine or Apollo
-// afterglow, phosphorus's fork of Apollo installed with it, streams the host's window
-// apps over one loopback link; a host's own Sunshine or Apollo entries (and any app on
-// a host whose afterglow isn't set up) go through glow, over GameStream
+// afterglow (github.com/pmghartman/afterglow), phosphorus's fork of Apollo installed with
+// it, streams the host's window apps over one loopback link; a host's own Sunshine or
+// Apollo entries (and any app on a host whose afterglow isn't set up) go through glow, over GameStream
 
 // a window app on Windows: its shortcut or program, started on the host as the shell would
 const winAppRe = /\.(lnk|exe|appref-ms|url)$/i;
@@ -363,11 +364,11 @@ const winAppRe = /\.(lnk|exe|appref-ms|url)$/i;
 const hostAppPre = "sunshine:";
 
 // this machine's GameStream host, as glow reaches it
-let glowHost: as.GlowHost | undefined;
+let glowHost: GlowHost | undefined;
 const localGlow = () =>
-  (glowHost ??= new as.GlowHost(
+  (glowHost ??= new GlowHost(
     join(DataDir, "glow"),
-    getPlatform() === "windows" ? as.windows : as.unixLike(getPlatform() === "darwin" ? "darwin" : "linux"),
+    getPlatform() === "windows" ? windows : unixLike(getPlatform() === "darwin" ? "darwin" : "linux"),
   ));
 
 // who's signed in at this Windows machine's console: the account the host's apps run as
@@ -395,7 +396,8 @@ async function consoleUser(): Promise<string> {
 }
 
 // this machine's afterglow: its link, when phosphorus's setup put it here and wrote one
-const localAfterglow = () => (getPlatform() === "windows" ? as.linkOf(DataDir) : undefined);
+const localAfterglow = () =>
+  getPlatform() === "windows" ? readLink(pathsOf(join(DataDir, "afterglow")).link) : undefined;
 // afterglow streams one app at a time, as a GameStream host does
 let afterglowBusy = "";
 
@@ -470,7 +472,7 @@ async function runGlow(ws: Conn, g: GlowAsk, q: URLSearchParams) {
         if (live) throw new Coded(409, `${g.host} streams one app at a time: close ${live.title} first`);
         ws.json({ t: "opening", name: g.name });
         let mine = "";
-        const src = new as.AfterglowSource({
+        const src = new AfterglowSource({
           link,
           target: g.path,
           virtualDisplay: true,
@@ -501,7 +503,7 @@ async function runGlow(ws: Conn, g: GlowAsk, q: URLSearchParams) {
       const target = title ? "" : `"${g.path}"`;
       ws.json({ t: "opening", name: g.name });
       let mine = "";
-      const src = new as.GlowSource({
+      const src = new GlowSource({
         host: ready.host,
         id: ready.id,
         app: () => gh.appFor(ready, title ? { title } : { target }),

@@ -1,4 +1,1 @@
 * text=auto eol=lf
-
-# afterglow: Windows batch files as cmd.exe expects them
-native/afterglow/**/*.bat text eol=crlf

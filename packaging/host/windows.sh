@@ -30,11 +30,12 @@ SIGNER=$ROOT/packaging/winsign.sh
 SIGN=()
 if [ -n "${AZURE_SIGNING_ENDPOINT:-}${WINDOWS_CERT_PFX:-}" ]; then SIGN=(-DSIGN="\"$BASH\" \"$SIGNER\""); fi
 
-# afterglow (native/afterglow, built on Windows by .github/workflows/afterglow.yml) in
-# the release when the build brought it: signed as ours, its GPL source named beside it
+# afterglow (github.com/pmghartman/afterglow, its Windows release zip unpacked here by
+# release.yml) in the release when the build brought it: signed as ours, its GPL source
+# named beside it
 if [ -f "$PAYLOAD/afterglow/afterglow.exe" ]; then
   "$SIGNER" "$PAYLOAD/afterglow/afterglow.exe" "$PAYLOAD/afterglow/tools/afterglowsvc.exe"
-  printf '\n\nafterglow (afterglow/): GPL-3.0-only, a fork of Apollo and Sunshine; afterglow/SOURCE.txt names its source\n' >> "$PAYLOAD/THIRD_PARTY_NOTICES.txt"
+  printf '\n\nafterglow (afterglow/): GPL-3.0-only, a fork of Apollo and Sunshine, from https://github.com/pmghartman/afterglow; afterglow/SOURCE.txt names its source\n' >> "$PAYLOAD/THIRD_PARTY_NOTICES.txt"
 fi
 cp -R "$PAYLOAD" "$STAGE/release"
 SETUP=$OUT/phosphorus-$VER-windows-x86_64-setup.exe

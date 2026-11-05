@@ -273,31 +273,3 @@ test("the tools pinned per OS, fetched only when a pin moves or a file is gone",
   }
   expect(Cloudflared).toMatch(/^\d{4}\.\d+\.\d+$/);
 }, 30_000);
-
-test("afterglow: its config with the link on and GameStream off, the token kept, the driver's version", async () => {
-  const ag = await import("../src/afterglow.ts");
-  const p = ag.pathsOf("C:\\Users\\me\\phosphorus\\state\\data\\afterglow");
-  const conf = ag.confText(p, ag.linkPort, "ab".repeat(24));
-  const kv = Object.fromEntries(
-    conf
-      .split("\r\n")
-      .filter((l) => l && !l.startsWith("#"))
-      .map((l) => l.split(" = ")),
-  );
-  expect(kv.phos_link_port).toBe("47100");
-  expect(kv.phos_link_token).toBe("ab".repeat(24));
-  expect(kv.system_tray).toBe("disabled");
-  expect(kv.upnp).toBe("off");
-  expect(kv.file_apps).toBe(p.apps);
-  expect(kv.dd_configuration_option).toBe("ensure_primary");
-  expect(JSON.parse(ag.appsText())).toEqual({ env: {}, apps: [] });
-  expect(JSON.parse(ag.linkText(47100, "t"))).toEqual({ port: 47100, token: "t" });
-  expect(ag.svcBinPath("C:\\h\\afterglow", "C:\\d\\afterglow.conf")).toBe(
-    `"${join("C:\\h\\afterglow", "tools", "afterglowsvc.exe")}" "C:\\d\\afterglow.conf"`,
-  );
-  const t = "0123456789abcdef".repeat(3);
-  expect(ag.tokenOf(ag.linkText(47100, t), () => "fresh")).toBe(t);
-  expect(ag.tokenOf("not json", () => "fresh")).toBe("fresh");
-  expect(ag.tokenOf(ag.linkText(47100, "short"), () => "fresh")).toBe("fresh");
-  expect(ag.driverVer("[Version]\r\nDriverVer = 07/14/2025,1.10.9.289\r\n")).toBe("07/14/2025,1.10.9.289");
-});

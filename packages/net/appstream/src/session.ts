@@ -2,7 +2,8 @@
 // queued (over TCP a backlog is pure latency, so a viewer whose socket is behind
 // skips frames until a fresh keyframe, at a lower rate), input handed on. Where the
 // app runs and how its frames are made is its source's: an X display and ffmpeg on
-// a Linux host (xsource.ts), or a GameStream host's Sunshine or Apollo (glow/)
+// a Linux host (xsource.ts), or a Windows host's afterglow or GameStream host
+// (@phosphorus/afterglow, whose sources keep the same Source contract)
 
 import { XSource } from "./xsource.ts";
 

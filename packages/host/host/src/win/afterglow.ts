@@ -1,6 +1,7 @@
-// afterglow set up on this Windows host: phosphorus's fork of Apollo, which the
-// release carries under afterglow/ (synced into the home with the rest of it). Run by
-// the elevated setup and by every rebuild (the service's, as SYSTEM), each step done
+// afterglow set up on this Windows host: phosphorus's fork of Apollo
+// (github.com/pmghartman/afterglow), which the release carries under afterglow/
+// (synced into the home with the rest of it), its files as @phosphorus/afterglow
+// writes them. Run by the elevated setup and by every rebuild (the service's, as SYSTEM), each step done
 // only when it isn't already: its data folder for SYSTEM and administrators alone,
 // its config and the link file the frontend reads, the SudoVDA virtual display driver
 // (so a host with no monitor streams), and the PhosphorusAfterglow service, restarted
@@ -8,7 +9,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appsText, confText, driverVer, linkPort, linkText, pathsOf, svcBinPath, tokenOf } from "../afterglow.ts";
+import { appsText, confText, driverVer, linkPort, linkText, pathsOf, svcBinPath, tokenOf } from "@phosphorus/afterglow";
 import { at, fileExists, output, quiet, run, say } from "../base.ts";
 import { ps } from "./setup.ts";
 

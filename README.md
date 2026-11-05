@@ -31,6 +31,8 @@ Full steps: [Getting started](https://github.com/pmghartman/phosphorus/wiki/Gett
 
 Apache 2.0, see [`LICENSE`](LICENSE).
 
+The Windows app-streaming host, [afterglow](https://github.com/pmghartman/afterglow), lives in its own repo under GPL-3.0.
+
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">
 </p>

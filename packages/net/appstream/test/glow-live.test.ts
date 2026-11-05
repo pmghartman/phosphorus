@@ -9,19 +9,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  AppSession,
   GlowHost,
   GlowSource,
   hostApps,
   type Instance,
-  MsgConfig,
-  MsgFrame,
   makeIdentity,
   type Platform,
   serverInfo,
   startInstance,
-  type Viewer,
-} from "../src/index.ts";
+} from "@phosphorus/afterglow";
+import { AppSession, MsgConfig, MsgFrame, type Viewer } from "../src/index.ts";
 
 const have = (c: string) => Bun.spawnSync(["sh", "-c", `command -v ${c}`]).exitCode === 0;
 const canRun = process.platform === "linux" && have("sunshine") && have("Xvfb") && have("xterm");

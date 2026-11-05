@@ -4,5 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/afterglow": "github:pmghartman/afterglow#6ec49136d0cfdb98fe0998689febfffec02f1e82"
   }
 }

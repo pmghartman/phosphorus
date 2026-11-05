@@ -1,5 +1,7 @@
 // deps: each workspace package's @phosphorus/* dependencies set from what its
-// source imports, as workspace:* links; --check only reports what differs
+// source imports, as workspace:* links, or for one from outside the workspace
+// (@phosphorus/afterglow) the pin the root package.json gives it; --check only
+// reports what differs
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -13,6 +15,13 @@ if (existsSync(join(root, "optional")))
   for (const a of readdirSync(join(root, "optional"))) dirs.push(join("optional", a));
 for (const g of readdirSync(join(root, "packages")))
   for (const p of readdirSync(join(root, "packages", g))) dirs.push(join("packages", g, p));
+
+// @phosphorus packages from their own repos, pinned once in the root package.json
+const rootDeps: Record<string, string> =
+  JSON.parse(readFileSync(join(root, "package.json"), "utf8")).dependencies ?? {};
+const external = new Map(
+  Object.entries(rootDeps).filter(([k, v]) => k.startsWith("@phosphorus/") && !v.startsWith("workspace:")),
+);
 
 const names = new Map<string, string>();
 for (const d of dirs) {
@@ -48,11 +57,12 @@ for (const d of dirs) {
       }
     }
   }
-  for (const name of want) if (!names.has(name)) throw new Error(`${d} imports ${name}, which no package declares`);
+  for (const name of want)
+    if (!names.has(name) && !external.has(name)) throw new Error(`${d} imports ${name}, which no package declares`);
   const deps: Record<string, string> = {};
   for (const [k, v] of Object.entries((pj.dependencies ?? {}) as Record<string, string>))
     if (!k.startsWith("@phosphorus/")) deps[k] = v;
-  for (const name of [...want].sort()) deps[name] = "workspace:*";
+  for (const name of [...want].sort()) deps[name] = external.get(name) ?? "workspace:*";
   const sorted = Object.fromEntries(Object.entries(deps).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   const next = { ...pj, dependencies: Object.keys(sorted).length ? sorted : undefined };
   if (!next.dependencies) delete next.dependencies;
@@ -63,9 +73,7 @@ for (const d of dirs) {
   if (checkOnly) console.error(`[deps] ${d}/package.json is out of date; run bun scripts/deps.ts`);
   else {
     writeFileSync(f, text);
-    console.log(
-      `[deps] ${d}: ${Object.keys(sorted).filter((k) => k.startsWith("@phosphorus/")).length} workspace deps`,
-    );
+    console.log(`[deps] ${d}: ${Object.values(sorted).filter((v) => v === "workspace:*").length} workspace deps`);
   }
 }
 if (checkOnly && bad) process.exit(1);
