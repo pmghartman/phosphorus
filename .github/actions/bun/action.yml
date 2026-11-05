@@ -31,6 +31,7 @@ runs:
         frozen=--frozen-lockfile
         if [ -n "$AG" ]; then
           bun scripts/afterglow.ts "$AG"
-          git diff --quiet -- package.json || frozen=
+          # git's index can call a same-length pin edit clean, so never frozen here
+          frozen=
         fi
         bun install $frozen ${{ inputs.production == 'true' && '--production' || '' }}
