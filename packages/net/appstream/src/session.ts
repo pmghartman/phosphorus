@@ -99,8 +99,12 @@ const maxW = 3840;
 const maxH = 2160;
 const startKbps = 20_000;
 const minKbps = 1_500;
-// bytes behind past which a frame is skipped: a frame or two at the start rate
+// bytes behind past which a frame is skipped: a frame or two at the start rate, or
+// twice the last keyframe, which alone can be bigger than that (1080p text is ~150 KiB)
+// and would otherwise have the frame after it skipped and another keyframe asked for,
+// over and over
 const behindBytes = 96 * 1024;
+export const behindLimit = (lastKey: number) => Math.max(behindBytes, lastKey * 2);
 const restartGapMs = 1000;
 const rampAfterMs = 20_000;
 const resizeQuietMs = 120;
@@ -130,6 +134,7 @@ export class AppSession {
   private lastRestart = 0;
   private lastKeyAsk = 0;
   private lastBehind = 0;
+  private lastKeyBytes = 0;
   private cleanSince = Date.now();
   private resizeT?: ReturnType<typeof setTimeout>;
   private restartT?: ReturnType<typeof setTimeout>;
@@ -339,7 +344,7 @@ export class AppSession {
       return;
     }
     const now = Date.now();
-    if (v.queued() > behindBytes) {
+    if (v.queued() > behindLimit(this.lastKeyBytes)) {
       // behind: this frame and the ones after it skipped until a keyframe. A source
       // that makes one on request is asked; the rate drops when it happens again soon
       this.stats.skipped++;
@@ -358,6 +363,7 @@ export class AppSession {
       this.restart("ramp");
     }
     const n = room ? data.length - HeadLen : data.length;
+    if (key) this.lastKeyBytes = n;
     const b = room ? data : new Uint8Array(HeadLen + n);
     const d = new DataView(b.buffer, b.byteOffset, HeadLen);
     b[0] = MsgFrame;
