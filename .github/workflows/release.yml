@@ -197,7 +197,8 @@ jobs:
           ZIP=afterglow-$AG-windows-x86_64.zip
           DL=$RUNNER_TEMP/afterglow
           gh release download "v$AG" -R "$AG_REPO" -p "$ZIP" -p SHA256SUMS -D "$DL"
-          (cd "$DL" && sha256sum -c SHA256SUMS)
+          # SHA256SUMS lists the Linux tarball too, which isn't downloaded: only the zip's line checked
+          (cd "$DL" && grep -E "[ *]$ZIP\$" SHA256SUMS | sha256sum -c --strict -)
           gh attestation verify "$DL/$ZIP" --repo "$AG_REPO"
           mkdir -p "$APP/payload/afterglow"
           unzip -q "$DL/$ZIP" -d "$APP/payload/afterglow"
