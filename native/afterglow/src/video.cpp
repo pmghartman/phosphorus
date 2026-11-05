@@ -826,11 +826,9 @@ namespace video {
       },
       {
         // SDR-specific options
-        {"profile"s, [](const config_t &cfg) {
-           if (cfg.profile == 66) return "baseline"s;
-           if (cfg.profile == 77) return "main"s;
-           return "high"s;
-         }},
+        // afterglow: Apollo's config_t has no profile (Sunshine's merge assumed one);
+        // High, what every browser's decoder takes
+        {"profile"s, "high"s},
       },
       {},  // HDR-specific options
       {},  // YUV444 SDR-specific options
