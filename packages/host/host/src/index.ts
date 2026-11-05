@@ -42,6 +42,7 @@ export const commands = new Set([
   "uninstall",
   "status",
   "version",
+  "afterglow",
   "help",
   "-h",
   "--help",

@@ -104,6 +104,8 @@ export async function updateSelf(by: string): Promise<void> {
     if (!protoOK(m.proto)) throw new Error(protoWhy(m.proto, m.version));
     const have = pickAfterglow(RepoDir, windows);
     if (have && versionCmp(have.version, m.version) >= 0) {
+      // already here: Windows' service moved onto it again, should an earlier try have stopped short
+      if (windows) await run([...binSelf(), "afterglow"], 180_000);
       state = { state: "idle", at: Date.now() };
       return;
     }

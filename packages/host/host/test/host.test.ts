@@ -55,6 +55,10 @@ test("commands and usage", async () => {
   for (const m of usageText.matchAll(/phos (\w+)/g)) expect(commands.has(m[1]!)).toBe(true);
   expect(usageText).not.toMatch(/\b(ps|vpn|all)\b/);
   expect(await main("help", [])).toBe(0);
+  // every command main handles taken by the binary's own list, or it never reaches main
+  const src = readFileSync(join(import.meta.dir, "../src/index.ts"), "utf8");
+  const body = src.slice(src.indexOf("export async function main("));
+  for (const m of body.matchAll(/case "([\w-]*)":/g)) expect(commands.has(m[1]!)).toBe(true);
 });
 
 test("version reads the home's VERSION, else dev", () => {
