@@ -8,7 +8,7 @@ import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
 import * as users from "@phosphorus/users";
-import { DataDir, errText, tailnetIP } from "@phosphorus/util";
+import { DataDir, errText, logf as log, tailnetIP } from "@phosphorus/util";
 import { type Conn, type Ctx, dial, upgrade } from "@phosphorus/wsock";
 import { getPlatform, hostSSHHost, hostSSHPort, port, selfHost, whoHeader } from "./config.ts";
 import {
@@ -53,6 +53,7 @@ type Cached = { desk: hd.Desk; apps?: hd.Item[]; icons: string[] };
 async function session(w: Who): Promise<hd.Session> {
   const [user, pass, ok] = await users.HostLogin(w.s, w.host);
   if (!ok) throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
+  const t0 = Date.now();
   const [s, fresh] = await hd
     .sessionFor(keyOf(w, user), async () => {
       const addr = w.host === selfHost ? hostSSHHost : await tailnetIP(w.host);
@@ -67,6 +68,7 @@ async function session(w: Who): Promise<hd.Session> {
   const c = hd.ctxOf(s, phosphorusOn(w.host));
   c.psTerm = phosphorusOn(w.host);
   if (fresh) {
+    log("[hostdesk] %s: ssh and probes up in %dms", w.host, Date.now() - t0);
     note(w.s.user, "host_desktop", { host: w.host, login: user });
     // what an earlier visit issued, so the cache draws before the probe answers
     const k = hd.cacheJSON<Cached>(w.host, cacheKey(w));
@@ -183,7 +185,9 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
   const s = await session(w);
   switch (op) {
     case "desktop": {
+      const t0 = Date.now();
       const desk = await hd.desktop(s);
+      log("[hostdesk] %s: desktop read in %dms", w.host, Date.now() - t0);
       remember(w, s);
       void hd.prefetch(s, w.host, [...desk.icons, ...desk.pins]).catch(() => {});
       return sendJSON(200, { desk }, nc);
@@ -192,7 +196,7 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       const apps = await hd.apps(s);
       remember(w, s);
       // every app's icon read from the host in one go, cached before the apps menu asks
-      void hd.prefetch(s, w.host, apps).catch(() => {});
+      void hd.prefetch(s, w.host, apps, true).catch(() => {});
       return sendJSON(200, { apps }, nc);
     }
     case "icon": {
@@ -202,8 +206,10 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       return blobRes(b, "private, max-age=31536000, immutable");
     }
     case "wallpaper": {
+      const t0 = Date.now();
       const b = await hd.wallpaper(s, w.host);
       if (!b) return new Response(null, { status: 404, headers: nc });
+      log("[hostdesk] %s: wallpaper %dKB in %dms", w.host, Math.round(b.bytes.length / 1024), Date.now() - t0);
       return blobRes(b, "private, max-age=31536000, immutable");
     }
     case "roots":

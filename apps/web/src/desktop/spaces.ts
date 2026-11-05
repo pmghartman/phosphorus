@@ -9,7 +9,7 @@ import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS } from '../lib/dom.ts';
 import { dk, PREF_LS } from '../lib/state.ts';
 import { newSid } from '../lib/util.ts';
-import { api, hostInfo, hostLoad, type Item, itemKey } from './desk/hosts.ts';
+import { api, hostInfo, hostLoad, hostWarm, type Item, itemKey } from './desk/hosts.ts';
 import { streamWin } from './desk/hoststream.ts';
 import { dkIcons, dkLiveHosts } from './desk/icons.ts';
 import { osGlyph, osOf } from './desk/terminal.ts';
@@ -83,6 +83,11 @@ export function dkSpaceBoot() {
     history.replaceState(null, '', location.pathname + location.search);
   }
   dkSpace(h && dk.creds.has(h) ? h : '');
+  // every logged in host's ssh session opened and its last desk read while the page is idle,
+  // so the first switch onto one finds it up
+  (window.requestIdleCallback ?? setTimeout)(() => {
+    for (const host of dkLiveHosts()) void hostWarm(host);
+  });
 }
 
 // the next or last desktop: the shared one, then each logged in host

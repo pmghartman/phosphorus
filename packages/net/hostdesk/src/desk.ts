@@ -133,25 +133,25 @@ function track(c: Ctx, key: string, host: string, p: Promise<Blob | undefined>) 
   return q;
 }
 
-async function fetchIcon(s: Session, spec: string): Promise<Blob | undefined> {
+async function fetchIcon(s: Session, spec: string, slow = false): Promise<Blob | undefined> {
   if (win(s)) {
-    const r = json(await s.call("icon", spec));
+    const r = json(await s.call("icon", spec, undefined, slow));
     return typeof r?.png === "string" && r.png ? { type: "image/png", bytes: Buffer.from(r.png, "base64") } : undefined;
   }
   let path = "";
   if (spec.startsWith("p:")) path = spec.slice(2);
   else if (spec.startsWith("x:")) {
     const [theme, names] = spec.slice(2).split("|");
-    path = (await s.call("icon", `${theme}\n${(names ?? "").split(",").join("\n")}`)).trim();
+    path = (await s.call("icon", `${theme}\n${(names ?? "").split(",").join("\n")}`, undefined, slow)).trim();
   }
   if (!path) return;
   const b = await readAll(s, path, iconMax);
   return { type: sniff(b, path), bytes: b };
 }
 
-// the icons a desk draws first, fetched and cached before the page asks: one
-// request for all of them on Windows, pipelined on Linux
-export async function prefetch(s: Session, host: string, items: Item[]): Promise<void> {
+// the icons a desk draws first, fetched and cached before the page asks: one request for
+// all of them on Windows, pipelined on Linux; slow: the start menu's, never in the desk's way
+export async function prefetch(s: Session, host: string, items: Item[], slow = false): Promise<void> {
   const c = ctxOf(s);
   const want = new Map<string, string>();
   for (const it of items) {
@@ -161,11 +161,11 @@ export async function prefetch(s: Session, host: string, items: Item[]): Promise
   }
   if (!want.size) return;
   if (!win(s)) {
-    await Promise.allSettled([...want].map(([key, spec]) => track(c, key, host, fetchIcon(s, spec))));
+    await Promise.allSettled([...want].map(([key, spec]) => track(c, key, host, fetchIcon(s, spec, slow))));
     return;
   }
   const specs = [...new Set(want.values())];
-  const all = s.call("icons", JSON.stringify(specs), 120_000).then((t) => {
+  const all = s.call("icons", JSON.stringify(specs), 120_000, slow).then((t) => {
     const m = new Map<string, Blob>();
     for (const r of json(t) as { k?: string; png?: string }[])
       if (r?.k && r.png) m.set(r.k, { type: "image/png", bytes: Buffer.from(r.png, "base64") });

@@ -157,10 +157,10 @@ export class Session {
     });
   }
 
-  // one request answered, pipelined with any others
-  call(cmd: string, arg = "", ms = callMs): Promise<string> {
+  // one request answered, pipelined with any others; slow: on the slow lane whatever it is
+  call(cmd: string, arg = "", ms = callMs, slow = false): Promise<string> {
     this.lastUse = Date.now();
-    const l = (slowCmds.has(cmd) && this.slow) || this.fast;
+    const l = ((slow || slowCmds.has(cmd)) && this.slow) || this.fast;
     if (this.dead || !l) return Promise.reject(new Error(`the session with ${this.target.host} closed`));
     const id = ++l.n;
     return new Promise((ok, no) => {

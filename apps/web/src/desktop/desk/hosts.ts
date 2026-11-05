@@ -101,16 +101,17 @@ export function hostLoad(h: string, changed: () => void): Promise<void> {
   return go;
 }
 
-const peeked = new Set<string>();
+const warmed = new Set<string>();
 
-// a host's last desk alone, for its card in the switcher: no live read, once a page;
-// true when it brought one
-export async function hostPeek(h: string): Promise<boolean> {
+// a host's session opened ahead of a first switch: its cached desk asked for, which has the
+// server open the ssh session and read the icons it last drew; once a page, true when it
+// brought a desk this browser hadn't seen
+export async function hostWarm(h: string): Promise<boolean> {
+  if (warmed.has(h)) return false;
+  warmed.add(h);
   const i = hostInfo(h);
-  if (i.desk || peeked.has(h)) return false;
-  peeked.add(h);
   const c = await acctCall<{ desk?: Desk; apps?: Item[] }>(api(h, 'desktop', { cached: '1' }));
-  if (!c.ok || !c.desk) return false;
+  if (!c.ok || !c.desk || i.desk) return false;
   i.desk = c.desk;
   if (c.apps?.length) i.apps = c.apps;
   keep(h, i);

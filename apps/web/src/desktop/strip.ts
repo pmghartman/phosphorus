@@ -6,7 +6,7 @@ import { hostSwitchNow } from '../features/mesh/mesh.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { hostInfo, hostPeek, wallSrc } from './desk/hosts.ts';
+import { hostInfo, hostWarm, wallSrc } from './desk/hosts.ts';
 import { wallMine } from './desk/wallpaper.ts';
 import { dkMenu } from './desk.ts';
 import { dkSpace, spaceGlyph, spaceName } from './spaces.ts';
@@ -188,7 +188,7 @@ function fill(peek = true) {
   // a logged in host never seen in this browser: its last desk asked for, its wallpaper then shown
   for (const h of peek ? ids : [])
     if (h && dk.creds.has(h) && !hostInfo(h).desk)
-      void hostPeek(h).then((got) => {
+      void hostWarm(h).then((got) => {
         if (got && strip && !strip.hidden) fill();
       });
 }
