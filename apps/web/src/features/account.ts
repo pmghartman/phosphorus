@@ -4,6 +4,7 @@
 import type { Me, UserRow } from '@phosphorus/wire';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
 import { DK_USERS_KEY, dkProbe, dkUsers } from '../desktop/login.ts';
+import { dkSpaceGone } from '../desktop/spaces.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { dkClose } from '../desktop/windows.ts';
 import { acctCall } from '../lib/api.ts';
@@ -452,8 +453,9 @@ export function dkForget(host: string) {
     delete st.acct.vault.hosts[host];
     acctSave();
   }
-  for (const w of [...dk.wins.values()]) if (w.host === host) dkClose(w, true);
+  for (const w of [...dk.wins.values()]) if (w.host === host || w.space === host) dkClose(w, true);
   dkTermDrop((h) => h === host);
+  dkSpaceGone();
   dkChips();
   dkIcons();
 }

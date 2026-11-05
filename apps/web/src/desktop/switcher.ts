@@ -18,7 +18,7 @@ function swPaint() {
 // the windows, minimized ones last, most recent first
 function swOrder(): DkWin[] {
   const shown = dkStack();
-  const hidden = [...dk.wins.values()].filter((w) => w.node.hidden && !w.leaving);
+  const hidden = [...dk.wins.values()].filter((w) => w.node.hidden && !w.leaving && (w.space ?? '') === dk.space);
   return [...shown, ...hidden];
 }
 

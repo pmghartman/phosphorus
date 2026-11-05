@@ -295,43 +295,9 @@ function Bins {
   }
 }
 
-function Do-trash($a) {
-  $r = @()
-  foreach ($b in Bins) {
-    foreach ($i in Get-ChildItem -LiteralPath $b -Force -Filter '$I*' -ErrorAction SilentlyContinue) {
-      $rp = Join-Path $b ('$R' + $i.Name.Substring(2))
-      if (-not (Test-Path -LiteralPath $rp)) { continue }
-      $r += [ordered]@{ bin = $b; i = $i.Name; dir = (Test-Path -LiteralPath $rp -PathType Container); data = [Convert]::ToBase64String([IO.File]::ReadAllBytes($i.FullName)) }
-    }
-  }
-  , $r
-}
-
 function BinOf($b) {
   foreach ($x in Bins) { if ($x -ieq $b) { return $x } }
   throw 'not a recycle bin of this login'
-}
-
-function Do-restore($a) {
-  $o = $a | ConvertFrom-Json
-  $b = BinOf $o.bin
-  if ($o.i -notmatch '^\$I[A-Z0-9]{6}(\.[^\\/:*?"<>|]{1,64})?$') { throw 'not in the recycle bin' }
-  $rp = Join-Path $b ('$R' + $o.i.Substring(2))
-  if (Test-Path -LiteralPath $o.to) { throw "something is already at $($o.to)" }
-  $parent = Split-Path -LiteralPath $o.to -Parent
-  if ($parent -and -not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-  Move-Item -LiteralPath $rp -Destination $o.to
-  Remove-Item -LiteralPath (Join-Path $b $o.i) -Force
-  @{ ok = $true }
-}
-
-function Do-empty($a) {
-  foreach ($b in Bins) {
-    foreach ($f in Get-ChildItem -LiteralPath $b -Force -ErrorAction SilentlyContinue) {
-      if ($f.Name -like '$R*' -or $f.Name -like '$I*') { Remove-Item -LiteralPath $f.FullName -Recurse -Force }
-    }
-  }
-  @{ ok = $true }
 }
 
 function Do-stat($a) {
@@ -370,72 +336,20 @@ function Do-ls($a) {
   , $r
 }
 
-function Do-images($a) {
+# every drive: a network one named only, never waited on
+function Do-roots($a) {
   $r = @()
-  foreach ($d in @("$env:WINDIR\Web\Wallpaper", "$env:WINDIR\Web\4K\Wallpaper", [Environment]::GetFolderPath('MyPictures'))) {
-    if (-not $d -or -not (Test-Path -LiteralPath $d)) { continue }
-    foreach ($f in Get-ChildItem -LiteralPath $d -Recurse -Force -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.jpg', '.jpeg', '.png', '.bmp', '.webp' } | Select-Object -First 300) { $r += $f.FullName }
+  foreach ($d in [IO.DriveInfo]::GetDrives()) {
+    $o = [ordered]@{ name = $d.Name.TrimEnd('\'); path = $d.RootDirectory.FullName; label = ''; size = 0; free = 0 }
+    if ($d.DriveType -ne 'Network' -and $d.IsReady) {
+      $o.label = $d.VolumeLabel; $o.size = $d.TotalSize; $o.free = $d.AvailableFreeSpace
+    } elseif ($d.DriveType -ne 'Network') { continue }
+    $r += $o
   }
   , $r
 }
 
-# the change in the user's own session: a task run once where they're signed in
-function Live($ps) {
-  $n = 'phosphorus-desk-' + [guid]::NewGuid().ToString('n').Substring(0, 8)
-  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ps))
-  try {
-    $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand $enc"
-    $who = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
-    Register-ScheduledTask -TaskName $n -Action $act -Principal $who -Force | Out-Null
-    Start-ScheduledTask -TaskName $n
-    Start-Sleep -Milliseconds 2500
-    Unregister-ScheduledTask -TaskName $n -Confirm:$false
-    $true
-  } catch {
-    try { Unregister-ScheduledTask -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue } catch {}
-    $false
-  }
-}
-
-$liveHead = @'
-Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class PhLive { [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int SystemParametersInfo(int a, int b, string c, int d); [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, int m, IntPtr w, string l, int f, int t, out IntPtr r); }'
-'@
-
-function Do-set($a) {
-  $o = $a | ConvertFrom-Json
-  $cv = 'HKCU:\Software\Microsoft\Windows\CurrentVersion'
-  $live = $liveHead + "`n"
-  if ($null -ne $o.wallpaper) {
-    if (-not (Test-Path -LiteralPath $o.wallpaper -PathType Leaf)) { throw "not found: $($o.wallpaper)" }
-    Set-ItemProperty -LiteralPath 'HKCU:\Control Panel\Desktop' -Name WallPaper -Value $o.wallpaper
-    $q = $o.wallpaper -replace "'", "''"
-    $live += "[void][PhLive]::SystemParametersInfo(20, 0, '$q', 3)`n"
-  }
-  if ($null -ne $o.dark) {
-    $v = [int](-not $o.dark)
-    $k = "$cv\Themes\Personalize"
-    if (-not (Test-Path -LiteralPath $k)) { New-Item -Path $k -Force | Out-Null }
-    Set-ItemProperty -LiteralPath $k -Name AppsUseLightTheme -Value $v -Type DWord
-    Set-ItemProperty -LiteralPath $k -Name SystemUsesLightTheme -Value $v -Type DWord
-  }
-  if ($null -ne $o.accent) {
-    if ($o.accent -notmatch '^#[0-9a-fA-F]{6}$') { throw "not a colour: $($o.accent)" }
-    $r = [Convert]::ToInt32($o.accent.Substring(1, 2), 16); $g = [Convert]::ToInt32($o.accent.Substring(3, 2), 16); $bl = [Convert]::ToInt32($o.accent.Substring(5, 2), 16)
-    $abgr = [BitConverter]::ToInt32([byte[]]@($r, $g, $bl, 0xFF), 0)
-    $argb = [BitConverter]::ToInt32([byte[]]@($bl, $g, $r, 0xC4), 0)
-    $k = "$cv\Explorer\Accent"
-    if (-not (Test-Path -LiteralPath $k)) { New-Item -Path $k -Force | Out-Null }
-    Set-ItemProperty -LiteralPath $k -Name AccentColorMenu -Value $abgr -Type DWord
-    Set-ItemProperty -LiteralPath $k -Name StartColorMenu -Value $abgr -Type DWord
-    Set-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\DWM' -Name AccentColor -Value $abgr -Type DWord
-    Set-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\DWM' -Name ColorizationColor -Value $argb -Type DWord
-    Set-ItemProperty -LiteralPath 'HKCU:\Control Panel\Desktop' -Name AutoColorization -Value '0'
-  }
-  $live += '$r = [IntPtr]::Zero; [void][PhLive]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [IntPtr]::Zero, ''ImmersiveColorSet'', 2, 3000, [ref]$r)' + "`n"
-  @{ live = (Live $live) }
-}
-
-$cmds = 'desktop', 'apps', 'icon', 'icons', 'trash', 'restore', 'empty', 'stat', 'delete', 'open', 'ls', 'images', 'set'
+$cmds = 'desktop', 'apps', 'icon', 'icons', 'stat', 'delete', 'open', 'ls', 'roots'
 $out = [Console]::Out
 while ($true) {
   $l = [Console]::In.ReadLine()

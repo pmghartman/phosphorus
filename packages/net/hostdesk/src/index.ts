@@ -6,25 +6,25 @@ export { cacheJSON, cachePut } from "./cache.ts";
 export {
   apps,
   type Blob,
-  change,
+  copyFile,
   ctxOf,
   desktop,
-  empty,
   icon,
-  images,
   ls,
+  mkdir,
   open,
   prefetch,
   readAll,
   readStream,
   remove,
-  restore,
+  rename,
+  roots,
   statOf,
-  trash,
   wallpaper,
+  writeAt,
   writeText,
 } from "./desk.ts";
 export { parseEntry } from "./linux.ts";
-export type { BinItem, Change, Desk, Entry, Item, Kind, Look, Shell } from "./model.ts";
-export { norm, Scope, within } from "./paths.ts";
+export type { Desk, Entry, Item, Kind, Look, Root, Shell } from "./model.ts";
+export { norm } from "./paths.ts";
 export { dropSession, Refused, reap, Session, sessionCount, sessionFor, sessionOf, type Target } from "./session.ts";

@@ -1,10 +1,10 @@
 // a Linux host's desktop read from what its probe sends: desktop entries, gsettings
-// values, KDE and XFCE config files, trashinfo; each parsed here, not in sh
+// values, KDE and XFCE config files; each parsed here, not in sh
 
 import { type Desk, type Item, type Kind, plainLook, type Shell } from "./model.ts";
 import type { Rec } from "./proto.ts";
 
-// --- ini files: desktop entries, trashinfo, kdeglobals, appletsrc ------------------
+// --- ini files: desktop entries, kdeglobals, appletsrc ------------------------------
 
 export type Ini = Map<string, Map<string, string>>;
 
@@ -127,9 +127,6 @@ export function gList(v: string): string[] {
   );
 }
 
-export const gQuote = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-export const gArray = (xs: string[]) => `[${xs.map(gQuote).join(", ")}]`;
-
 // --- uris and percent encoding -------------------------------------------------------
 
 export function uriPath(u: string): string {
@@ -142,7 +139,7 @@ export function uriPath(u: string): string {
   }
 }
 
-// a path as a trashinfo or file uri holds it: unreserved and slashes kept
+// a path as a trashinfo holds it: unreserved and slashes kept
 export const pctPath = (p: string) =>
   [...Buffer.from(p, "utf8")]
     .map((b) => {
@@ -151,26 +148,7 @@ export const pctPath = (p: string) =>
     })
     .join("");
 
-export const fileUri = (p: string) => `file://${pctPath(p)}`;
-
 // --- trash ---------------------------------------------------------------------------
-
-export type TrashInfo = { path: string; deleted: number };
-
-export function parseTrashInfo(text: string): TrashInfo | undefined {
-  const s = parseIni(text).get("Trash Info");
-  const raw = s?.get("Path");
-  if (!raw) return;
-  let path: string;
-  try {
-    path = decodeURIComponent(raw);
-  } catch {
-    return;
-  }
-  if (!path.startsWith("/")) return;
-  const d = Date.parse(s!.get("DeletionDate") ?? "");
-  return { path, deleted: Number.isNaN(d) ? 0 : d };
-}
 
 // a DeletionDate in the host's local time, as the spec has it
 export function trashDate(ms: number, offsetMin = new Date(ms).getTimezoneOffset()): string {
@@ -293,16 +271,13 @@ export const fileIconNames = (name: string) => {
   return hit ? [hit[1], "text-x-generic"] : ["text-x-generic"];
 };
 
-export type LinuxDesk = { desk: Desk; deskDir: string; pinIds: string[]; pinItems: Item[]; folders: string[] };
-
 // the desktop record set built into the shape the page draws, apps for the pins
-export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
+export function buildDesk(recs: Rec[], apps: App[]): Desk {
   const env = new Map<string, string>();
   const gs = new Map<string, string>();
   const files = new Map<string, Rec>();
   const lists = new Map<string, string[]>();
   const ents: Rec[] = [];
-  let deskDir = "";
   for (const r of recs) {
     if (r.kind === "env")
       for (const l of r.body.split("\n")) {
@@ -311,7 +286,6 @@ export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
       }
     else if (r.kind === "gs") gs.set(r.args[0] ?? "", r.body.trim());
     else if (r.kind === "file") files.set(r.args[0] ?? "", r);
-    else if (r.kind === "deskdir") deskDir = r.args[0] ?? "";
     else if (r.kind === "ent") ents.push(r);
     else if (r.kind === "ls") lists.set(r.args[0] ?? "", r.body.split("\n").filter(Boolean));
   }
@@ -414,7 +388,6 @@ export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
     if (a) pinItems.push(a);
   }
   desk.pins = pinItems.map(({ entry: _e, ...it }: Item & { entry?: Entry }) => it);
-  const folders: string[] = [];
   const showIcons = shell !== "gnome" || desk.ding;
   if (showIcons)
     for (const r of ents) {
@@ -429,10 +402,8 @@ export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
           continue;
         }
       }
-      if (t === "d") {
-        folders.push(path);
-        desk.icons.push({ name, kind: "folder", path, icon: `x:${theme}|folder`, iv: theme });
-      } else
+      if (t === "d") desk.icons.push({ name, kind: "folder", path, icon: `x:${theme}|folder`, iv: theme });
+      else
         desk.icons.push({ name, kind: "file", path, icon: `x:${theme}|${fileIconNames(name).join(",")}`, iv: theme });
     }
   desk.icons.sort((a, b) => Number(b.kind === "folder") - Number(a.kind === "folder") || a.name.localeCompare(b.name));
@@ -442,7 +413,7 @@ export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
     icon: `x:${theme}|${desk.binFull ? "user-trash-full," : ""}user-trash`,
     iv: `${theme}${desk.binFull ? "+" : ""}`,
   });
-  return { desk, deskDir, pinIds, pinItems, folders };
+  return desk;
 }
 
 const launcherN = (p: string) => Number(/launcher-(\d+)/.exec(p)?.[1] ?? 0);
@@ -505,18 +476,4 @@ export function kdeApplets(text: string): KdeApplets {
     }
   }
   return out;
-}
-
-// the plasma script setting the wallpaper or the task manager's launchers
-export function kdeScript(c: { wallpaper?: string; pins?: string[] }): string {
-  const parts: string[] = [];
-  if (c.wallpaper !== undefined)
-    parts.push(
-      `desktops().forEach(function(d){d.wallpaperPlugin='org.kde.image';d.currentConfigGroup=['Wallpaper','org.kde.image','General'];d.writeConfig('Image',${JSON.stringify(fileUri(c.wallpaper))});});`,
-    );
-  if (c.pins)
-    parts.push(
-      `panels().forEach(function(p){p.widgets().forEach(function(w){if(/taskmanager|icontasks/.test(w.type)){w.currentConfigGroup=['General'];w.writeConfig('launchers',${JSON.stringify(c.pins.map((id) => `applications:${id}`).join(","))});}});});`,
-    );
-  return parts.join("");
 }

@@ -24,7 +24,7 @@ import {
 } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 
-const deskRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/([a-z]+)$/;
+const deskRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/([a-z-]+)$/;
 const maxText = 16 << 20;
 
 // every computer the tailnet names, this one too
@@ -48,7 +48,7 @@ type Who = { s: users.Session; host: string };
 const keyOf = (w: Who, login: string) => `${w.s.user}\0${w.host}\0${login}`;
 const cacheKey = (w: Who) => `desk\0${w.s.user}`;
 
-type Cached = { desk: hd.Desk; apps?: hd.Item[]; scope: { exact: string[]; dirs: string[] }; icons: string[] };
+type Cached = { desk: hd.Desk; apps?: hd.Item[]; icons: string[] };
 
 async function session(w: Who): Promise<hd.Session> {
   const [user, pass, ok] = await users.HostLogin(w.s, w.host);
@@ -71,8 +71,6 @@ async function session(w: Who): Promise<hd.Session> {
     // what an earlier visit issued, so the cache draws before the probe answers
     const k = hd.cacheJSON<Cached>(w.host, cacheKey(w));
     if (k?.desk) {
-      c.scope = new hd.Scope(k.desk.home, s.os === "windows");
-      c.scope.load(k.scope ?? {});
       for (const i of k.icons ?? []) c.icons.add(i);
       c.desk = k.desk;
     }
@@ -83,7 +81,7 @@ async function session(w: Who): Promise<hd.Session> {
 function remember(w: Who, s: hd.Session) {
   const c = hd.ctxOf(s);
   if (!c.desk) return;
-  const k: Cached = { desk: c.desk, apps: c.apps, scope: c.scope.list(), icons: [...c.icons] };
+  const k: Cached = { desk: c.desk, apps: c.apps, icons: [...c.icons] };
   hd.cachePut(w.host, cacheKey(w), JSON.stringify(k));
 }
 
@@ -136,10 +134,10 @@ const blobRes = (b: hd.Blob, cache: string) =>
     },
   });
 
-// the path asked for, kept to what this login may reach
+// the path asked for made clean; the host's own permissions for the login decide the rest
 function allowed(s: hd.Session, p: string): string {
-  const ok = hd.ctxOf(s).scope.allow(p);
-  if (!ok) throw new Coded(403, "outside this login's profile");
+  const ok = hd.norm(p, s.os === "windows");
+  if (!ok) throw new Coded(400, "not a full path");
   return ok;
 }
 
@@ -163,7 +161,7 @@ export async function hostdeskRoute(
   if (method === "POST" && !sameOrigin(c)) return sendJSON(403, { error: "forbidden" });
   try {
     if (method === "GET") return await getOp(w, op, q);
-    if (method === "POST") return await postOp(w, op, c);
+    if (method === "POST") return await postOp(w, op, c, q);
   } catch (e) {
     return sendJSON(...fail(e));
   }
@@ -193,6 +191,8 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     case "apps": {
       const apps = await hd.apps(s);
       remember(w, s);
+      // every app's icon read from the host in one go, cached before the apps menu asks
+      void hd.prefetch(s, w.host, apps).catch(() => {});
       return sendJSON(200, { apps }, nc);
     }
     case "icon": {
@@ -206,10 +206,8 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       if (!b) return new Response(null, { status: 404, headers: nc });
       return blobRes(b, "private, max-age=31536000, immutable");
     }
-    case "ls":
-      return sendJSON(200, { entries: await hd.ls(s, allowed(s, q.get("path") ?? "")) }, nc);
-    case "images":
-      return sendJSON(200, { images: await hd.images(s) }, nc);
+    case "roots":
+      return sendJSON(200, { roots: await hd.roots(s) }, nc);
     case "running": {
       const [login] = await users.HostLogin(w.s, w.host);
       // a Windows host's apps run on its own phosphorus: asked there
@@ -218,8 +216,6 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       const apps = as.list(keyOf(w, login)).map((a) => ({ id: a.id, title: a.title, name: a.start.name }));
       return sendJSON(200, { apps }, nc);
     }
-    case "trash":
-      return sendJSON(200, { items: await hd.trash(s) }, nc);
     case "read": {
       const p = allowed(s, q.get("path") ?? "");
       const st = await hd.statOf(s, p);
@@ -229,8 +225,20 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       if (b.subarray(0, 8000).includes(0)) return sendJSON(200, { path: p, size: st.size, binary: true }, nc);
       return sendJSON(200, { path: p, size: st.size, text: Buffer.from(b).toString("utf8") }, nc);
     }
+    case "fs-list": {
+      const rel = q.get("path") ?? "";
+      // a Windows host's top: its drives
+      if (!rel && s.os === "windows") {
+        const entries = (await hd.roots(s)).map((r) => ({ name: r.name, dir: true, size: null, mtime: null }));
+        return sendJSON(200, { path: "", entries }, nc);
+      }
+      const ents = await hd.ls(s, allowed(s, deskAbs(rel)));
+      const entries = ents.map((e) => ({ name: e.name, dir: e.dir, size: e.dir ? null : e.size, mtime: e.mtime }));
+      return sendJSON(200, { path: rel, entries }, nc);
+    }
+    case "fs-download":
     case "download": {
-      const p = allowed(s, q.get("path") ?? "");
+      const p = allowed(s, op === "fs-download" ? deskAbs(q.get("path") ?? "") : (q.get("path") ?? ""));
       const { size, body } = await hd.readStream(s, p);
       const name = p.split(/[\\/]/).pop() ?? "file";
       const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? "";
@@ -251,7 +259,8 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
   throw new Coded(404, "not found");
 }
 
-async function postOp(w: Who, op: string, c: Ctx): Promise<Response> {
+async function postOp(w: Who, op: string, c: Ctx, q: URLSearchParams): Promise<Response> {
+  if (op === "fs-upload") return upload(w, c, q);
   const raw = await readRaw(c, op === "save" ? maxSaveBody * 8 : maxJSONBody);
   if (raw === undefined) return sendJSON(413, { error: "too big" });
   const p = obj(decode(raw.length ? raw : "{}")) ?? {};
@@ -267,35 +276,25 @@ async function postOp(w: Who, op: string, c: Ctx): Promise<Response> {
     }
   };
   switch (op) {
-    case "trash": {
-      const what = str(p.op);
-      if (what === "restore")
-        return audited("host_desktop_restore", { id: str(p.id) }, async () => ({ to: await hd.restore(s, str(p.id)) }));
-      if (what === "empty") return audited("host_desktop_empty", {}, async () => (await hd.empty(s), {}));
-      if (what === "delete") {
-        const path = allowed(s, str(p.path));
-        return audited("host_desktop_delete", { path }, async () => (await hd.remove(s, path), {}));
-      }
-      throw new Coded(400, "op is restore, empty or delete");
-    }
     case "open": {
       const it = await hd.open(s, allowed(s, str(p.path)));
       return sendJSON(200, { item: it, phosphorus: phosphorusOn(w.host) });
     }
-    case "set": {
-      const ch: hd.Change = {};
-      if (typeof p.wallpaper === "string") ch.wallpaper = allowed(s, p.wallpaper);
-      if (typeof p.dark === "boolean") ch.dark = p.dark;
-      if (typeof p.accent === "string") ch.accent = p.accent;
-      if (Array.isArray(p.pins))
-        ch.pins = p.pins.filter((x: unknown) => typeof x === "string" && /^[\w.-]{1,200}$/.test(x));
-      if (!Object.keys(ch).length) throw new Coded(400, "nothing to change");
-      return audited("host_desktop_set", ch, async () => {
-        const live = await hd.change(s, ch);
-        const desk = await hd.desktop(s);
-        remember(w, s);
-        return { live, desk };
-      });
+    case "fs-mkdir": {
+      const path = allowed(s, deskAbs(str(p.path)));
+      return audited("host_files_mkdir", { path }, async () => (await hd.mkdir(s, path), {}));
+    }
+    case "fs-rename":
+    case "fs-copy": {
+      const from = allowed(s, deskAbs(str(p.from)));
+      const to = allowed(s, deskAbs(str(p.to)));
+      if (op === "fs-copy")
+        return audited("host_files_copy", { from, to }, async () => (await hd.copyFile(s, from, to), {}));
+      return audited("host_files_move", { from, to }, async () => (await hd.rename(s, from, to), {}));
+    }
+    case "fs-delete": {
+      const path = allowed(s, deskAbs(str(p.path)));
+      return audited("host_files_delete", { path }, async () => (await hd.remove(s, path), {}));
     }
     case "save": {
       const path = allowed(s, str(p.path));
@@ -305,6 +304,26 @@ async function postOp(w: Who, op: string, c: Ctx): Promise<Response> {
     }
   }
   throw new Coded(404, "not found");
+}
+
+// a host's disk as the files app names it: C:/Users/ann, home/ann; the path as the host does
+const deskAbs = (rel: string) =>
+  /^[A-Za-z]:/.test(rel) ? `${rel.slice(0, 2)}\\${rel.slice(3).replace(/\//g, "\\")}` : `/${rel}`;
+
+const maxPiece = 8 << 20;
+
+// one piece of an upload to a host's disk, written at its offset over the viewer's login
+async function upload(w: Who, c: Ctx, q: URLSearchParams): Promise<Response> {
+  const s = await session(w);
+  const path = allowed(s, deskAbs(q.get("path") ?? ""));
+  const offset = Number(q.get("offset") ?? 0);
+  const total = Number(q.get("total") ?? 0);
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Coded(400, "bad offset");
+  const raw = await readRaw(c, maxPiece);
+  if (raw === undefined) return sendJSON(413, { error: "too big" });
+  await hd.writeAt(s, path, offset, raw);
+  if (offset + raw.length >= total) note(w.s.user, "host_files_upload", { host: w.host, path, size: total });
+  return sendJSON(200, { path: q.get("path") ?? "", size: offset + raw.length });
 }
 
 // --- app streaming ---------------------------------------------------------------------

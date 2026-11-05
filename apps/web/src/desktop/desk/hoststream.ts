@@ -1,12 +1,13 @@
-// a host's window app streamed into its desktop: the app runs on the host on its own
+// a host's window app streamed onto its desktop: the app runs on the host on its own
 // display, its frames come over one socket to a worker that decodes each the moment it
 // lands (WebCodecs, no jitter buffer) and draws it to the canvas off the main thread;
 // pointer and keys go back over the same socket. The pointer itself is drawn here, in
 // the host's shape, so it never lags
 
-import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
-import { api, type HD, type Item } from './hostdesk.ts';
-import { inner } from './hostdesk-wins.ts';
+import { el } from '../../lib/dom.ts';
+import { dk } from '../../lib/state.ts';
+import { dkClose, dkSize, dkWin } from '../windows.ts';
+import { api, type Item, iconSrc } from './hosts.ts';
 import { dkSay } from './wallpaper.ts';
 
 // the worker: owns the socket and the decoder; nothing here may reach outside it
@@ -230,36 +231,48 @@ const fullOK = (async () => {
   }
 })();
 
-// a window app opened, or one already open (by its id) taken up again
-export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
+// a streamed app's window key, by the host and the app's id or path
+const winKey = (host: string, at: string) => `stream:${host}:${at}`;
+
+// a window app opened, or one already open (by its id) taken up again, in a phosphorus window
+// of its own: moved, resized, snapped and minimized as any service's, the app sized to it
+export function streamWin(host: string, it: Item | { id: string; name: string }) {
   if (typeof VideoDecoder === 'undefined' || typeof OffscreenCanvas === 'undefined')
     return dkSay('this browser has no WebCodecs: app streaming needs Chrome, Edge, Firefox 130 or Safari 26');
+  if (!dk.desk) return;
   const byId = 'id' in it && !('kind' in it) ? it.id : '';
   const path = 'path' in it ? (it.path ?? '') : '';
-  const { box, body, head } = inner(hd, `app:${byId || path}`, it.name, 'hd-appw');
-  const layer = box.parentElement!;
-  const lr = layer.getBoundingClientRect();
-  box.style.width = `${Math.round(Math.min(lr.width - 40, Math.max(640, lr.width * 0.7)))}px`;
-  box.style.height = `${Math.round(Math.min(lr.height - 40, Math.max(420, lr.height * 0.75)))}px`;
-  box.style.left = `${Math.round((lr.width - box.offsetWidth) / 2)}px`;
-  box.style.top = `${Math.round((lr.height - box.offsetHeight) / 3)}px`;
-  const title = head.querySelector('.hd-w-t')!;
+  const w = dkWin(winKey(host, byId || path), it.name, host, 'stream');
+  if (!w) return;
+  dkSize(w, 960, 600);
+  const head = w.head;
+  const body = w.body;
+  const title = head.querySelector('.tab-label')!;
+  const taskTitle = w.task.querySelector('.dk-task-t');
+  const named = (t: string) => {
+    title.textContent = t;
+    if (taskTitle) taskTitle.textContent = t;
+    w.task.title = `${t} ${host}`;
+  };
+  // the app's own icon on its task, the window glyph while there's none
+  const src = 'kind' in it ? iconSrc(host, it) : '';
+  if (src) {
+    const img = Object.assign(el('img', 'dk-task-ic dk-task-img'), { alt: '', draggable: false, src });
+    img.addEventListener('error', () => img.replaceWith(w.task.querySelector('.dk-task-ic') ?? img), { once: true });
+    w.task.querySelector('.dk-task-ic')?.replaceWith(img);
+  }
+  const btns = head.querySelector('.dk-btns')!;
   const btn = (label: string, glyph: string) => {
-    const b = Object.assign(el('button', 'hd-w-up'), { type: 'button', title: label, ariaLabel: label });
-    b.append(glyph.length > 2 ? dkGlyph(glyph) : el('span', 'hd-w-glyph', glyph));
-    head.insertBefore(b, head.lastChild);
+    const b = Object.assign(el('button', 'dk-out hd-sbtn'), { type: 'button', title: label, ariaLabel: label });
+    b.append(el('span', 'hd-w-glyph', glyph));
+    btns.prepend(b);
     return b;
   };
   const pick = el('select', 'hd-app-wins');
   pick.hidden = true;
-  head.insertBefore(pick, head.lastChild);
-  const sharpBtn = btn('sharp text: full colour, more cpu', 'Aa');
+  head.insertBefore(pick, btns);
   const infoBtn = btn('stream stats', 'i');
-  const maxBtn = btn('maximize', DK_UI.max!);
-  // the close button asks the app to close, as its own would; it may ask to save first
-  const x = head.querySelector('.hd-w-x') as HTMLButtonElement;
-  const xNew = x.cloneNode(true) as HTMLButtonElement;
-  x.replaceWith(xNew);
+  const sharpBtn = btn('sharp text: full colour, more cpu', 'Aa');
 
   const stage = el('div', 'hd-stage');
   stage.tabIndex = -1;
@@ -275,7 +288,6 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
   stats.hidden = true;
   stage.append(canvas, ime, say, stats);
   body.replaceChildren(stage);
-  body.classList.add('hd-appw-body');
 
   const worker = newWorker();
   const off = canvas.transferControlToOffscreen();
@@ -310,7 +322,7 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
       const fps = localStorage.getItem('phos.stream.fps');
       if (fps && /^\d{2,3}$/.test(fps)) q.fps = fps;
     } catch {}
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${api(hd.host, 'stream', q)}`;
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${api(host, 'stream', q)}`;
     const debug = !!(window as any).__phosStream;
     worker.postMessage(first ? { t: 'open', url, canvas: off, debug } : { t: 'open', url, debug }, first ? [off] : []);
   };
@@ -318,31 +330,40 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
     sharpBtn.hidden = !ok;
   });
 
-  const shut = () => {
+  // the stream stopped with its window, however it goes
+  w.onClose = () => {
     ended = true;
     worker.postMessage({ t: 'stop' });
     ro.disconnect();
-    box.remove();
+  };
+  const shut = () => {
+    ended = true;
+    dkClose(w);
   };
   worker.onmessage = (e) => {
     const m = e.data;
     switch (m.t) {
       case 'opening':
-        say.textContent = `starting ${m.name} on ${hd.host}`;
+        say.textContent = `starting ${m.name} on ${host}`;
         break;
       case 'ready':
         id = m.id;
         tries = 0;
         say.hidden = true;
-        if (m.title) title.textContent = m.title;
-        box.dataset.k = `app:${id}`;
+        if (m.title) named(m.title);
+        // keyed by its id now, so taking it up again finds this window
+        if (w.key !== winKey(host, id)) {
+          dk.wins.delete(w.key);
+          w.key = winKey(host, id);
+          dk.wins.set(w.key, w);
+        }
         break;
       case 'size':
         streamW = m.w;
         streamH = m.h;
         break;
       case 'title':
-        title.textContent = m.s || it.name;
+        named(m.s || it.name);
         break;
       case 'cursor':
         stage.style.cursor = cssCursor(m);
@@ -405,7 +426,7 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
           setTimeout(() => !ended && open(false), 500 * tries);
         } else if (!id) {
           say.hidden = false;
-          say.textContent = `${hd.host} didn't open ${it.name}`;
+          say.textContent = `${host} didn't open ${it.name}`;
         }
         break;
     }
@@ -526,20 +547,6 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
     }, 80);
   });
   ro.observe(stage);
-  let restore = '';
-  maxBtn.addEventListener('click', () => {
-    if (restore) {
-      box.style.cssText = restore;
-      restore = '';
-      box.classList.remove('hd-appw-max');
-    } else {
-      restore = box.style.cssText;
-      box.classList.add('hd-appw-max');
-    }
-  });
-  head.addEventListener('dblclick', (e) => {
-    if (!(e.target as Element).closest('button, select')) maxBtn.click();
-  });
   infoBtn.addEventListener('click', () => {
     stats.hidden = !stats.hidden;
   });
@@ -553,16 +560,21 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
     ime.focus({ preventScroll: true });
   });
   // the window's own buttons hand the keyboard back to the app
-  for (const b of [sharpBtn, infoBtn, maxBtn]) b.addEventListener('click', () => ime.focus({ preventScroll: true }));
-  box.addEventListener('pointerdown', (e) => {
+  for (const b of [sharpBtn, infoBtn]) b.addEventListener('click', () => ime.focus({ preventScroll: true }));
+  w.onFocus = () => setTimeout(() => ime.focus({ preventScroll: true }), 0);
+  body.addEventListener('pointerdown', (e) => {
     if (!(e.target as Element).closest('select')) setTimeout(() => ime.focus({ preventScroll: true }), 0);
   });
-  // the app asked to close; the window goes anyway when it isn't up yet or doesn't answer
-  xNew.addEventListener('click', () => {
-    if (ended || !id) return shut();
+  // the close button asks the app to close, as its own would, and it may ask to save first;
+  // the window goes anyway when it isn't up yet or doesn't answer
+  let asked = false;
+  w.holdClose = () => {
+    if (ended || !id || asked) return false;
+    asked = true;
     send(['close']);
     setTimeout(() => !ended && shut(), 3000);
-  });
+    return true;
+  };
   open(true);
   setTimeout(() => ime.focus({ preventScroll: true }), 0);
 }

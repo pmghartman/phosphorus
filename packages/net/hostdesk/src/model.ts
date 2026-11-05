@@ -36,7 +36,7 @@ export type Desk = {
   icons: Item[];
   pins: Item[];
   binFull: boolean;
-  // what each setting change can reach here
+  // which of its settings the host lets its login change
   can: { wallpaper: boolean; dark: boolean; accent: boolean; pins: boolean };
   // the gnome accent names, or "" for any colour
   accents: string[];
@@ -74,9 +74,7 @@ export const plainLook = (): Look => ({
   edge: "bottom",
 });
 
-export type BinItem = { id: string; name: string; from: string; deleted: number; size: number; dir: boolean };
-
 export type Entry = { name: string; path: string; dir: boolean; size: number; mtime: number };
 
-// Change a settings change asked for: any of these
-export type Change = { wallpaper?: string; dark?: boolean; accent?: string; pins?: string[] };
+// Root a drive or mount the file system starts from; size and free 0 when unread
+export type Root = { name: string; path: string; label: string; size: number; free: number };

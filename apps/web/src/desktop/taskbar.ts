@@ -1,7 +1,6 @@
 // the task bar: its clock, the status items where the layout puts them, the host chips,
 // every popup grown out of a bar button
 
-import { dkUnlock } from '../features/account.ts';
 import { hostSwitchNow } from '../features/mesh/mesh.ts';
 import { toastPlace } from '../features/notes.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
@@ -9,9 +8,10 @@ import { dk, st } from '../lib/state.ts';
 import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
 import { when } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { dkZoom } from './desk/hostdesk.ts';
+import { dkAppsBtn } from './appsmenu.ts';
 import { dkMenu, dkMenuEl } from './desk.ts';
-import { dkMin } from './windows.ts';
+import { dkStripPaint } from './strip.ts';
+import { dkMin, dkShown } from './windows.ts';
 
 export function dkBar(...before: HTMLElement[]): HTMLElement {
   const bar = el('div', 'dk-bar');
@@ -31,7 +31,7 @@ export function dkHomeBtn(): HTMLButtonElement {
   });
   b.appendChild(dkGlyph(DK_UI.desk!));
   b.addEventListener('click', () => {
-    for (const w of dk.wins.values()) if (!w.node.hidden && !w.leaving) dkMin(w);
+    for (const w of dk.wins.values()) if (dkShown(w)) dkMin(w);
   });
   return b;
 }
@@ -43,6 +43,10 @@ export function dkPlaceItems(): void {
   if (!d?.bar) return;
   const L = layoutNow();
   const home = !isMobile() && L.menubar !== 'off' ? d.menubar : d.bar;
+  // the apps menu first: before the menu bar's name, else just after the bar's own start
+  const apps = dkAppsBtn();
+  if (home === d.menubar) d.menubar.insertBefore(apps, d.app);
+  else d.bar.insertBefore(apps, d.bar.querySelector('.dk-home')?.nextSibling ?? d.bar.firstChild);
   for (const id of [...L.items, ...BAR_ITEMS.filter((i) => !L.items.includes(i))]) {
     const n = d.items[id];
     if (!n) continue;
@@ -66,97 +70,8 @@ export function dkClock(): void {
   if (dk.clock) dk.clock.textContent = when(Date.now(), true);
 }
 
-// the logged in hosts, the one serving this page purple, a press moving it there
-const DK_CHIPS_KEY = 'phosphorus-host-chips';
-const dkChipsOpen = () => {
-  try {
-    return localStorage.getItem(DK_CHIPS_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-
-export function dkChips(): void {
-  const hosts = dk.desk?.hosts;
-  if (!hosts) return;
-  const here = hostSwitchNow()?.to || st.selfHost;
-  const up = new Set([...st.terminalHosts, st.selfHost]);
-  // logged in first, the locked last
-  const rank = (h: string) => (!dk.creds.has(h) ? 1 : 0);
-  // a host off the mesh not shown at all
-  const names = [...new Set([...dk.creds.keys(), ...st.terminalHosts])]
-    .filter((h) => up.has(h))
-    .sort((a, b) => rank(a) - rank(b) || Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b));
-  dkChipsFold(hosts, names.length);
-  const sig = JSON.stringify([here, names, [...dk.creds.keys()]]);
-  if (sig === dk.chips) return;
-  dk.chips = sig;
-  // every chip kept, the fold's class sliding all but the serving one shut
-  const chips = names.map((h): HTMLElement => {
-    if (!dk.creds.has(h)) {
-      const b = Object.assign(el('button', 'dk-chip locked', h), { type: 'button', title: `log in to ${h}` });
-      b.prepend(dkGlyph(DK_GLYPHS.lock!));
-      b.addEventListener('click', () => dkUnlock(h, b));
-      return b;
-    }
-    const b = Object.assign(el('button', `dk-chip${h === here ? ' here' : ''}`, h), {
-      type: 'button',
-      title: `${h === here ? `this page is served by ${h}` : `${h}, logged in`}; the hosts in settings`,
-    });
-    // one press its settings, held back a moment so a double click zooms in instead
-    let t: ReturnType<typeof setTimeout> | undefined;
-    b.addEventListener('click', (e) => {
-      clearTimeout(t);
-      if (e.detail < 2) t = setTimeout(() => dkSettings('hosts', h), 220);
-    });
-    b.addEventListener('dblclick', (e) => {
-      clearTimeout(t);
-      dkZoom(h, b, e);
-    });
-    return b;
-  });
-  chips.forEach((c, i) => {
-    c.classList.toggle('cur', names[i] === here);
-    // a right click: zoomed into the host, or its settings
-    c.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      const h = names[i]!;
-      dkMenu(
-        e.clientX,
-        e.clientY,
-        [
-          ['zoom in', () => dkZoom(h, c), true],
-          ['settings', () => dkSettings('hosts', h), true],
-        ],
-        undefined,
-        h,
-      );
-    });
-  });
-  hosts.replaceChildren(dk.chipFold!, ...chips);
-}
-
-// one chevron for good, so its turn and the chips' slide both animate; the
-// count read fresh on a press, never the one it was made with
-function dkChipsFold(hosts: HTMLElement, n: number) {
-  dk.chipN = n;
-  if (!dk.chipFold) {
-    const b = Object.assign(el('button', 'dk-chip-fold'), { type: 'button' });
-    b.appendChild(dkGlyph(DK_UI.back!));
-    b.addEventListener('click', () => {
-      try {
-        localStorage.setItem(DK_CHIPS_KEY, dkChipsOpen() ? '0' : '1');
-      } catch {}
-      dkChipsFold(hosts, dk.chipN!);
-    });
-    dk.chipFold = b;
-  }
-  const open = dkChipsOpen();
-  hosts.classList.toggle('folded', !open);
-  dk.chipFold.hidden = n < 2;
-  dk.chipFold.title = open ? 'fewer hosts' : 'all hosts';
-  dk.chipFold.setAttribute('aria-expanded', String(open));
-}
+// the desktop switcher on the bar, its filmstrip along the bottom (./strip.ts), drawn again
+export const dkChips = (): void => dkStripPaint();
 
 // --- task bar popups: each grown out of its own button, its bottom on the
 // bar's top, a corner on the button's, right of it where it fits, else left
@@ -257,8 +172,10 @@ export function dkAnchor(
       const room = side === 'top' ? innerHeight - bar.bottom : bar.top;
       if (a.tall) pop.style.height = `${Math.min(a.tall, room - DK_POP_GAP - DK_POP_EDGE)}px`;
       if (a.fill) pop.style.width = `${Math.min(hi - lo, a.fill)}px`;
-      // every task bar popup against the screen's right edge, as the bar ends
-      const left = Math.max(lo, hi - pop.offsetWidth);
+      // against the screen's right edge, as the bar ends; a button on the left half grows rightward
+      const bl = a.btn.getBoundingClientRect().left;
+      const left =
+        bl < innerWidth / 2 ? Math.max(lo, Math.min(bl, hi - pop.offsetWidth)) : Math.max(lo, hi - pop.offsetWidth);
       pop.style.left = `${left - cb.left}px`;
     };
     // shown, grown or the screen resized: placed again

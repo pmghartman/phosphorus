@@ -18,16 +18,26 @@ import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
 import { dkBellTray } from '../../features/notes.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
 import { iconKnown, iconLearn, iconOrder } from '../../lib/iconmem.ts';
-import { dk, st } from '../../lib/state.ts';
+import { dk, PREF_LS, st } from '../../lib/state.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { dkControlTray } from '../control.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
 import { dkMeshQuick, dkUpdateQuick } from '../quick.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
+import {
+  dkSpaceBoot,
+  dkSpaceGone,
+  hostFiles,
+  hostIcons,
+  hostTerm,
+  itemTip,
+  openHostItem,
+  sharedApps,
+} from '../spaces.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
-import { dkHostDeskHash } from './hostdesk.ts';
+import { hostInfo, type Item, iconSrc, itemKey } from './hosts.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
 import { dkOpenWaiting, dkWebApp, dkWebApps } from './webapps.ts';
@@ -49,7 +59,7 @@ export function dkDesktop(): void {
   bar.append(...[mesh, update, agent].filter((x): x is HTMLElement => !!x), bell, ctl);
   const menubar = el('div', 'dk-bar dk-menubar');
   const app = el('span', 'dk-menubar-app');
-  app.append(dkGlyph(DK_GLYPHS.mesh!, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
+  app.append(dkGlyph(DK_GLYPHS.phi!, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
   menubar.append(app);
   desk.append(dkArt(), icons, wins, menubar, bar);
   dkView.replaceChildren(desk);
@@ -92,7 +102,7 @@ export function dkDesktop(): void {
   dkClock();
   dkIcons();
   dkSessionRestore();
-  dkHostDeskHash();
+  dkSpaceBoot();
 }
 
 // a phone's windows always filling the screen
@@ -138,13 +148,31 @@ export function dkLogout(): void {
   });
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
+  dk.space = '';
+  dkView.classList.remove('dk-hostspace');
   dk.desk = null;
   dkSessionHold(false);
 }
 
 // icons on a grid, any cell, kept per browser; a press selects, a drag moves
 // the selection, a double click (a tap on touch) opens
-export const DK_POS_KEY = 'phosphorus-dk-icons';
+// each desktop's own cells, every one synced with the user: the shared one's alone, the hosts' by host
+const readJSON = (key: string) => {
+  try {
+    const v = JSON.parse(localStorage.getItem(key)!);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+};
+export function dkSavedPut(v: Record<string, [number, number]>) {
+  try {
+    if (!dk.space) return localStorage.setItem(PREF_LS.icons!, JSON.stringify(v));
+    const all = readJSON(PREF_LS.spaceicons!);
+    all[dk.space] = v;
+    localStorage.setItem(PREF_LS.spaceicons!, JSON.stringify(all));
+  } catch {}
+}
 export const DK_GX = 96;
 export const DK_GY = 96;
 export const DK_PAD = 8;
@@ -304,6 +332,29 @@ export function dkLiveHosts(): string[] {
   return [...dk.creds.keys()].filter((h) => up.has(h));
 }
 
+// a host's app or shortcut on a desk, its own icon, opened as phosphorus opens it
+function dkHostItem(h: string, it: Item, sub: string): HTMLButtonElement {
+  const b = dkIcon('app', it.name, sub, () => openHostItem(h, it), iconSrc(h, it), 30000);
+  b.title = itemTip(h, it);
+  hostIcons.set(b, { host: h, it });
+  return b;
+}
+
+// a host's desktop: its terminal and whole file system as phosphorus's own, then its shortcuts
+function dkHostWant(h: string): [string, () => HTMLButtonElement][] {
+  const d = hostInfo(h).desk;
+  return [
+    [`h:terminal\n${h}`, () => dkIcon('terminal', 'terminal', '', () => hostTerm(h))],
+    [`h:files\n${h}`, () => dkIcon('files', 'files', '', () => hostFiles(h))],
+    ...(d?.icons ?? [])
+      .filter((it) => it.kind !== 'bin')
+      .map((it): [string, () => HTMLButtonElement] => [
+        JSON.stringify(['h', h, itemKey(it), it.iv ?? '']),
+        () => dkHostItem(h, it, ''),
+      ]),
+  ];
+}
+
 // a globe in the tile's corner: reachable without the phosphorus login
 export function dkGlobe(b: HTMLButtonElement, why: string): HTMLButtonElement {
   b.title += `, ${why}`;
@@ -324,7 +375,11 @@ export function dkIcons(): void {
   const others = dk.services.filter((r) => !stacks[r.name]);
   const stackKey = (id: string) =>
     JSON.stringify(['stack', id, dkLiveHost(id), !!(stacks[id]!.public || dkStackRoute(id)?.public)]);
+  const shared = sharedApps().filter((a) => hosts.includes(a.host));
   const sig = JSON.stringify([
+    dk.space,
+    dk.space ? hostInfo(dk.space).desk?.icons?.map((it) => [itemKey(it), it.iv]) : 0,
+    shared.map((a) => [a.host, itemKey(a)]),
     hosts,
     !!st.acct?.admin,
     others.map((r) => [r.host, r.name, !!r.public]),
@@ -339,25 +394,31 @@ export function dkIcons(): void {
   dkOpenWaiting();
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(dkDeskDir(), e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
-  const want: [string, () => HTMLButtonElement][] = [
-    ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
-    ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ['apps', () => dkIcon('apps', 'service wizard', '', () => dkOpenApp('apps'))],
-    ['settings', () => dkIcon('settings', 'settings', '', () => dkSettings())],
-    ...webapps.map((a): [string, () => HTMLButtonElement] => [
-      `webapp\n${a.id}`,
-      () => dkIcon('app', a.id, '', () => dkWebApp(a.id), `${a.mount}icon.svg?v=${a.want.version}`),
-    ]),
-    ...others.map((r): [string, () => HTMLButtonElement] => [
-      JSON.stringify([r.host, r.name, !!r.public]),
-      () => dkServiceIcon(r),
-    ]),
-    ...stackIds.map((id): [string, () => HTMLButtonElement] => [stackKey(id), () => dkStackIcon(id)]),
-    ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [
-      JSON.stringify([dkDeskDir(), e.name, e.dir, e.mtime]),
-      () => dkFileIcon(e),
-    ]),
-  ];
+  const want: [string, () => HTMLButtonElement][] = dk.space
+    ? dkHostWant(dk.space)
+    : [
+        ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
+        ['files', () => dkIcon('files', 'files', '', () => filesWin())],
+        ['apps', () => dkIcon('apps', 'service wizard', '', () => dkOpenApp('apps'))],
+        ['settings', () => dkIcon('settings', 'settings', '', () => dkSettings())],
+        ...webapps.map((a): [string, () => HTMLButtonElement] => [
+          `webapp\n${a.id}`,
+          () => dkIcon('app', a.id, '', () => dkWebApp(a.id), `${a.mount}icon.svg?v=${a.want.version}`),
+        ]),
+        ...others.map((r): [string, () => HTMLButtonElement] => [
+          JSON.stringify([r.host, r.name, !!r.public]),
+          () => dkServiceIcon(r),
+        ]),
+        ...stackIds.map((id): [string, () => HTMLButtonElement] => [stackKey(id), () => dkStackIcon(id)]),
+        ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [
+          JSON.stringify([dkDeskDir(), e.name, e.dir, e.mtime]),
+          () => dkFileIcon(e),
+        ]),
+        ...shared.map((a): [string, () => HTMLButtonElement] => [
+          JSON.stringify(['shared', a.host, itemKey(a), a.iv ?? '']),
+          () => dkHostItem(a.host, a, a.host),
+        ]),
+      ];
   const had = new Map(dkIconEls().map((b) => [b.dataset.key, b]));
   dk.desk.icons.replaceChildren(
     ...want.map(([key, make]) => {
@@ -373,12 +434,8 @@ export function dkIcons(): void {
 }
 
 export function dkSaved(): Record<string, [number, number]> {
-  try {
-    const v = JSON.parse(localStorage.getItem(DK_POS_KEY)!);
-    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-  } catch {
-    return {};
-  }
+  const v = dk.space ? readJSON(PREF_LS.spaceicons!)[dk.space] : readJSON(PREF_LS.icons!);
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 }
 export const dkIconEls = () => (dk.desk ? [...dk.desk.icons.querySelectorAll<HTMLButtonElement>('.dk-icon')] : []);
 export const dkGrid = () => {
@@ -445,10 +502,7 @@ export function dkLayout(): void {
       placed = true;
     }
   }
-  if (placed)
-    try {
-      localStorage.setItem(DK_POS_KEY, JSON.stringify(saved));
-    } catch {}
+  if (placed) dkSavedPut(saved);
   for (const id of [...dk.sel]) if (!dkIconEls().some((b) => b.dataset.id === id)) dk.sel.delete(id);
   dkPaintSel();
 }
@@ -464,9 +518,7 @@ export function dkPut(b: HTMLElement, c: number, r: number) {
 export function dkSave() {
   const saved = dkSaved();
   for (const b of dkIconEls()) saved[b.dataset.id!] = [Number(b.dataset.c), Number(b.dataset.r)];
-  try {
-    localStorage.setItem(DK_POS_KEY, JSON.stringify(saved));
-  } catch {}
+  dkSavedPut(saved);
 }
 
 export function dkPaintSel() {
@@ -719,6 +771,7 @@ export function dkRoutes(services: Route[]): void {
 export function dkHostsGone(): void {
   const up = new Set([...st.terminalHosts, st.selfHost]);
   dkTermDrop((h) => !up.has(h));
+  dkSpaceGone();
   dkChips();
   for (const fm of dkFms) appCall('files', false, (m) => m.fmHosts(fm));
 }

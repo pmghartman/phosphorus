@@ -1,42 +1,24 @@
 // what the page asks of a host's desktop, each through its session's probe or sftp,
-// every path kept to the login's scope
+// anywhere the login itself may reach
 
 import { randomInt } from "node:crypto";
 import type { SFTPWrapper } from "ssh2";
 import { cacheGet, cachePut } from "./cache.ts";
-import {
-  type App,
-  appItem,
-  buildDesk,
-  fileUri,
-  gArray,
-  gQuote,
-  kdeScript,
-  parseApps,
-  parseEntry,
-  parseTrashInfo,
-  trashInfo,
-  xfconf,
-} from "./linux.ts";
-import type { BinItem, Change, Desk, Entry, Item } from "./model.ts";
-import { baseName, Scope, sftpPath } from "./paths.ts";
+import { type App, appItem, buildDesk, parseApps, parseEntry, trashInfo } from "./linux.ts";
+import type { Desk, Entry, Item, Root } from "./model.ts";
+import { baseName, sftpPath } from "./paths.ts";
 import { records } from "./proto.ts";
 import { binName, writeInfo } from "./recycle.ts";
 import type { Session } from "./session.ts";
-import { winDesk, winItem, winTrash } from "./windows.ts";
+import { winDesk, winItem } from "./windows.ts";
 
 // Ctx what a session keeps between calls
 type Ctx = {
-  scope: Scope;
   icons: Set<string>;
   desk?: Desk;
   apps?: Item[];
-  // a linux desktop's raw records, for settings changes
-  raw?: ReturnType<typeof buildDesk> & { files: Map<string, string> };
   // the host runs phosphorus: a terminal there opens powershell
   psTerm: boolean;
-  // the recycle bin as last listed: id to where it came from
-  bin?: Record<string, string>;
   // icons on their way, by cache key
   pending: Map<string, Promise<Blob | undefined>>;
 };
@@ -44,7 +26,7 @@ type Ctx = {
 const win = (s: Session) => s.os === "windows";
 
 export function ctxOf(s: Session, psTerm = false): Ctx {
-  s.extra.ctx ??= { scope: new Scope("", win(s)), icons: new Set<string>(), psTerm, pending: new Map() } satisfies Ctx;
+  s.extra.ctx ??= { icons: new Set<string>(), psTerm, pending: new Map() } satisfies Ctx;
   return s.extra.ctx as Ctx;
 }
 
@@ -59,7 +41,6 @@ const json = (t: string) => {
 function issue(c: Ctx, items: Item[]) {
   for (const it of items) {
     if (it.icon) c.icons.add(it.icon);
-    if (it.path) c.scope.issue(it.path, it.kind === "folder");
   }
 }
 
@@ -70,25 +51,17 @@ export async function desktop(s: Session): Promise<Desk> {
   if (win(s)) {
     const o = json(await s.call("desktop"));
     d = winDesk(o, c.psTerm);
-    c.scope = new Scope(d.home, true);
-    for (const dir of Array.isArray(o.desktops) ? o.desktops : []) c.scope.issue(String(dir), true);
   } else {
     const [dt, ap] = await Promise.all([s.call("desktop"), s.call("apps", "", 120_000)]);
     const recs = records(dt);
     const de = /\nde=(\w+)/.exec(`\n${recs.find((r) => r.kind === "env")?.body ?? ""}`)?.[1] ?? "plain";
-    const pre = buildDesk(recs, []);
-    const apps = parseApps(records(ap), de, pre.desk.icontheme ?? "hicolor");
-    const b = buildDesk(recs, apps);
-    d = b.desk;
-    c.raw = { ...b, files: new Map(recs.filter((r) => r.kind === "file").map((r) => [r.args[0] ?? "", r.body])) };
+    const apps = parseApps(records(ap), de, buildDesk(recs, []).icontheme ?? "hicolor");
+    d = buildDesk(recs, apps);
     c.apps = apps.map(({ entry: _e, ...it }: App) => it);
-    c.scope = new Scope(d.home, false);
-    c.scope.issue(b.deskDir, true);
     issue(c, c.apps);
   }
   c.desk = d;
   issue(c, [...d.icons, ...d.pins]);
-  if (d.wallpaper.path) c.scope.issue(d.wallpaper.path);
   return d;
 }
 
@@ -273,8 +246,50 @@ export async function writeText(s: Session, p: string, text: string): Promise<vo
 
 // --- folders and files ----------------------------------------------------------------
 
+const call = <T>(f: (cb: (e: Error | null | undefined, v?: T) => void) => void) =>
+  new Promise<T>((res, rej) => f((e, v) => (e ? rej(e) : res(v as T))));
+
+export async function mkdir(s: Session, p: string): Promise<void> {
+  const f = await s.sftp();
+  await call<void>((cb) => f.mkdir(sp(s, p), cb));
+}
+
+export async function rename(s: Session, from: string, to: string): Promise<void> {
+  const f = await s.sftp();
+  await call<void>((cb) => f.rename(sp(s, from), sp(s, to), cb));
+}
+
+// a file copied on the host, its bytes passing through this connection
+export async function copyFile(s: Session, from: string, to: string): Promise<void> {
+  const f = await s.sftp();
+  if ((await statOf(s, from)).dir) throw new Error("folders are moved on a host's disk, not copied");
+  await new Promise<void>((res, rej) => {
+    const r = f.createReadStream(sp(s, from));
+    const w = f.createWriteStream(sp(s, to));
+    r.on("error", rej);
+    w.on("error", rej);
+    w.on("close", () => res());
+    r.pipe(w);
+  });
+}
+
+// one piece of an upload at its offset, the file made new by the first
+export async function writeAt(s: Session, p: string, offset: number, data: Uint8Array): Promise<void> {
+  const f = await s.sftp();
+  const h = await call<Buffer>((cb) => f.open(sp(s, p), offset ? "r+" : "w", cb));
+  try {
+    let at = 0;
+    while (at < data.length) {
+      const n = Math.min(32 * 1024, data.length - at);
+      await call<void>((cb) => f.write(h, Buffer.from(data.buffer, data.byteOffset + at, n), 0, n, offset + at, cb));
+      at += n;
+    }
+  } finally {
+    await call<void>((cb) => f.close(h, cb)).catch(() => {});
+  }
+}
+
 export async function ls(s: Session, p: string): Promise<Entry[]> {
-  const c = ctxOf(s);
   let out: Entry[];
   if (win(s))
     out = (json(await s.call("ls", p)) as any[]).map((e) => ({
@@ -294,8 +309,37 @@ export async function ls(s: Session, p: string): Promise<Entry[]> {
         mtime: Number(r.args[2]) * 1000 || 0,
         size: Number(r.args[3]) || 0,
       }));
-  for (const e of out) c.scope.issue(e.path, e.dir);
   return out.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+}
+
+// where the file system starts: a Windows host's drives, a Linux host's root and its mounted disks
+export async function roots(s: Session): Promise<Root[]> {
+  if (win(s))
+    return (json(await s.call("roots")) as any[]).map((r) => ({
+      name: String(r.name),
+      path: String(r.path),
+      label: String(r.label ?? ""),
+      size: Number(r.size) || 0,
+      free: Number(r.free) || 0,
+    }));
+  return parseDf(await s.call("roots"));
+}
+
+// df -kP: the root first, then each disk's mount; loops, snaps and boot partitions left out
+export function parseDf(text: string): Root[] {
+  const out: Root[] = [{ name: "/", path: "/", label: "", size: 0, free: 0 }];
+  for (const l of text.split("\n").slice(1)) {
+    const f = l.trim().split(/\s+/);
+    if (f.length < 6) continue;
+    const [dev = "", blocks, , avail] = f;
+    const at = f.slice(5).join(" ");
+    if (!dev.startsWith("/dev/") || dev.startsWith("/dev/loop")) continue;
+    if (/^\/(boot|snap)(\/|$)/.test(at)) continue;
+    const r = { name: at, path: at, label: dev, size: Number(blocks) * 1024 || 0, free: Number(avail) * 1024 || 0 };
+    if (at === "/") out[0] = r;
+    else if (!out.some((x) => x.path === at)) out.push(r);
+  }
+  return out;
 }
 
 // a path as the desktop opens it: kind, what it runs
@@ -317,63 +361,6 @@ export async function open(s: Session, p: string): Promise<Item> {
   return it;
 }
 
-export async function images(s: Session): Promise<string[]> {
-  const c = ctxOf(s);
-  const list = win(s)
-    ? (json(await s.call("images")) as string[])
-    : (await s.call("images")).split("\n").filter((l) => l.startsWith("/"));
-  for (const p of list) c.scope.issue(p);
-  return list;
-}
-
-// --- the recycle bin ------------------------------------------------------------------
-
-export async function trash(s: Session): Promise<BinItem[]> {
-  const c = ctxOf(s);
-  let out: BinItem[];
-  if (win(s)) out = winTrash(json(await s.call("trash")));
-  else
-    out = records(await s.call("trash"))
-      .filter((r) => r.kind === "item")
-      .flatMap((r) => {
-        const info = parseTrashInfo(r.body);
-        const name = r.args[0] ?? "";
-        if (!info || !name) return [];
-        return [
-          {
-            id: name,
-            name: baseName(info.path),
-            from: info.path,
-            deleted: info.deleted,
-            size: (Number(r.args[2]) || 0) * 1024,
-            dir: r.args[1] === "d",
-          },
-        ];
-      })
-      .sort((a, b) => b.deleted - a.deleted);
-  c.bin = Object.fromEntries(out.map((b) => [b.id, b.from]));
-  return out;
-}
-
-// one item back where it was deleted from
-export async function restore(s: Session, id: string): Promise<string> {
-  const c = ctxOf(s);
-  if (!c.bin) await trash(s);
-  const from = c.bin?.[id];
-  if (!from) throw new Error("not in the recycle bin");
-  if (win(s)) {
-    const i = id.lastIndexOf("|");
-    await s.call("restore", JSON.stringify({ bin: id.slice(0, i), i: id.slice(i + 1), to: from }));
-  } else await s.call("restore", `${id}\n${from}`);
-  delete c.bin![id];
-  return from;
-}
-
-export async function empty(s: Session): Promise<void> {
-  await s.call("empty", "", 300_000);
-  ctxOf(s).bin = undefined;
-}
-
 // a file or folder to the recycle bin, never removed outright
 export async function remove(s: Session, p: string, now = Date.now()): Promise<void> {
   if (win(s)) {
@@ -385,73 +372,4 @@ export async function remove(s: Session, p: string, now = Date.now()): Promise<v
     );
     await s.call("delete", JSON.stringify({ path: String(st.path), bin: st.bin, name, info }));
   } else await s.call("delete", `${p}\n${trashInfo(p, now)}`);
-}
-
-// --- settings changes -----------------------------------------------------------------
-
-// a change written back to the host's own settings; false when it applies at next sign in
-export async function change(s: Session, ch: Change): Promise<boolean> {
-  const c = ctxOf(s);
-  const d = c.desk ?? (await desktop(s));
-  if (ch.wallpaper !== undefined && !c.scope.allow(ch.wallpaper)) throw new Error("not a picture on this host");
-  if (ch.accent !== undefined && !/^#[0-9a-f]{6}$/i.test(ch.accent) && !d.accents.includes(ch.accent))
-    throw new Error("not an accent colour");
-  if (win(s)) {
-    if (ch.pins) throw new Error("windows keeps its taskbar pins to itself; pin and unpin on the host");
-    const r = json(await s.call("set", JSON.stringify({ wallpaper: ch.wallpaper, dark: ch.dark, accent: ch.accent })));
-    return r?.live === true;
-  }
-  const ops = linuxOps(d, c.raw, ch);
-  await s.call("set", ops.join("\n"));
-  return true;
-}
-
-// the probe's set lines for a change on this desktop
-export function linuxOps(d: Desk, raw: Ctx["raw"], ch: Change): string[] {
-  const ops: string[] = [];
-  const no = (what: string) => {
-    throw new Error(`${what} can't be changed on ${d.shell} from here`);
-  };
-  if (d.shell === "gnome") {
-    if (ch.wallpaper !== undefined) {
-      const u = gQuote(fileUri(ch.wallpaper));
-      ops.push(
-        `gs\torg.gnome.desktop.background\tpicture-uri\t${u}`,
-        `gs\torg.gnome.desktop.background\tpicture-uri-dark\t${u}`,
-      );
-    }
-    if (ch.dark !== undefined) {
-      ops.push(`gs\torg.gnome.desktop.interface\tcolor-scheme\t${gQuote(ch.dark ? "prefer-dark" : "default")}`);
-    }
-    if (ch.accent !== undefined) {
-      if (!d.can.accent) no("the accent");
-      ops.push(`gs\torg.gnome.desktop.interface\taccent-color\t${gQuote(ch.accent)}`);
-    }
-    if (ch.pins) ops.push(`gs\torg.gnome.shell\tfavorite-apps\t${gArray(ch.pins)}`);
-  } else if (d.shell === "kde") {
-    if (ch.wallpaper !== undefined || ch.pins) {
-      const js = kdeScript({ wallpaper: ch.wallpaper, pins: ch.pins });
-      ops.push(`kde-js\t${Buffer.from(js, "utf8").toString("base64")}`);
-    }
-    if (ch.dark !== undefined) ops.push(`kde-scheme\t${ch.dark ? "BreezeDark" : "BreezeLight"}`);
-    if (ch.accent !== undefined) ops.push(`kde-accent\t${ch.accent}`);
-  } else if (d.shell === "xfce") {
-    if (ch.pins) no("panel launchers");
-    if (ch.accent !== undefined) no("the accent");
-    if (ch.wallpaper !== undefined) {
-      const xml = [...(raw?.files ?? new Map())].find(([p]) => p.endsWith("/xfce4-desktop.xml"))?.[1] ?? "";
-      const props = [...xfconf(xml).keys()].filter((k) => k.endsWith("/last-image"));
-      if (!props.length) props.push("/backdrop/screen0/monitor0/workspace0/last-image");
-      for (const p of props) ops.push(`xf\txfce4-desktop\t${p}\tstring\t${ch.wallpaper}`);
-    }
-    if (ch.dark !== undefined) {
-      const xml = [...(raw?.files ?? new Map())].find(([p]) => p.endsWith("/xsettings.xml"))?.[1] ?? "";
-      const cur = xfconf(xml).get("/Net/ThemeName") || "Adwaita";
-      const base = cur.replace(/-dark$/i, "");
-      ops.push(`xf\txsettings\t/Net/ThemeName\tstring\t${ch.dark ? `${base}-dark` : base}`);
-    }
-  } else no("settings");
-  if (!d.can.wallpaper && ch.wallpaper !== undefined) no("the wallpaper");
-  for (const o of ops) if (/[\n\r]/.test(o)) throw new Error("bad value");
-  return ops;
 }

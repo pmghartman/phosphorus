@@ -1,5 +1,4 @@
-// paths on the host: normalized the OS's way, kept to the login's profile or
-// what the probe itself listed
+// paths on the host: normalized the OS's way, anywhere the login itself may reach
 
 // a path made absolute and clean, undefined when it isn't one
 export function norm(p: string, win: boolean): string | undefined {
@@ -28,51 +27,6 @@ function clean(segs: string[]): string[] | undefined {
     } else out.push(s);
   }
   return out;
-}
-
-const key = (p: string, win: boolean) => (win ? p.toLowerCase() : p);
-
-// whether p is root or inside it
-export function within(p: string, root: string, win: boolean): boolean {
-  const a = key(p, win);
-  const r = key(root, win).replace(/[\\/]+$/, "");
-  const sep = win ? "\\" : "/";
-  return a === r || a.startsWith(r + sep);
-}
-
-// Scope what one login may reach: its profile, paths and folders the probe issued
-export class Scope {
-  private exact = new Set<string>();
-  private dirs = new Set<string>();
-  constructor(
-    public home: string,
-    public win: boolean,
-  ) {}
-
-  issue(p: string | undefined, folder = false) {
-    const n = p && norm(p, this.win);
-    if (!n) return;
-    this.exact.add(key(n, this.win));
-    if (folder) this.dirs.add(n);
-  }
-
-  // the clean path when allowed, else undefined
-  allow(p: string): string | undefined {
-    const n = norm(p, this.win);
-    if (!n) return;
-    if (this.home && within(n, this.home, this.win)) return n;
-    if (this.exact.has(key(n, this.win))) return n;
-    for (const d of this.dirs) if (within(n, d, this.win)) return n;
-  }
-
-  list() {
-    return { exact: [...this.exact], dirs: [...this.dirs] };
-  }
-
-  load(l: { exact?: unknown; dirs?: unknown }) {
-    for (const x of Array.isArray(l.exact) ? l.exact : []) if (typeof x === "string") this.exact.add(x);
-    for (const x of Array.isArray(l.dirs) ? l.dirs : []) if (typeof x === "string") this.dirs.add(x);
-  }
 }
 
 // a Windows path as OpenSSH's sftp names it: /C:/Users/x

@@ -5,9 +5,10 @@ import type { FileEntry } from '@phosphorus/wire';
 import { app, appCall } from '../../apps/index.ts';
 import { dkFileApp, dkFileOffer, dkWebApp } from '../../desktop/desk/webapps.ts';
 import { dkDeskDir, dkDeskLoad } from '../../desktop/deskfiles.ts';
+import { deskLaunch } from '../../desktop/spaces.ts';
 import type { DkWin } from '../../desktop/windows.ts';
 import { dkGlyph, ICONS } from '../../lib/dom.ts';
-import { filesApi, filesCopy, filesJoin, filesParent, hostOf, isHome, type Loc, may } from './api.ts';
+import { deskAbs, filesApi, filesCopy, filesJoin, filesParent, hostOf, isDesk, isHome, type Loc, may } from './api.ts';
 
 export interface PickedItem {
   rel: string;
@@ -128,7 +129,10 @@ export function fileOpen(loc: Loc, rel: string, e: { dir?: boolean }): void {
     return;
   }
   // in the installed app that opens its kind, else that app offered, else downloaded
-  const query = { host: hostOf(loc), share: loc.share || '0', path: rel };
+  // a shortcut or program on a host's disk: launched there, as its own desktop would
+  if (isDesk(loc) && /\.(lnk|desktop|url|exe)$/i.test(rel)) return void deskLaunch(loc.host, deskAbs(rel));
+  // a host's disk: the path as the host names it
+  const query = { host: hostOf(loc), share: loc.share || '0', path: isDesk(loc) ? deskAbs(rel) : rel };
   const id = dkFileApp(rel);
   if (id) dkWebApp(id, query);
   else

@@ -1,6 +1,7 @@
 // mesh status diagram
-import { dkZoom } from '../../desktop/desk/hostdesk.ts';
+
 import { dkMenu } from '../../desktop/desk/wallpaper.ts';
+import { dkSpace } from '../../desktop/spaces.ts';
 import { drawMesh } from './draw.ts';
 import { switchHost } from './hosts.ts';
 
@@ -150,12 +151,12 @@ meshSvg.addEventListener('click', (e) => {
   const g = (e.target as Element).closest('.mesh-host') as SVGElement | null;
   if (g && meshPanel.classList.contains('expanded') && e.detail < 2) switchHost(g.dataset.host!);
 });
-// a double click on any computer zooms into it
+// a double click on any computer: onto its desktop
 meshSvg.addEventListener('dblclick', (e) => {
   const g = (e.target as Element).closest('.mesh-desk') as SVGElement | null;
-  if (g) dkZoom(g.dataset.desk!, g, e);
+  if (g) dkSpace(g.dataset.desk!);
 });
-// a right click on any computer: zoomed into, or a switch to its phosphorus
+// a right click on any computer: onto its desktop, or a switch to its phosphorus
 meshSvg.addEventListener('contextmenu', (e) => {
   const g = (e.target as Element).closest('.mesh-desk') as SVGElement | null;
   if (!g) return;
@@ -165,7 +166,7 @@ meshSvg.addEventListener('contextmenu', (e) => {
     e.clientX,
     e.clientY,
     [
-      ['zoom in', () => dkZoom(h, g), true],
+      ['its desktop', () => dkSpace(h), true],
       ['switch to it', () => switchHost(h), !!g.dataset.host],
     ],
     undefined,

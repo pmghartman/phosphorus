@@ -1,17 +1,16 @@
 // the host desktop's pure parts: the line protocol, the recycle bin's records, the
-// profile scope, the Linux parsers and set lines; then the sh probe against a temp home
+// paths, the Linux parsers; then the sh probe against a temp home
 
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { linuxOps } from "../src/desk.ts";
+import { parseDf } from "../src/desk.ts";
 import * as L from "../src/linux.ts";
-import type { Desk } from "../src/model.ts";
-import { norm, Scope, sftpPath, within } from "../src/paths.ts";
+import { norm, sftpPath } from "../src/paths.ts";
 import { bootLine, records, reply, request, shBootScript } from "../src/proto.ts";
-import { binName, binRe, fromFiletime, parseInfo, toFiletime, writeInfo } from "../src/recycle.ts";
-import { abgrHex, winDesk, winLook, winRun, winTrash } from "../src/windows.ts";
+import { binName, writeInfo } from "../src/recycle.ts";
+import { abgrHex, winDesk, winLook, winRun } from "../src/windows.ts";
 
 test("protocol: a request and its reply", () => {
   expect(request(7, "icon", "a\tb")).toBe(`7\ticon\t${Buffer.from("a\tb").toString("base64")}\n`);
@@ -27,71 +26,56 @@ test("protocol: a request and its reply", () => {
   ]);
 });
 
-test("recycle bin: $I written and read, version 1 too", () => {
+test("recycle bin: a version 2 $I written, the name its $R shares", () => {
   const at = Date.UTC(2026, 10, 4, 12, 30, 15);
-  const b = writeInfo({ path: "C:\\Users\\ann\\Desktop\\notes.txt", size: 1234, deleted: at });
-  expect(b.length).toBe(28 + ("C:\\Users\\ann\\Desktop\\notes.txt".length + 1) * 2);
-  expect(parseInfo(b)).toEqual({ path: "C:\\Users\\ann\\Desktop\\notes.txt", size: 1234, deleted: at });
-  expect(fromFiletime(toFiletime(at))).toBe(at);
-  const v1 = new Uint8Array(24 + 520);
-  const dv = new DataView(v1.buffer);
-  dv.setBigInt64(0, 1n, true);
-  dv.setBigInt64(8, 9n, true);
-  dv.setBigInt64(16, toFiletime(at), true);
-  v1.set(Buffer.from("D:\\old.doc\0", "utf16le"), 24);
-  expect(parseInfo(v1)).toEqual({ path: "D:\\old.doc", size: 9, deleted: at });
-  expect(parseInfo(new Uint8Array(10))).toBeUndefined();
-  const bad = writeInfo({ path: "C:\\x", size: 0, deleted: at });
-  new DataView(bad.buffer).setUint32(24, 999, true);
-  expect(parseInfo(bad)).toBeUndefined();
+  const path = "C:\\Users\\ann\\Desktop\\notes.txt";
+  const b = writeInfo({ path, size: 1234, deleted: at });
+  expect(b.length).toBe(28 + (path.length + 1) * 2);
+  const v = new DataView(b.buffer);
+  expect(v.getBigInt64(0, true)).toBe(2n);
+  expect(v.getBigInt64(8, true)).toBe(1234n);
+  expect(v.getBigInt64(16, true)).toBe(BigInt(at) * 10000n + 116444736000000000n);
+  expect(v.getUint32(24, true)).toBe(path.length + 1);
+  expect(Buffer.from(b.subarray(28)).toString("utf16le")).toBe(`${path}\0`);
   let i = 0;
-  const n = binName("C:\\a\\Report.Final.docx", () => i++ % 36);
-  expect(n).toBe("ABCDEF.docx");
-  expect(binRe.test(`$I${n}`)).toBe(true);
-  expect(binRe.test("$I../x")).toBe(false);
-  const rows = winTrash([
-    { bin: "C:\\$Recycle.Bin\\S-1", i: `$I${n}`, dir: false, data: Buffer.from(b).toString("base64") },
-  ]);
-  expect(rows).toEqual([
-    {
-      id: `C:\\$Recycle.Bin\\S-1|$I${n}`,
-      name: "notes.txt",
-      from: "C:\\Users\\ann\\Desktop\\notes.txt",
-      deleted: at,
-      size: 1234,
-      dir: false,
-    },
-  ]);
+  expect(binName("C:\\a\\Report.Final.docx", () => i++ % 36)).toBe("ABCDEF.docx");
+  expect(binName("C:\\a\\README", () => 0)).toBe("AAAAAA");
 });
 
-test("scope: the profile, issued paths and folders, nothing climbing out", () => {
+test("paths: made clean, nothing climbing above the root", () => {
   expect(norm("/home/ann/./x/../y", false)).toBe("/home/ann/y");
   expect(norm("/../etc", false)).toBeUndefined();
   expect(norm("relative", false)).toBeUndefined();
+  expect(norm("/", false)).toBe("/");
+  expect(norm("/etc/shadow", false)).toBe("/etc/shadow");
   expect(norm("c:/Users//Ann\\x", true)).toBe("C:\\Users\\Ann\\x");
+  expect(norm("D:\\", true)).toBe("D:\\");
+  expect(norm("C:\\Users\\ann\\..\\..\\..", true)).toBeUndefined();
   expect(norm("\\\\server\\share", true)).toBeUndefined();
-  expect(within("/home/ann2", "/home/ann", false)).toBe(false);
-  expect(within("C:\\USERS\\ANN\\x", "C:\\Users\\ann", true)).toBe(true);
-  const s = new Scope("/home/ann", false);
-  s.issue("/usr/share/applications/firefox.desktop");
-  s.issue("/media/usb", true);
-  expect(s.allow("/home/ann/Documents/a.txt")).toBe("/home/ann/Documents/a.txt");
-  expect(s.allow("/home/ann/../bob/secret")).toBeUndefined();
-  expect(s.allow("/home/bob")).toBeUndefined();
-  expect(s.allow("/usr/share/applications/firefox.desktop")).toBe("/usr/share/applications/firefox.desktop");
-  expect(s.allow("/usr/share/applications/other.desktop")).toBeUndefined();
-  expect(s.allow("/media/usb/photos/1.jpg")).toBe("/media/usb/photos/1.jpg");
-  expect(s.allow("/etc/shadow")).toBeUndefined();
-  const w = new Scope("C:\\Users\\ann", true);
-  w.issue("C:\\Users\\Public\\Desktop", true);
-  expect(w.allow("c:\\users\\ann\\desktop\\x.txt")).toBe("C:\\users\\ann\\desktop\\x.txt");
-  expect(w.allow("C:\\Users\\Public\\Desktop\\app.lnk")).toBe("C:\\Users\\Public\\Desktop\\app.lnk");
-  expect(w.allow("C:\\Users\\bob\\x")).toBeUndefined();
-  expect(w.allow("C:\\Users\\ann\\..\\bob")).toBeUndefined();
-  const again = new Scope("C:\\Users\\ann", true);
-  again.load(w.list());
-  expect(again.allow("C:\\Users\\Public\\Desktop\\app.lnk")).toBeDefined();
   expect(sftpPath("C:\\Users\\ann\\a b.txt", true)).toBe("/C:/Users/ann/a b.txt");
+});
+
+test("roots: the root first, each disk's mount, loops and boot left out", () => {
+  const df = [
+    "Filesystem     1024-blocks      Used Available Capacity Mounted on",
+    "udev               8000000         0   8000000       0% /dev",
+    "/dev/nvme0n1p2   490000000 200000000 265000000      43% /",
+    "/dev/nvme0n1p1      524000      6000    518000       2% /boot/efi",
+    "/dev/loop3           65000     65000         0     100% /snap/core20/2318",
+    "/dev/sdb1       1900000000 900000000 1000000000     48% /mnt/big disk",
+    "tmpfs              1600000      2000   1598000       1% /run",
+  ].join("\n");
+  expect(parseDf(df)).toEqual([
+    { name: "/", path: "/", label: "/dev/nvme0n1p2", size: 490000000 * 1024, free: 265000000 * 1024 },
+    {
+      name: "/mnt/big disk",
+      path: "/mnt/big disk",
+      label: "/dev/sdb1",
+      size: 1900000000 * 1024,
+      free: 1000000000 * 1024,
+    },
+  ]);
+  expect(parseDf("")).toEqual([{ name: "/", path: "/", label: "", size: 0, free: 0 }]);
 });
 
 const firefox = `[Desktop Entry]
@@ -126,15 +110,11 @@ test("linux: desktop entries, gsettings values, uris, trashinfo", () => {
     "org.gnome.Nautilus.desktop",
   ]);
   expect(L.gList("@as []")).toEqual([]);
-  expect(L.gArray(["a.desktop", "it's.desktop"])).toBe("['a.desktop', 'it\\'s.desktop']");
   expect(L.uriPath("file:///home/ann/Pictures/my%20pic.png")).toBe("/home/ann/Pictures/my pic.png");
   expect(L.uriPath("https://x")).toBe("");
-  expect(L.fileUri("/home/ann/a b#c.png")).toBe("file:///home/ann/a%20b%23c.png");
   const info = L.trashInfo("/home/ann/my file ü.txt", Date.UTC(2026, 0, 2, 3, 4, 5));
   expect(info).toContain("Path=/home/ann/my%20file%20%C3%BC.txt\n");
-  expect(L.parseTrashInfo(info)!.path).toBe("/home/ann/my file ü.txt");
   expect(L.trashDate(Date.UTC(2026, 0, 2, 3, 4, 5), 0)).toBe("2026-01-02T03:04:05");
-  expect(L.parseTrashInfo("[Trash Info]\nPath=relative\n")).toBeUndefined();
 });
 
 test("linux: kde and xfce config", () => {
@@ -163,7 +143,6 @@ launchers=applications:systemsettings.desktop,preferred://filemanager,applicatio
   expect(L.kdeImage(a.image, lists, false)).toBe("/usr/share/wallpapers/Mountain/contents/images/5120x2880.png");
   expect(L.kdeImage("/home/ann/a.jpg", lists, false)).toBe("/home/ann/a.jpg");
   expect(L.rgbHex("61,174,233")).toBe("#3daee9");
-  expect(L.kdeScript({ pins: ["a.desktop"] })).toContain("'launchers',\"applications:a.desktop\"");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-desktop" version="1.0">
   <property name="backdrop" type="empty">
@@ -192,7 +171,6 @@ const gsRecs = (extra: string) =>
       `\x1egs\torg.gnome.desktop.interface icon-theme\n'Yaru'\n` +
       `\x1egs\torg.gnome.shell favorite-apps\n['firefox.desktop', 'gone.desktop']\n` +
       `\x1egs\torg.gnome.shell enabled-extensions\n['ding@rastersoft.com', 'ubuntu-dock@ubuntu.com']\n` +
-      `\x1edeskdir\t/home/ann/Desktop\n` +
       `\x1eent\t/home/ann/Desktop/notes.pdf\tf\t100\t5\n` +
       `\x1eent\t/home/ann/Desktop/Projects\td\t100\t0\n${extra}`,
   );
@@ -208,8 +186,7 @@ test("linux: a gnome desktop built, its pins out of the apps", () => {
     "Yaru",
   );
   expect(apps.map((a) => [a.id, a.name])).toEqual([["firefox.desktop", "My Firefox"]]);
-  const b = L.buildDesk(gsRecs(""), apps);
-  const d = b.desk;
+  const d = L.buildDesk(gsRecs(""), apps);
   expect([d.shell, d.dark, d.accent, d.wallpaper.path, d.wallpaper.fit, d.dock, d.ding]).toEqual([
     "gnome",
     true,
@@ -227,43 +204,9 @@ test("linux: a gnome desktop built, its pins out of the apps", () => {
   ]);
   expect(d.icons[0]!.icon).toBe("x:Yaru|user-trash-full,user-trash");
   expect(d.can).toEqual({ wallpaper: true, dark: true, accent: true, pins: true });
-  expect(linuxOps(d, undefined, { dark: false, pins: ["a.desktop"] })).toEqual([
-    "gs\torg.gnome.desktop.interface\tcolor-scheme\t'default'",
-    "gs\torg.gnome.shell\tfavorite-apps\t['a.desktop']",
-  ]);
-  expect(linuxOps(d, undefined, { wallpaper: "/x\n/y" })[0]).toBe(
-    "gs\torg.gnome.desktop.background\tpicture-uri\t'file:///x%0A/y'",
-  );
-  const nobus = L.buildDesk(records("\x1eenv\nhome=/home/ann\nde=gnome\nbus=0\n"), []).desk;
+  const nobus = L.buildDesk(records("\x1eenv\nhome=/home/ann\nde=gnome\nbus=0\n"), []);
   expect(nobus.can.wallpaper).toBe(false);
   expect(nobus.icons.map((i) => i.kind)).toEqual(["bin"]);
-});
-
-test("linux: xfce and kde set lines", () => {
-  const files = new Map([
-    [
-      "/home/ann/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml",
-      '<property name="Net" type="empty"><property name="ThemeName" type="string" value="Greybird"/></property>',
-    ],
-  ]);
-  const xd = {
-    shell: "xfce",
-    can: { wallpaper: true, dark: true, accent: false, pins: false },
-    accents: [],
-  } as unknown as Desk;
-  expect(linuxOps(xd, { files } as any, { dark: true })).toEqual([
-    "xf\txsettings\t/Net/ThemeName\tstring\tGreybird-dark",
-  ]);
-  expect(() => linuxOps(xd, { files } as any, { pins: [] })).toThrow(/xfce/);
-  const kd = {
-    shell: "kde",
-    can: { wallpaper: true, dark: true, accent: true, pins: true },
-    accents: [],
-  } as unknown as Desk;
-  const ops = linuxOps(kd, undefined, { dark: true, accent: "#ff0000", wallpaper: "/home/ann/a.png" });
-  expect(ops[0]!.startsWith("kde-js\t")).toBe(true);
-  expect(Buffer.from(ops[0]!.split("\t")[1]!, "base64").toString()).toContain("file:///home/ann/a.png");
-  expect(ops.slice(1)).toEqual(["kde-scheme\tBreezeDark", "kde-accent\t#ff0000"]);
 });
 
 test("windows: a desktop and what its console apps type", () => {
@@ -319,7 +262,7 @@ test("windows: a desktop and what its console apps type", () => {
   ]);
 });
 
-// the probe itself in sh, a temp home's trash: delete, list, restore, empty
+// the probe itself in sh, a temp home's trash: a delete, then one refused
 // dash where Git for Windows has it, as Ubuntu's sh is, which reads its script ahead
 const sh = [
   "/bin/sh",
@@ -328,7 +271,7 @@ const sh = [
   "C:/Program Files/Git/usr/bin/sh.exe",
 ].find((p) => existsSync(p));
 test.skipIf(!sh)(
-  "probe.sh: a file to the trash and back",
+  "probe.sh: a file to the trash",
   async () => {
     const home = mkdtempSync(join(tmpdir(), "phos-desk-"));
     mkdirSync(join(home, "Desktop"), { recursive: true });
@@ -355,30 +298,18 @@ test.skipIf(!sh)(
         .map((l) => reply(l))
         .filter((r) => !!r);
     };
-    const [del, list, again] = await run([
+    const [del, again, nope, desk] = await run([
       ["delete", `${f}\n${L.trashInfo(f, Date.now())}`],
-      ["trash", ""],
       ["delete", `${f}\n${L.trashInfo(f, Date.now())}`],
-    ]);
-    expect(del!.ok).toBe(true);
-    expect(existsSync(native)).toBe(false);
-    const items = records(list!.body).filter((r) => r.kind === "item");
-    expect(items.length).toBe(1);
-    expect(L.parseTrashInfo(items[0]!.body)!.path).toBe(f);
-    expect(again!.ok).toBe(false);
-    const [back, clash] = await run([
-      ["restore", `${items[0]!.args[0]}\n${f}`],
-      ["restore", `${items[0]!.args[0]}\n${f}`],
-    ]);
-    expect(back!.ok).toBe(true);
-    expect(readFileSync(native, "utf8")).toBe("hi");
-    expect(clash!.ok).toBe(false);
-    const [bad, nope, desk] = await run([
-      ["restore", `../x\n${f}`],
       ["format", ""],
       ["desktop", ""],
     ]);
-    expect(bad!.ok).toBe(false);
+    expect(del!.ok).toBe(true);
+    expect(existsSync(native)).toBe(false);
+    const bin = join(home, ".local", "share", "Trash");
+    expect(readFileSync(join(bin, "files", "a note.txt"), "utf8")).toBe("hi");
+    expect(readFileSync(join(bin, "info", "a note.txt.trashinfo"), "utf8")).toContain(`Path=${L.pctPath(f)}\n`);
+    expect(again!.ok).toBe(false);
     expect(nope!.body).toContain("no such request");
     const env = records(desk!.body).find((r) => r.kind === "env")!;
     expect(env.body).toContain(`home=${posix(home)}`);

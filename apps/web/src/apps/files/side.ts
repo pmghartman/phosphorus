@@ -1,7 +1,20 @@
 // the side: Home, then each host and its shares
 
-import { type Fm, filesCall, fmIcon, fmSame, homeLoc, isHome, type Loc } from '../../features/home/home.ts';
+import { api, hostInfo } from '../../desktop/desk/hosts.ts';
+import {
+  deskLoc,
+  deskRel,
+  type Fm,
+  filesCall,
+  fmIcon,
+  fmSame,
+  homeLoc,
+  isDesk,
+  isHome,
+  type Loc,
+} from '../../features/home/home.ts';
 import { phosphorusHosts } from '../../features/mesh/hosts.ts';
+import { acctCall } from '../../lib/api.ts';
 import { el } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
 import { fmDropZone } from './actions.ts';
@@ -17,8 +30,43 @@ export const shareLabel = (root: string) =>
     .split(/[/\\]/)
     .pop() || root;
 
+// a host's disk: its home, then every drive or mount, read once a window
+type Root = { name: string; path: string; label: string };
+const roots = new Map<string, Root[]>();
+
+function deskSide(fm: Fm, h: string): HTMLElement[] {
+  const place = (label: string, rel: string, title: string, kind = 'dir') => {
+    const row = el('div', `fm-place fm-share${fm.dir === rel ? ' here' : ''}`);
+    row.append(fmIcon(kind), el('span', '', label));
+    row.title = title;
+    row.addEventListener('click', () => fmGo(fm, deskLoc(h), rel));
+    return row;
+  };
+  const out: HTMLElement[] = [el('div', 'fm-side-head', h)];
+  const home = hostInfo(h).desk?.home;
+  if (home) out.push(place('home', deskRel(home), home));
+  const list = roots.get(h);
+  if (!list) {
+    roots.set(h, []);
+    void acctCall<{ roots: Root[] }>(api(h, 'roots')).then((r) => {
+      if (r.ok && r.roots) roots.set(h, r.roots);
+      fm.renderSide?.();
+    });
+  }
+  for (const r of list ?? []) {
+    const label = r.label && !r.label.startsWith('/dev/') ? `${r.name} ${r.label}` : r.name;
+    out.push(place(label, deskRel(r.path), r.path, 'host'));
+  }
+  return out;
+}
+
 export async function fmSide(fm: Fm) {
   const render = () => {
+    // a host's disk: that host's places alone, as on its own desktop
+    if (isDesk(fm.loc)) {
+      fm.side.replaceChildren(...deskSide(fm, fm.loc!.host));
+      return;
+    }
     const place = (loc: Loc, label: string, title: string, cls = '') => {
       const row = el('div', `fm-place fm-share${cls}${fmSame(loc, fm.loc) ? ' here' : ''}`);
       row.append(fmIcon('dir'), el('span', '', label));
@@ -62,7 +110,7 @@ export async function fmHosts(fm: Fm): Promise<void> {
   const sig = on.join('\n');
   if (sig === fm.sideSig) return;
   fm.sideSig = sig;
-  if (fm.loc && !isHome(fm.loc) && !on.includes(fm.loc.host)) fmGo(fm, homeLoc(), '');
+  if (fm.loc && !isHome(fm.loc) && !isDesk(fm.loc) && !on.includes(fm.loc.host)) fmGo(fm, homeLoc(), '');
   else fm.renderSide?.();
   await Promise.all(
     on

@@ -1,12 +1,14 @@
 // the list: sorting, rows, selection and keys
 
 import type { FileEntry } from '@phosphorus/wire';
+import { hostInfo } from '../../desktop/desk/hosts.ts';
 import {
   type Fm,
   type FmView,
   filesJoin,
   fmIcon,
   fmKind,
+  isDesk,
   isHome,
   may,
   type PickedItem,
@@ -36,7 +38,15 @@ export function fmRender(fm: Fm) {
   fm.badge.hidden = !fm.loc || fmCan(fm, 'w');
   // the path bar: the place, then each folder, any one a jump
   const crumbs: HTMLElement[] = [];
-  const top = !fm.loc ? '' : isHome(fm.loc) ? 'home' : `${fm.loc.host}: ${shareLabel(fm.loc.root!)}`;
+  // a host's disk: the host, its drives under it, or its / on Linux
+  const deskTop = (h: string) => (hostInfo(h).desk?.os === 'windows' ? h : `${h} /`);
+  const top = !fm.loc
+    ? ''
+    : isHome(fm.loc)
+      ? 'home'
+      : isDesk(fm.loc)
+        ? deskTop(fm.loc.host)
+        : `${fm.loc.host}: ${shareLabel(fm.loc.root!)}`;
   if (fm.loc) {
     const parts = fm.dir ? fm.dir.split('/') : [];
     [top, ...parts].forEach((name, i) => {

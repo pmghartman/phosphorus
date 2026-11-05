@@ -45,6 +45,9 @@ export const PREF_LS: Record<string, string> = {
   color: 'phosphorus-chat-color',
   agentview: 'phosphorus-agent-view',
   svctab: 'phosphorus-services-in-tabs',
+  shared: 'phosphorus-shared-apps',
+  spaceicons: 'phosphorus-space-icons',
+  spacewalls: 'phosphorus-space-walls',
 };
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 
@@ -76,6 +79,8 @@ export interface FmClip {
 // creds: host -> {user, pass}, this page's memory only
 export interface Dk {
   creds: Map<string, { user: string; pass: string }>;
+  // the desktop shown: '' the shared one, else a logged in host's
+  space: string;
   wins: Map<string, DkWin>;
   services: Route[];
   deskFiles: FileEntry[];
@@ -91,8 +96,6 @@ export interface Dk {
   mcp?: { show: (on: boolean) => void; paint: () => void } | null;
   mcpStop?: () => void;
   chips?: string;
-  chipFold?: HTMLButtonElement;
-  chipN?: number;
   deskKey?: string;
   deskReady?: boolean;
   // the home's digest last seen in the state
@@ -102,6 +105,7 @@ export interface Dk {
 }
 export const dk: Dk = {
   creds: new Map(),
+  space: '',
   wins: new Map(),
   services: [],
   deskFiles: [],

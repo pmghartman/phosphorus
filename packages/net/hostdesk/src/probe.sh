@@ -101,7 +101,6 @@ do_desktop() {
     ;;
   esac
   dd=$(desk_dir)
-  printf '\036deskdir\t%s\n' "$dd"
   list_dir "$dd"
   for f in "$dd"/*.desktop; do emit_entry "$f"; done
 }
@@ -158,38 +157,6 @@ do_icon() {
   return 0
 }
 
-do_trash() {
-  [ -d "$T/info" ] || return 0
-  for i in "$T/info"/*.trashinfo; do
-    [ -f "$i" ] || continue
-    n=$(basename "$i" .trashinfo)
-    f="$T/files/$n"
-    [ -e "$f" ] || [ -L "$f" ] || continue
-    t=f
-    [ -d "$f" ] && t=d
-    printf '\036item\t%s\t%s\t%s\n' "$n" "$t" "$(du -sk "$f" 2>/dev/null | cut -f1)"
-    cat "$i"
-    printf '\n'
-  done
-}
-
-# name, then the decoded path it came from
-do_restore() {
-  n=$(printf '%s\n' "$1" | head -n 1)
-  to=$(printf '%s\n' "$1" | tail -n +2)
-  case $n in "" | */* | . | ..) fail "not in the trash"; return ;; esac
-  [ -e "$T/files/$n" ] || [ -L "$T/files/$n" ] || { fail "not in the trash"; return; }
-  if [ -e "$to" ] || [ -L "$to" ]; then fail "something is already at $to"; return; fi
-  mkdir -p "$(dirname "$to")" || return
-  mv -- "$T/files/$n" "$to" || return
-  rm -f -- "$T/info/$n.trashinfo"
-}
-
-do_empty() {
-  rm -rf -- "$T/files" "$T/info" "$T/expunged" "$T/directorysizes"
-  mkdir -p "$T/files" "$T/info"
-}
-
 # path, then the trashinfo to write beside it
 do_delete() {
   p=$(printf '%s\n' "$1" | head -n 1)
@@ -219,7 +186,8 @@ do_open() {
 
 do_ls() {
   [ -d "$1" ] || { fail "not a folder: $1"; return; }
-  for f in "$1"/* "$1"/.[!.]*; do
+  d=${1%/}
+  for f in "$d"/* "$d"/.[!.]*; do
     [ -e "$f" ] || [ -L "$f" ] || continue
     t=f
     [ -d "$f" ] && t=d
@@ -227,54 +195,12 @@ do_ls() {
   done
 }
 
-do_images() {
-  find /usr/share/backgrounds /usr/share/wallpapers "$HOME/Pictures" -maxdepth 4 -type f \
-    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.svg' \) 2>/dev/null | head -n 300
-}
-
-# one change a line: gs schema key value, xf channel property type value, kde-js b64,
-# kde-scheme name, kde-accent #rrggbb
-do_set() {
-  printf '%s\n' "$1" | while IFS='	' read -r op a b c d; do
-    case $op in
-    gs)
-      case "$a $b" in
-      "org.gnome.desktop.background picture-uri" | "org.gnome.desktop.background picture-uri-dark" | \
-        "org.gnome.desktop.interface color-scheme" | "org.gnome.desktop.interface gtk-theme" | \
-        "org.gnome.desktop.interface accent-color" | "org.gnome.shell favorite-apps") ;;
-      *) fail "not a setting phosphorus changes: $a $b"; return ;;
-      esac
-      gsettings set "$a" "$b" "$c" 2>&1 || return
-      ;;
-    xf)
-      case $a in xfce4-desktop | xsettings) ;; *) fail "not a channel phosphorus changes: $a"; return ;; esac
-      xfconf-query -c "$a" -p "$b" -n -t "$c" -s "$d" || return
-      ;;
-    kde-js)
-      js=$(printf '%s' "$a" | base64 -d)
-      if command -v qdbus6 >/dev/null 2>&1; then qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$js" >/dev/null || return
-      elif command -v qdbus >/dev/null 2>&1; then qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$js" >/dev/null || return
-      else gdbus call --session --dest org.kde.plasmashell --object-path /PlasmaShell --method org.kde.PlasmaShell.evaluateScript "$js" >/dev/null || return
-      fi
-      ;;
-    kde-scheme)
-      case $a in *[!A-Za-z0-9._-]* | "") fail "not a colour scheme: $a"; return ;; esac
-      plasma-apply-colorscheme "$a" >/dev/null || return
-      ;;
-    kde-accent)
-      case $a in \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;; *) fail "not a colour: $a"; return ;; esac
-      plasma-apply-colorscheme --accent-color "$a" >/dev/null || return
-      ;;
-    "") ;;
-    *) fail "no such change: $op"; return ;;
-    esac
-  done
-}
+do_roots() { df -kP 2>/dev/null; }
 
 while IFS='	' read -r id cmd arg; do
   a=$(printf '%s' "$arg" | base64 -d 2>/dev/null)
   case $cmd in
-  desktop | apps | icon | trash | restore | empty | delete | open | ls | images | set) ;;
+  desktop | apps | icon | delete | open | ls | roots) ;;
   *)
     printf '%s\terr\t%s\n' "$id" "$(printf 'no such request: %s' "$cmd" | b64)"
     continue

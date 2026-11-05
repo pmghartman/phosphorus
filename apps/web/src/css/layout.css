@@ -586,7 +586,7 @@
     bottom: 0;
   }
   :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))
-    .dk-bar:not(.dk-menubar):is(:hover, :has(:focus-visible), :has([aria-expanded="true"]:not(.dk-chip-fold))) {
+    .dk-bar:not(.dk-menubar):is(:hover, :has(:focus-visible), :has([aria-expanded="true"])) {
     transform: none;
   }
 }

@@ -1,8 +1,7 @@
 // a Windows host's desktop from its probe's JSON, in the shape every OS shares
 
-import { type BinItem, type Desk, type Item, type Kind, type Look, plainLook } from "./model.ts";
+import { type Desk, type Item, type Kind, type Look, plainLook } from "./model.ts";
 import { baseName } from "./paths.ts";
-import { parseInfo } from "./recycle.ts";
 
 const kinds = new Set<Kind>(["file", "folder", "cli", "web", "gui", "bin"]);
 const s = (v: unknown) => (typeof v === "string" ? v : "");
@@ -95,24 +94,4 @@ export function winDesk(o: Record<string, any>, psShell: boolean): Desk {
     sshShell: ps ? "powershell" : "cmd",
     look: winLook(o, win11),
   };
-}
-
-// the recycle bin's rows, each $I file read
-export function winTrash(rows: unknown): BinItem[] {
-  const out: BinItem[] = [];
-  for (const r of Array.isArray(rows) ? rows : []) {
-    const bin = s(r?.bin);
-    const i = s(r?.i);
-    const info = parseInfo(Buffer.from(s(r?.data), "base64"));
-    if (!bin || !i || !info) continue;
-    out.push({
-      id: `${bin}|${i}`,
-      name: baseName(info.path),
-      from: info.path,
-      deleted: info.deleted,
-      size: info.size,
-      dir: r.dir === true,
-    });
-  }
-  return out.sort((a, b) => b.deleted - a.deleted);
 }

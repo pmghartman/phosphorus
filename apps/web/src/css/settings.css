@@ -431,10 +431,6 @@
   padding: 0.4rem 0;
   font-size: var(--fs-2xs);
 }
-/* the bar's hosts, a press their settings */
-button.dk-chip:not(.locked) {
-  cursor: pointer;
-}
 
 /* a phone: the rail a row of tabs across the top */
 @media (max-width: 720px) {

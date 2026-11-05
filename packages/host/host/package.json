@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.2",
+    "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.3",
     "@phosphorus/appfeed": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/procs": "workspace:*",

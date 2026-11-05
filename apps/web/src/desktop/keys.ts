@@ -6,6 +6,7 @@ import { isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { dkSettings } from '../settings/settings.ts';
 import { dkOpenApp, dkTermNew } from './desk.ts';
+import { dkSpaceStep, hostFiles } from './spaces.ts';
 import { dkOverview, dkOverviewEnd, dkOverviewOn, dkSwitchEnd, dkSwitching, dkSwitchStep } from './switcher.ts';
 import { type DkWin, dkClose, dkFocus, dkMax, dkMin, dkSnapTo, dkStack } from './windows.ts';
 
@@ -40,9 +41,10 @@ document.addEventListener(
     let done = true;
     if (code === 'Tab') dkSwitchStep(e.shiftKey);
     else if (code === 'KeyT') dkTermNew();
-    else if (code === 'KeyF') filesWin();
+    else if (code === 'KeyF') dk.space ? hostFiles(dk.space) : filesWin();
     else if (code === 'KeyS') dkSettings('hosts');
     else if (code === 'KeyD') dkShowDesktop();
+    else if (code === 'PageUp' || code === 'PageDown') dkSpaceStep(code === 'PageDown' ? 1 : -1);
     else if (code === 'KeyO') dkOverview();
     else if (code === 'KeyQ' && w) dkClose(w);
     else if (code === 'KeyM' && w) dkMin(w);

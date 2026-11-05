@@ -95,7 +95,7 @@
     color: var(--fg);
   }
   /* the status icons: even squares, the glyphs a size up */
-  :root[data-palette="phosphorus"] .dk-bar .dk-tray:not(.dk-profile) {
+  :root[data-palette="phosphorus"] .dk-bar .dk-tray:not(.dk-profile, .dk-apps-btn) {
     width: 2.25rem;
     height: 2.25rem;
     margin: auto 0;
@@ -125,16 +125,4 @@
     margin-right: 0.5rem;
     color: var(--muted);
   }
-}
-
-/* host chips: a round dot and the name in a quiet pill */
-:root[data-palette="phosphorus"] .dk-bar .dk-chip {
-  border-radius: var(--r-ctl, 0);
-  font-size: var(--fs-sm);
-}
-:root[data-palette="phosphorus"] .dk-chip::before {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: calc(var(--r-ctl, 0px) * 99);
-  vertical-align: 0.08rem;
 }

@@ -20,8 +20,21 @@ export const isHome = (loc: Loc | null | undefined) => !!loc && loc.share === 'h
 // the host a place is read on: the home this one, whatever host it was first shown on
 export const hostOf = (loc: Loc) => (isHome(loc) ? st.selfHost || loc.host : loc.host);
 
+// a host's whole file system as one place, over the viewer's own login there (desktop/spaces.ts)
+export const deskLoc = (h: string): Loc => ({ host: h, share: 'desk', root: '', perms: 'rwd' });
+export const isDesk = (loc: Loc | null | undefined) => loc?.share === 'desk';
+// C:\Users\ann as C:/Users/ann, /home/ann as home/ann; the drives or / as ''
+export const deskRel = (abs: string) =>
+  /^[A-Za-z]:/.test(abs) ? abs.replace(/\\/g, '/').replace(/\/+$/, '') : abs.replace(/^\/+|\/+$/g, '');
+export const deskAbs = (rel: string) =>
+  /^[A-Za-z]:/.test(rel) ? `${rel.slice(0, 2)}\\${rel.slice(3).replace(/\//g, '\\')}` : `/${rel}`;
+
 // loc is any {host, share}: a pane, a share row, or the pair a transfer holds
 export const filesApi = (loc: Loc, op: string, params?: Record<string, string | number>) => {
+  if (isDesk(loc)) {
+    const q = new URLSearchParams(Object.fromEntries(Object.entries(params || {}).map(([k, v]) => [k, String(v)])));
+    return `/api/hostdesk/${encodeURIComponent(loc.host)}/fs-${op}?${q}`;
+  }
   const q = new URLSearchParams({
     share: loc.share || '0',
     ...Object.fromEntries(Object.entries(params || {}).map(([k, v]) => [k, String(v)])),
@@ -74,15 +87,24 @@ export async function filesCall(
 // a file or a folder and all in it copied, or moved, from one place to another
 // on any hosts: streamed between them by the host serving this page
 export const filesCopy = (from: Loc, fromPath: string, to: Loc, toPath: string, move: boolean) =>
-  filesCall(
-    { host: st.selfHost },
-    'copy',
-    jsonPost({
-      from: { host: hostOf(from), share: from.share, path: fromPath },
-      to: { host: hostOf(to), share: to.share, path: toPath },
-      move,
-    }),
-  );
+  isDesk(from) || isDesk(to)
+    ? deskCopy(from, fromPath, to, toPath, move)
+    : filesCall(
+        { host: st.selfHost },
+        'copy',
+        jsonPost({
+          from: { host: hostOf(from), share: from.share, path: fromPath },
+          to: { host: hostOf(to), share: to.share, path: toPath },
+          move,
+        }),
+      );
 
 // r browse and download, w upload/new folder/rename, d delete
 export const may = (loc: Loc, perm: string) => (loc.perms || '').includes(perm);
+
+// on a host's disk: moved within it as a rename, copied by the host itself
+function deskCopy(from: Loc, fromPath: string, to: Loc, toPath: string, move: boolean) {
+  if (!isDesk(from) || !isDesk(to) || from.host !== to.host)
+    return Promise.reject(new Error("between a host's disk and another place isn't there yet: download and upload it"));
+  return filesCall(to, move ? 'rename' : 'copy', jsonPost({ from: fromPath, to: toPath }));
+}

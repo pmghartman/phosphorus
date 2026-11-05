@@ -417,7 +417,7 @@ jobs:
 
   # only the two newest numbered releases and their tags kept, the `update` feed
   # aside; only this workflow's two newest runs, this one included; of the bun
-  # caches only this lockfile's
+  # caches only this lockfile's; no artifacts at all
   prune:
     needs: [prep, release, feed]
     runs-on: ubuntu-24.04
@@ -456,6 +456,12 @@ jobs:
             echo "deleting cache $id"
             gh cache delete "$id" || true
           done
+      # every artifact once the release is out, this run's too, never left for its day
+      - name: artifacts
+        run: |
+          ids=$(gh api --paginate "repos/$GH_REPO/actions/artifacts?per_page=100" -q '.artifacts[] | select(.expired | not) | .id')
+          for id in $ids; do gh api -X DELETE "repos/$GH_REPO/actions/artifacts/$id" --silent || echo "::warning::artifact $id not deleted"; done
+          echo "deleted $(echo "$ids" | grep -c . || true) artifacts"
       - name: runs
         run: |
           gh run list --workflow release.yml --limit 200 --json databaseId,createdAt,status --jq 'sort_by(.createdAt) | reverse | .[2:] | .[] | select(.status == "completed") | .databaseId' |

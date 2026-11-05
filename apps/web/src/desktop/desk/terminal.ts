@@ -8,6 +8,7 @@ import { agentDisown } from '../../features/agent.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { newSid } from '../../lib/util.ts';
+import { hostTerm } from '../spaces.ts';
 import { type DkWin, dkClose, dkFocus, dkTouch, dkWin } from '../windows.ts';
 import { dkLiveHosts } from './icons.ts';
 import { type TermTab, tabAdd, tabClose, tabDefaultHost, tabLabel, tabMove, tabStep } from './termtabs.ts';
@@ -38,11 +39,11 @@ const lastHost = () => {
 };
 
 // a device's OS by what tailscale or its info.json says, its glyph by that
-function osOf(host: string): string {
+export function osOf(host: string): string {
   const d = st.lastState?.tailnet?.find((x) => x.name === host);
   return d?.os || st.hostsInfo[host.toLowerCase()]?.platform || '';
 }
-const osGlyph = (os: string) =>
+export const osGlyph = (os: string) =>
   DK_GLYPHS[
     /win/i.test(os)
       ? 'windows'
@@ -312,6 +313,7 @@ function termPick() {
 // a new tab on the usual host: the serving one, else the last used; the ▾ opened when there's none
 export function dkTermNew(): void {
   if (!dk.desk) return;
+  if (dk.space) return void hostTerm(dk.space);
   const h = tabDefaultHost(dkLiveHosts(), st.selfHost, lastHost());
   if (h) {
     dkTerminal(h);
@@ -325,6 +327,7 @@ export function dkTermNew(): void {
 
 // the desktop's icon: the window brought up, else opened with a tab
 export function dkTermApp(): void {
+  if (dk.space) return void hostTerm(dk.space);
   const w = dk.wins.get(KEY);
   if (w) dkFocus(w);
   else dkTermNew();
@@ -332,6 +335,8 @@ export function dkTermApp(): void {
 
 // a tab of a person's own, with a command typed in once logged in: run
 export function dkTerminal(host: string, run = '', shared = false): DkWin | undefined {
+  // a host's desktop: its own terminals, on that host alone
+  if (dk.space && !shared) return hostTerm(dk.space, run);
   const w = termTab(host, run, shared);
   if (w) agentDisown(w);
   return w;

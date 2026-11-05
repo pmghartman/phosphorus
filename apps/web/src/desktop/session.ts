@@ -7,6 +7,7 @@ import { dk, st } from '../lib/state.ts';
 import { dkSettings, type SettingsAt, settingsAt } from '../settings/settings.ts';
 import { dkTermRestore, dkTermSaved } from './desk/terminal.ts';
 import { dkOpenApp, dkService, dkTerminal, servicesInTabs } from './desk.ts';
+import { spaceShow } from './spaces.ts';
 import { type DkWin, dkFocus, dkHide, dkOnTouch, dkPlace, dkSnap } from './windows.ts';
 
 interface Saved {
@@ -18,6 +19,8 @@ interface Saved {
   snap: string;
   min: boolean;
   z: number;
+  // its desktop, '' the shared one
+  space?: string;
 }
 interface Session {
   wins: Saved[];
@@ -63,6 +66,7 @@ function save() {
         snap: w.snap,
         min: !!w.node.hidden,
         z: Number(w.node.style.zIndex) || 0,
+        space: w.space ?? '',
       });
   }
   // what's still waiting to come back kept, never dropped by an early save
@@ -112,6 +116,8 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
 
 // the geometry a window had put back on it
 function place(w: DkWin, s: Saved) {
+  w.space = typeof s.space === 'string' && (!s.space || dk.creds.has(s.space)) ? s.space : '';
+  spaceShow(w);
   Object.assign(w, { x: s.x, y: s.y, w: s.w, h: s.h });
   dkPlace(w);
   if (s.snap) dkSnap(w, s.snap);
@@ -160,7 +166,7 @@ export function dkSessionRestore(): void {
   pending = s.wins.filter((x) => x && typeof x === 'object' && x.open).sort((a, b) => a.z - b.z);
   dkSessionTry().then(() => {
     const top = [...dk.wins.values()]
-      .filter((w) => !w.node.hidden)
+      .filter((w) => !w.node.hidden && (w.space ?? '') === dk.space)
       .sort((a, b) => Number(b.node.style.zIndex) - Number(a.node.style.zIndex))[0];
     if (top) dkFocus(top);
   });

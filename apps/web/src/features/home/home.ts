@@ -3,6 +3,9 @@ import './transfer.ts';
 import './fm.ts';
 
 export {
+  deskAbs,
+  deskLoc,
+  deskRel,
   filesApi,
   filesCall,
   filesCopy,
@@ -11,6 +14,7 @@ export {
   filesPath,
   homeLoc,
   hostOf,
+  isDesk,
   isHome,
   type Loc,
   may,

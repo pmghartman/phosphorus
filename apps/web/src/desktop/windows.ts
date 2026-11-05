@@ -4,6 +4,7 @@
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { dkAppsChanged, dkMenu, type MenuItem } from './desk.ts';
+import { dkSpace, spaceGlyph, spaceName } from './spaces.ts';
 
 // told of any window made, moved, snapped, hidden, shown, raised or closed (session.ts)
 let touched: (() => void) | null = null;
@@ -18,6 +19,8 @@ export type NavFrame = HTMLIFrameElement & { dkUndo?: number };
 // one window on the desk
 export interface DkWin {
   key: string;
+  // the desktop it's on, '' the shared one
+  space?: string;
   node: HTMLElement;
   body: HTMLElement;
   head: HTMLElement;
@@ -95,6 +98,7 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
   task.append(dkGlyph(glyph, 'dk-task-ic'), el('span', 'dk-task-t', title));
   const w: DkWin = {
     key: key || `w${++dk.n}`,
+    space: dk.space,
     node,
     body,
     head,
@@ -163,7 +167,7 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
 }
 
 // on screen: not minimized, not leaving
-export const dkShown = (w: DkWin): boolean => !w.node.hidden && !w.leaving;
+export const dkShown = (w: DkWin): boolean => !w.node.hidden && !w.leaving && (w.space ?? '') === dk.space;
 // the windows on screen, topmost first
 export const dkStack = (): DkWin[] =>
   [...dk.wins.values()].filter(dkShown).sort((a, b) => Number(b.node.style.zIndex) - Number(a.node.style.zIndex));
@@ -373,6 +377,11 @@ function dkTween(w: DkWin) {
 }
 
 export function dkFocus(w: DkWin | null): void {
+  // a window on another desktop: that desktop first
+  if (w && (w.space ?? '') !== dk.space) {
+    dkSpace(w.space ?? '');
+    if ((w.space ?? '') !== dk.space) return;
+  }
   if (w?.leaving) {
     clearTimeout(w.leaving);
     w.leaving = 0;
@@ -385,8 +394,8 @@ export function dkFocus(w: DkWin | null): void {
   if (dk.desk?.app) {
     dk.desk.app.querySelector('.dk-menubar-app-t')!.textContent = w
       ? w.task.querySelector('.dk-task-t')!.textContent
-      : 'phosphorus';
-    dk.desk.app.querySelector('path')!.setAttribute('d', w ? w.glyph : DK_GLYPHS.mesh!);
+      : spaceName();
+    dk.desk.app.querySelector('path')!.setAttribute('d', w ? w.glyph : spaceGlyph());
   }
   if (!w) return;
   if (w.node.hidden) dkRestore(w);

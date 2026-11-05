@@ -18,13 +18,14 @@ import { dkWallPick } from '../../settings/appearance.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskAt, dkDeskUpload, dkDeskView } from '../deskfiles.ts';
+import { hostIcons, hostTerm, isShared, setShared } from '../spaces.ts';
 import type { Pop } from '../taskbar.ts';
 import { type DkWin, dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
+import { hostInfo, wallSrc } from './hosts.ts';
 import {
   DK_GX,
   DK_GY,
   DK_PAD,
-  DK_POS_KEY,
   dkCell,
   dkGrid,
   dkIconEls,
@@ -32,6 +33,7 @@ import {
   dkLiveHosts,
   dkPaintSel,
   dkSaved,
+  dkSavedPut,
 } from './icons.ts';
 import { dkTerminal } from './terminal.ts';
 
@@ -39,10 +41,36 @@ import { dkTerminal } from './terminal.ts';
 export const WALL_EVENT = 'phosphorus-wallpaper';
 export function dkWallPaint(): void {
   const at = st.acct?.wallpaper || 0;
-  dkView.classList.toggle('dk-walled', !!at);
-  if (at) dkView.style.setProperty('--dk-wall', `url("/api/me/wallpaper?v=${at}")`);
+  // a host's desktop: that host's own wallpaper unless yours was picked for it
+  const d = dk.space && !wallMine(dk.space) ? hostInfo(dk.space).desk : undefined;
+  const host = d ? wallSrc(dk.space, d) : '';
+  const url = host || (at ? `/api/me/wallpaper?v=${at}` : '');
+  dkView.classList.toggle('dk-walled', !!url);
+  if (url) dkView.style.setProperty('--dk-wall', `url("${url}")`);
   else dkView.style.removeProperty('--dk-wall');
+  if (d?.wallpaper.color) dkView.style.setProperty('--dk-wall-c', d.wallpaper.color);
+  else dkView.style.removeProperty('--dk-wall-c');
+  dkView.dataset.wallFit = host ? d!.wallpaper.fit || 'cover' : '';
   dispatchEvent(new CustomEvent(WALL_EVENT, { detail: at }));
+}
+
+// the hosts whose desktops wear your wallpaper rather than their own, synced with the user
+const WALL_MINE = PREF_LS.spacewalls!;
+function wallsMine(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(WALL_MINE) ?? '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+export const wallMine = (h: string) => wallsMine().includes(h);
+export function wallMineSet(h: string, on: boolean) {
+  const v = wallsMine().filter((x) => x !== h);
+  try {
+    localStorage.setItem(WALL_MINE, JSON.stringify(on ? [...v, h] : v));
+  } catch {}
+  dkWallPaint();
 }
 
 export const dkPick = (accept: string, multiple: boolean, then: (files: File[]) => void) => {
@@ -75,9 +103,7 @@ export function dkPlaceAt(x: number, y: number, names: string[], dir = dkDeskAt(
     taken.add(dkCell(...at));
     saved[id] = at;
   }
-  try {
-    localStorage.setItem(DK_POS_KEY, JSON.stringify(saved));
-  } catch {}
+  dkSavedPut(saved);
 }
 
 // the computer's own files being dragged in
@@ -100,32 +126,58 @@ export function dkDeskMenu(icons: HTMLElement) {
       return;
     }
     const [kind, name, host] = b ? b.dataset.id!.split('\n') : [];
+    const ha = b && hostIcons.get(b);
+    const sp = dk.space;
+    const mine = !sp && !!dkDeskAt();
     const svc = kind === 'service' && dk.services.find((r) => r.host === host && r.name === name);
     const items: MenuItem[] = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true] as MenuItem] : []),
+      ...(ha
+        ? [
+            [
+              isShared(ha.host, ha.it) ? 'take off the shared desktop' : 'add to shared',
+              () => setShared(ha.host, ha.it, !isShared(ha.host, ha.it)),
+              true,
+            ] as MenuItem,
+          ]
+        : []),
       ...(svc && st.acct?.admin
         ? [[svc.public ? 'make private' : 'make public', () => dkSetPublic(svc, !svc.public), true] as MenuItem]
         : []),
       ...(!b && st.acct?.admin && dkFound().length ? [['publish found page', dkFound(), true] as MenuItem, null] : []),
       ...(b ? [null] : []),
-      ['new terminal', hosts.map((h): MenuItem => [h, () => dkTerminal(h), true]), hosts.length > 0],
+      sp
+        ? (['new terminal', () => hostTerm(sp), true] as MenuItem)
+        : (['new terminal', hosts.map((h): MenuItem => [h, () => dkTerminal(h), true]), hosts.length > 0] as MenuItem),
       null,
-      ['new folder', () => appCall('files', true, (m) => m.fmMkdir(dkDeskView())), !!dkDeskAt()],
-      [
-        'upload files…',
-        () =>
-          dkPick('', true, (list) => {
-            dkPlaceAt(
-              e.clientX,
-              e.clientY,
-              list.map((f) => f.name),
-            );
-            dkDeskUpload(list);
-          }),
-        !!dkDeskAt(),
-      ],
-      ['paste', () => appCall('files', true, (m) => m.fmPaste(dkDeskView())), !!dk.clip && !!dkDeskAt()],
-      null,
+      // the desk's own folder in the home: the shared desktop's alone
+      ...(sp
+        ? []
+        : ([
+            ['new folder', () => appCall('files', true, (m) => m.fmMkdir(dkDeskView())), mine],
+            [
+              'upload files…',
+              () =>
+                dkPick('', true, (list) => {
+                  dkPlaceAt(
+                    e.clientX,
+                    e.clientY,
+                    list.map((f) => f.name),
+                  );
+                  dkDeskUpload(list);
+                }),
+              mine,
+            ],
+            ['paste', () => appCall('files', true, (m) => m.fmPaste(dkDeskView())), !!dk.clip && mine],
+            null,
+          ] as MenuItem[])),
+      ...(sp
+        ? [
+            wallMine(sp)
+              ? ([`${sp}'s own wallpaper`, () => wallMineSet(sp, false), true] as MenuItem)
+              : (['your wallpaper here', () => wallMineSet(sp, true), !!st.acct?.wallpaper] as MenuItem),
+          ]
+        : []),
       ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
       ['appearance…', () => dkSettings('appearance', 'desktop'), true],
       null,
@@ -182,9 +234,7 @@ export function dkSay(text: string): void {
 
 // every icon back in the default order
 export function dkArrange(): void {
-  try {
-    localStorage.setItem(DK_POS_KEY, '{}');
-  } catch {}
+  dkSavedPut({});
   dkLayout();
 }
 
