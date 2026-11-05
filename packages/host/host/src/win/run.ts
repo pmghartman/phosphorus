@@ -26,6 +26,7 @@ import type { OS, Reporter, Stop } from "../os.ts";
 import { newStop } from "../os.ts";
 import { tailscaleLogin } from "../tailnet.ts";
 import { agentReport } from "../upgrade.ts";
+import { ensureAfterglow } from "./afterglow.ts";
 import {
   createService,
   lockRebuild,
@@ -328,10 +329,13 @@ export const windows: OS = {
   ownTailscale: () => false,
   logHint: () => at("state", "log", "phosphorus.log"),
   async svcInstall() {
-    if (await svcInstalled()) return;
-    if (!(await quiet("net", "session")))
-      throw fail("the phosphorus service isn't installed yet: phos start (it asks for admin once)");
-    await createService();
+    if (!(await svcInstalled())) {
+      if (!(await quiet("net", "session")))
+        throw fail("the phosphorus service isn't installed yet: phos start (it asks for admin once)");
+      await createService();
+    }
+    // afterglow, the release's streaming host, set up or brought up to date beside it
+    await ensureAfterglow();
   },
   svcActive,
   async svcSince() {

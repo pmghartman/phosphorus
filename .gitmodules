@@ -1,0 +1,30 @@
+# afterglow's (native/afterglow) dependencies, pinned where Apollo pins them; only the
+# Windows build fetches them (actions/checkout with submodules: recursive)
+[submodule "native/afterglow/third-party/build-deps"]
+	path = native/afterglow/third-party/build-deps
+	url = https://github.com/LizardByte/build-deps.git
+	branch = dist
+[submodule "native/afterglow/third-party/libdisplaydevice"]
+	path = native/afterglow/third-party/libdisplaydevice
+	url = https://github.com/LizardByte/libdisplaydevice.git
+[submodule "native/afterglow/third-party/moonlight-common-c"]
+	path = native/afterglow/third-party/moonlight-common-c
+	url = https://github.com/ClassicOldSong/moonlight-common-c.git
+[submodule "native/afterglow/third-party/nanors"]
+	path = native/afterglow/third-party/nanors
+	url = https://github.com/sleepybishop/nanors.git
+[submodule "native/afterglow/third-party/nv-codec-headers"]
+	path = native/afterglow/third-party/nv-codec-headers
+	url = https://github.com/FFmpeg/nv-codec-headers.git
+[submodule "native/afterglow/third-party/nvapi-open-source-sdk"]
+	path = native/afterglow/third-party/nvapi-open-source-sdk
+	url = https://github.com/LizardByte/nvapi-open-source-sdk.git
+[submodule "native/afterglow/third-party/Simple-Web-Server"]
+	path = native/afterglow/third-party/Simple-Web-Server
+	url = https://github.com/ClassicOldSong/Simple-Web-Server.git
+[submodule "native/afterglow/third-party/tray"]
+	path = native/afterglow/third-party/tray
+	url = https://github.com/LizardByte/tray.git
+[submodule "native/afterglow/third-party/ViGEmClient"]
+	path = native/afterglow/third-party/ViGEmClient
+	url = https://github.com/LizardByte/Virtual-Gamepad-Emulation-Client.git

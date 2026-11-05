@@ -352,7 +352,10 @@ async function entryOf(s: hd.Session, path: string): Promise<{ argv: string[]; n
   return { argv: as.parseExec(e.exec, { name: e.name, icon: e.icon, path }), name: e.name };
 }
 
-// --- window apps on Windows: the host's own phosphorus and its Sunshine or Apollo ----------
+// --- window apps on Windows: the host's own phosphorus, its afterglow, or its Sunshine or Apollo
+// afterglow, phosphorus's fork of Apollo installed with it, streams the host's window
+// apps over one loopback link; a host's own Sunshine or Apollo entries (and any app on
+// a host whose afterglow isn't set up) go through glow, over GameStream
 
 // a window app on Windows: its shortcut or program, started on the host as the shell would
 const winAppRe = /\.(lnk|exe|appref-ms|url)$/i;
@@ -390,6 +393,11 @@ async function consoleUser(): Promise<string> {
   consoleCache = { at: Date.now(), user };
   return user;
 }
+
+// this machine's afterglow: its link, when phosphorus's setup put it here and wrote one
+const localAfterglow = () => (getPlatform() === "windows" ? as.linkOf(DataDir) : undefined);
+// afterglow streams one app at a time, as a GameStream host does
+let afterglowBusy = "";
 
 // what a stream asks of the machine that runs it: the viewer, their login, the app
 type GlowAsk = { user: string; admin: boolean; host: string; login: string; path: string; name: string };
@@ -455,13 +463,41 @@ async function runGlow(ws: Conn, g: GlowAsk, q: URLSearchParams) {
         if (at !== me)
           throw new Coded(403, `${g.host}'s window apps run as ${at}, who's signed in there; save a login as them`);
       }
+      const title = g.path.startsWith(hostAppPre) ? g.path.slice(hostAppPre.length) : "";
+      const link = title ? undefined : localAfterglow();
+      if (link) {
+        const live = afterglowBusy ? as.find(afterglowBusy.split("\n")[0]!, afterglowBusy.split("\n")[1]!) : undefined;
+        if (live) throw new Coded(409, `${g.host} streams one app at a time: close ${live.title} first`);
+        ws.json({ t: "opening", name: g.name });
+        let mine = "";
+        const src = new as.AfterglowSource({
+          link,
+          target: g.path,
+          virtualDisplay: true,
+          done: () => {
+            if (afterglowBusy === mine) afterglowBusy = "";
+          },
+        });
+        app = await as.launch(owner, src, startOf(q, [], g.name)).then(
+          (a) => (note(g.user, "host_app_open", { host: g.host, app: g.path }), a),
+          (err) => {
+            note(g.user, "host_app_open", { host: g.host, app: g.path }, err);
+            throw err;
+          },
+        );
+        mine = `${owner}\n${app.id}`;
+        afterglowBusy = mine;
+        if (!ws.open()) return;
+        app.attach(v);
+        take(app);
+        return;
+      }
       const gh = localGlow();
       const say = (s: string) => ws.json({ t: "note", s });
       const ready = await gh.ready(say);
       const live = gh.busy ? as.find(gh.busy.split("\n")[0]!, gh.busy.split("\n")[1]!) : undefined;
       if (live)
         throw new Coded(409, `${ready.info.hostname || g.host} streams one app at a time: close ${live.title} first`);
-      const title = g.path.startsWith(hostAppPre) ? g.path.slice(hostAppPre.length) : "";
       const target = title ? "" : `"${g.path}"`;
       ws.json({ t: "opening", name: g.name });
       let mine = "";

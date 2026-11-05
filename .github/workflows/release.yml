@@ -125,10 +125,20 @@ jobs:
           wait $l || { cat lint.log; ok=1; }
           exit $ok
 
+  # afterglow, phosphorus's fork of Apollo, built on Windows for the setup .exe
+  afterglow:
+    needs: prep
+    if: inputs.windows
+    uses: ./.github/workflows/afterglow.yml
+    with:
+      version: ${{ needs.prep.outputs.ver }}
+
   # one job per OS: Linux's host the .deb around the binary, macOS's and
   # Windows' the menu bar app beside it, in a .dmg and a setup .exe
   build:
-    needs: prep
+    needs: [prep, afterglow]
+    # afterglow skipped when Windows isn't built: the other OSes go on without it
+    if: ${{ !cancelled() && needs.prep.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.afterglow.result) }}
     strategy:
       # one OS's failure leaves the others' builds, and their caches, finished
       fail-fast: false
@@ -182,6 +192,13 @@ jobs:
               bun scripts/build.ts linux-$([ ${{ matrix.arch }} = amd64 ] && echo x64 || echo arm64) art "$VER"
               packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus-host ;;
           esac
+      # afterglow into the release the setup carries: each host's phos setup and
+      # rebuilds install it (packages/host/host/src/win/afterglow.ts)
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: startsWith(matrix.name, 'windows')
+        with:
+          name: afterglow
+          path: ${{ env.APP }}/payload/afterglow
       # Windows' setup built on Linux: NSIS from apt, its signer osslsigncode or jsign
       - name: nsis
         if: startsWith(matrix.name, 'windows')

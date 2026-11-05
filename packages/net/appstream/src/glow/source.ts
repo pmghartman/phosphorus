@@ -5,10 +5,9 @@
 
 import type { Opened, Sink, Source, Video, VideoSink } from "../session.ts";
 import type { Identity } from "./cert.ts";
+import { InputPacker } from "./input.ts";
 import { cancel, type Host, serverInfo } from "./lumen.ts";
-import { Channel, pack } from "./spark.ts";
 import { GlowStream, loopbackPacket } from "./stream.ts";
-import { asText, modOf, utf8Chunks, vkOf } from "./vk.ts";
 
 export type GlowTarget = {
   host: Host;
@@ -28,8 +27,6 @@ export type GlowTarget = {
   fresh?: boolean;
 };
 
-// GameStream's mouse buttons: X's 8 and 9 are its 4 and 5
-const buttons: Record<number, number> = { 1: 1, 2: 2, 3: 3, 8: 4, 9: 5 };
 const clamp = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
 
 type Running = { s: GlowStream; v: Video; sink?: VideoSink };
@@ -42,10 +39,7 @@ export class GlowSource implements Source {
   private cur?: Running;
   private launched = false;
   private sink?: Sink;
-  private mods = 0;
-  // keys typed as text: their key-up isn't sent
-  private texted = new Set<string>();
-  private clip?: { s: string; at: number };
+  private keys = new InputPacker((ch, pkt) => this.cur?.s.input(ch, pkt));
   private quitting = false;
   // the viewer's pixel ratio: a virtual display made at it
   private scale = 1;
@@ -154,65 +148,10 @@ export class GlowSource implements Source {
     this.cur?.s.idr();
   }
 
-  private key(down: boolean, code: string) {
-    const v = vkOf(code);
-    if (!v) return;
-    const m = modOf(code);
-    if (m) this.mods = down ? this.mods | m : this.mods & ~m;
-    this.cur?.s.input(Channel.keyboard, pack.key(down, v, this.mods));
-  }
-
-  private text(s: string) {
-    for (const c of utf8Chunks(s)) this.cur?.s.input(Channel.utf8, pack.utf8(c));
-  }
-
   input(m: unknown[], w: number, h: number) {
-    const s = this.cur?.s;
-    if (!s) return;
-    const sw = this.cur!.v.w || w;
-    const sh = this.cur!.v.h || h;
-    switch (m[0]) {
-      case "m":
-        return s.input(Channel.mouse, pack.mouseAbs(clamp(m[1], 0, sw - 1), clamp(m[2], 0, sh - 1), sw, sh));
-      case "b": {
-        const b = buttons[clamp(m[1], 1, 9)];
-        if (b) s.input(Channel.mouse, pack.button(!!m[2], b));
-        return;
-      }
-      case "w": {
-        const dx = clamp(m[1], -20, 20);
-        const dy = clamp(m[2], -20, 20);
-        if (dy) s.input(Channel.mouse, pack.scroll(-dy * 120));
-        if (dx) s.input(Channel.mouse, pack.hscroll(dx * 120));
-        return;
-      }
-      case "k": {
-        const down = !!m[1];
-        const code = String(m[2] ?? "").slice(0, 32);
-        const key = String(m[3] ?? "").slice(0, 32);
-        const chord = !!m[4];
-        if (!down && this.texted.delete(code)) return;
-        // a paste: the page's clipboard typed, not the host's pasted
-        if (down && code === "KeyV" && chord && this.clip && Date.now() - this.clip.at < 1000) {
-          const t = this.clip.s;
-          this.clip = undefined;
-          for (const c of ["ControlLeft", "ControlRight", "MetaLeft", "MetaRight"])
-            if (this.mods & modOf(c)) this.key(false, c);
-          this.texted.add(code);
-          return this.text(t);
-        }
-        if (down && asText(code, key, chord, (this.mods & 0x01) !== 0)) {
-          this.texted.add(code);
-          return this.text(key);
-        }
-        return this.key(down, code);
-      }
-      case "x":
-        return this.text(String(m[1] ?? "").slice(0, 4096));
-      case "clip":
-        this.clip = { s: String(m[1] ?? "").slice(0, 64 << 10), at: Date.now() };
-        return;
-    }
+    const c = this.cur;
+    if (!c) return;
+    this.keys.input(m, c.v.w || w, c.v.h || h);
   }
 
   // the stream restarts at the new size when the session asks; the host's display
