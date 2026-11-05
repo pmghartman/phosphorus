@@ -5,7 +5,7 @@
     "": {
       "name": "phosphorus",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#6ec49136d0cfdb98fe0998689febfffec02f1e82",
+        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.1",
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/theme": "workspace:*",
         "@phosphorus/tools": "workspace:*",
@@ -172,7 +172,7 @@
     "packages/host/host": {
       "name": "@phosphorus/host",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#6ec49136d0cfdb98fe0998689febfffec02f1e82",
+        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.1",
         "@phosphorus/appfeed": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/procs": "workspace:*",
@@ -287,7 +287,7 @@
     "packages/net/appstream": {
       "name": "@phosphorus/appstream",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#6ec49136d0cfdb98fe0998689febfffec02f1e82",
+        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.1",
       },
     },
     "packages/net/delta": {
@@ -331,7 +331,7 @@
     "packages/server/server": {
       "name": "@phosphorus/server",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#6ec49136d0cfdb98fe0998689febfffec02f1e82",
+        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.1",
         "@phosphorus/app-sdk": "workspace:*",
         "@phosphorus/appstream": "workspace:*",
         "@phosphorus/catalog": "workspace:*",
@@ -393,7 +393,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.3", "", { "os": "win32", "cpu": "x64" }, "sha512-GhtOPphBWlnCepqpNk/w5eGN5oGRCzL20EbAkL1XCIpyboeVC9R642noyT43l8LSenGS4qz9IL8sKPfwY37V/Q=="],
 
-    "@phosphorus/afterglow": ["@phosphorus/afterglow@github:pmghartman/afterglow#6ec4913", {}, "pmghartman-afterglow-6ec4913", "sha512-PMjncJrRUOn1bBVhySFcvbJAk6rWOi1sleIRkV6WamHf0aRKsFwTuRc5kDLDpxH5DyodT4uzENgpEW3Wf23gpA=="],
+    "@phosphorus/afterglow": ["@phosphorus/afterglow@github:pmghartman/afterglow#7b29720", {}, "pmghartman-afterglow-7b29720", "sha512-u6Wsvd9gKq/7g/RVGHsHjSZ/CBes7dCUzNcT4KmylrqSS6av6iTsWVGxTTpH14vamXwDdGthlZbBSoUdHpyz+w=="],
 
     "@phosphorus/app-chat": ["@phosphorus/app-chat@workspace:optional/chat"],
 

@@ -21,7 +21,7 @@
     "lint": "biome ci ."
   },
   "dependencies": {
-    "@phosphorus/afterglow": "github:pmghartman/afterglow#6ec49136d0cfdb98fe0998689febfffec02f1e82",
+    "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.1",
     "@phosphorus/minisign": "workspace:*",
     "@phosphorus/theme": "workspace:*",
     "@phosphorus/tools": "workspace:*",

@@ -1,9 +1,8 @@
 // app streaming: one GUI app on a host as a window in the browser. A Linux host runs
 // it on its own headless X server (agent.py) and ffmpeg encodes that display; a
 // Windows host runs it through afterglow, phosphorus's own fork of Apollo installed
-// with it, over one loopback link; or, for a host's own Sunshine or Apollo entries,
-// through glow, phosphorus's GameStream client. afterglow and glow are their own
-// repo's (github.com/pmghartman/afterglow, @phosphorus/afterglow), sources the session
+// with it, over one loopback link. afterglow is its own repo's
+// (github.com/pmghartman/afterglow, @phosphorus/afterglow), a source the session
 // drives like XSource. Either way the frames go to the viewer's VideoDecoder over the
 // socket as they come
 
