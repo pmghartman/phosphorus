@@ -312,7 +312,7 @@ async function postOp(w: Who, op: string, c: Ctx): Promise<Response> {
 const streamRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/stream$/;
 const idRe = /^[0-9a-f]{24}$/;
 
-// the host's connection as commands to run: the stream's agent and encoder
+// the host's connection as commands to run: the stream's afterglow, or its agent and encoder
 function runnerOf(s: hd.Session): as.Runner {
   s.extra.runner ??= {
     async run(cmd: string): Promise<as.Chan> {

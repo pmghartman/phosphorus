@@ -180,6 +180,34 @@ jobs:
         with:
           name: notices
           path: notices
+      # afterglow for Linux (github.com/pmghartman/afterglow), into the payload before the
+      # .deb is built around it: what streams a Linux host's apps, run over ssh as the
+      # viewer's login (packages/net/appstream/src/linuxsource.ts). The tarball of the
+      # release @phosphorus/afterglow is pinned to, for this build's arch, its checksum and
+      # build provenance checked. A release without one for this arch: the package ships
+      # without it, and its hosts stream with ffmpeg as before
+      - name: afterglow (linux)
+        if: startsWith(matrix.name, 'linux')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AG_REPO: pmghartman/afterglow
+        run: |
+          AG=$(jq -r '.dependencies["@phosphorus/afterglow"]' package.json | sed -n 's|^github:.*#v\([0-9][0-9.]*\)$|\1|p')
+          [ -n "$AG" ] || { echo "::error::@phosphorus/afterglow isn't pinned to a github:...#vX.Y release"; exit 1; }
+          A=$([ "${{ matrix.arch }}" = amd64 ] && echo x86_64 || echo aarch64)
+          TGZ=afterglow-$AG-linux-$A.tar.gz
+          DL=$RUNNER_TEMP/afterglow
+          mkdir -p "$DL"
+          if ! gh release download "v$AG" -R "$AG_REPO" -p "$TGZ" -p SHA256SUMS -D "$DL"; then
+            echo "::warning::afterglow v$AG has no $TGZ: this package streams Linux apps with ffmpeg"
+            exit 0
+          fi
+          (cd "$DL" && grep -E "[ *]$TGZ\$" SHA256SUMS | sha256sum -c --strict -)
+          gh attestation verify "$DL/$TGZ" --repo "$AG_REPO"
+          mkdir -p "$APP/payload/afterglow"
+          tar -xzf "$DL/$TGZ" -C "$APP/payload/afterglow"
+          [ "$(cat "$APP/payload/afterglow/VERSION")" = "$AG" ] || { echo "::error::$TGZ isn't afterglow $AG"; exit 1; }
+          chmod 755 "$APP/payload/afterglow/afterglow"
       # the release hosts receive: what the binary reads off disk, nothing it embeds;
       # tailscale and cloudflared fetched by each host at their pins; Linux's packaged at once
       - name: host binary
