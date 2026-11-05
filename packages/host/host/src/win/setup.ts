@@ -3,6 +3,7 @@ import { dlopen, FFIType } from "bun:ffi";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { at, fail, home, output, quiet, say, selfArgv, sshdUp, sshInclude } from "../base.ts";
+import { ensureAfterglow } from "./afterglow.ts";
 import { createService, svcInstalled, tailscaleInstall, tailscaleInstalled } from "./service.ts";
 
 export const svcName = "phosphorus";
@@ -165,4 +166,6 @@ export async function setupOS() {
   }
   if (!tailscaleInstalled()) await tailscaleInstall();
   await createService();
+  // afterglow: the streaming host this release carries, its service and display driver
+  await ensureAfterglow();
 }

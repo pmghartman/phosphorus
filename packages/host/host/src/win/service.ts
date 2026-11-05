@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { which } from "@phosphorus/util";
 import { at, binPath, fail, fileExists, home, output, quiet, run, say, sleep, sshInclude } from "../base.ts";
 import { installTailscale } from "../tailnet.ts";
+import { removeAfterglow } from "./afterglow.ts";
 import { escapeArg, kernel32, ps, psq, readFile, sshConfig, svcName, wstr } from "./setup.ts";
 
 export const STOPPED = 1,
@@ -130,6 +131,7 @@ export async function unpath() {
 // uninstallAdmin the service deleted, the ssh include dropped, the home's
 // SYSTEM-written files removed
 export async function uninstallAdmin() {
+  await removeAfterglow();
   await svcStop();
   if (await svcInstalled()) await quiet("sc", "delete", svcName);
   const b = readFile(sshConfig());

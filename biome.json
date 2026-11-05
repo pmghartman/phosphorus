@@ -11,6 +11,7 @@
       "!apps/web/.vendor",
       "!apps/web/static",
       "!notices",
+      "!native",
       "!**/testdata",
       "!packages/mesh/catalog/test/fixtures",
       "!**/*.md"
