@@ -450,7 +450,8 @@ async function runAfterglow(ws: Conn, g: StreamAsk, q: URLSearchParams) {
           throw new Coded(403, `${g.host}'s window apps run as ${at}, who's signed in there; save a login as them`);
       }
       const link = localAfterglow();
-      if (!link) throw new Coded(409, `afterglow isn't set up on ${g.host}: phos setup there installs it`);
+      if (!link)
+        throw new Coded(409, `afterglow isn't set up on ${g.host} yet: its next phosphorus update installs it`);
       const live = afterglowBusy ? as.find(afterglowBusy.split("\n")[0]!, afterglowBusy.split("\n")[1]!) : undefined;
       if (live) throw new Coded(409, `${g.host} streams one app at a time: close ${live.title} first`);
       ws.json({ t: "opening", name: g.name });

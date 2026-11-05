@@ -8,6 +8,9 @@ inputs:
   production:
     description: "true: without devDependencies, for jobs that only compile or sign"
     default: "false"
+  afterglow:
+    description: "an afterglow release tag (vX.Y) pinned before installing, the lockfile updated to it"
+    default: ""
 
 runs:
   using: composite
@@ -20,5 +23,14 @@ runs:
         path: .bun-cache
         key: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.production }}-${{ hashFiles('bun.lock') }}
         restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.production }}-
+    # afterglow at the tag asked for: the lockfile follows it, everything else stays frozen
     - shell: bash
-      run: bun install --frozen-lockfile ${{ inputs.production == 'true' && '--production' || '' }}
+      env:
+        AG: ${{ inputs.afterglow }}
+      run: |
+        frozen=--frozen-lockfile
+        if [ -n "$AG" ]; then
+          bun scripts/afterglow.ts "$AG"
+          git diff --quiet -- package.json || frozen=
+        fi
+        bun install $frozen ${{ inputs.production == 'true' && '--production' || '' }}

@@ -546,9 +546,11 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
   box.addEventListener('pointerdown', (e) => {
     if (!(e.target as Element).closest('select')) setTimeout(() => ime.focus({ preventScroll: true }), 0);
   });
+  // the app asked to close; the window goes anyway when it isn't up yet or doesn't answer
   xNew.addEventListener('click', () => {
-    if (ended) return shut();
+    if (ended || !id) return shut();
     send(['close']);
+    setTimeout(() => !ended && shut(), 3000);
   });
   open(true);
   setTimeout(() => ime.focus({ preventScroll: true }), 0);

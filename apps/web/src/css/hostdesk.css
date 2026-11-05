@@ -513,9 +513,6 @@
 .hd-gnome .hd-app .hd-name {
   max-width: 100%;
 }
-.hd-app.off {
-  opacity: 0.45;
-}
 .hd-menu-foot {
   display: flex;
   align-items: center;

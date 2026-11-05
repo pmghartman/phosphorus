@@ -76,6 +76,12 @@ async function missingDeps(): Promise<string[]> {
     { bin: "ss", pkg: "iproute2" },
     { bin: "ssh", pkg: "openssh-client" },
     { bin: "setpriv", pkg: "util-linux" },
+    // app streaming: the app's own X display, its encoder, the agent and its X libraries
+    { bin: "Xvfb", pkg: "xvfb" },
+    { bin: "ffmpeg", pkg: "ffmpeg" },
+    { bin: "python3", pkg: "python3" },
+    { lib: "libXtst.so.6", pkg: "libxtst6" },
+    { lib: "libXfixes.so.3", pkg: "libxfixes3" },
   ];
   if (isModelHost()) {
     want.push(

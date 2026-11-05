@@ -9,6 +9,9 @@ import { api, type Desk, draw, type HD, type Item, iconBtn, openItem, pic } from
 import { dkSay } from './wallpaper.ts';
 import { dkFileApp, dkFileOffer, dkWebApp } from './webapps.ts';
 
+// the topmost window's z-index; raised by z-index, never moved, so a click survives
+let topZ = 0;
+
 // one window inside the host desktop, moved by its title, the newest on top
 export function inner(
   hd: HD,
@@ -45,7 +48,11 @@ export function inner(
     head.addEventListener('pointermove', move);
     head.addEventListener('pointerup', () => head.removeEventListener('pointermove', move), { once: true });
   });
-  box.addEventListener('pointerdown', () => layer.append(box));
+  const raise = () => {
+    if (box.style.zIndex !== String(topZ)) box.style.zIndex = String(++topZ);
+  };
+  box.addEventListener('pointerdown', raise);
+  raise();
   layer.append(box);
   return { box, body, head };
 }

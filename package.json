@@ -16,6 +16,7 @@
     "licenses": "bun scripts/licenses.ts",
     "icons": "bun scripts/icons.ts",
     "deps": "bun scripts/deps.ts",
+    "afterglow": "bun scripts/afterglow.ts && bun install",
     "app": "bun scripts/appbuild.ts",
     "fmt": "biome check --write .",
     "lint": "biome ci ."

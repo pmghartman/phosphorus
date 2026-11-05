@@ -48,6 +48,8 @@ jobs:
       builds: ${{ steps.plan.outputs.builds }}
       # the lockfile's hash: the bun cache's key, and what prune keeps
       lock: ${{ steps.lock.outputs.lock }}
+      # afterglow's latest release: every job's client and the Windows host zip at it
+      afterglow: ${{ steps.ag.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - id: lock
@@ -64,6 +66,14 @@ jobs:
           else V=${L%.*}.$(( ${L#*.} + 1 ))
           fi
           echo "ver=$V" | tee -a "$GITHUB_OUTPUT"
+      - name: afterglow
+        id: ag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          T=$(gh release view -R pmghartman/afterglow --json tagName -q .tagName)
+          [[ "$T" =~ ^v[0-9]+\.[0-9]+$ ]] || { echo "::error::afterglow's latest release isn't a vX.Y tag: $T"; exit 1; }
+          echo "tag=$T" | tee -a "$GITHUB_OUTPUT"
       - name: plan
         id: plan
         env:
@@ -83,6 +93,7 @@ jobs:
       - uses: ./.github/actions/bun
         with:
           production: "true"
+          afterglow: ${{ steps.ag.outputs.tag }}
       # every production dependency under an allowed license, the notices and SBOM
       # shipped in each installer; first, so the page's copy (about links it) is this release's
       - run: bun scripts/licenses.ts notices
@@ -110,6 +121,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/bun
+        with:
+          afterglow: ${{ needs.prep.outputs.afterglow }}
       # tsc reads its manifest
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -145,6 +158,7 @@ jobs:
       - uses: ./.github/actions/bun
         with:
           production: "true"
+          afterglow: ${{ needs.prep.outputs.afterglow }}
       # apt key's public half, into the host package
       - name: apt key
         if: startsWith(matrix.name, 'linux')
@@ -183,8 +197,8 @@ jobs:
               packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus-host ;;
           esac
       # afterglow, phosphorus's fork of Apollo (github.com/pmghartman/afterglow), into the
-      # release the setup carries: the host zip of the release whose tag the root
-      # package.json pins @phosphorus/afterglow to, its checksum and build provenance
+      # release the setup carries: the host zip of afterglow's latest release, the tag the
+      # bun step pinned @phosphorus/afterglow to, its checksum and build provenance
       # checked; each host's phos setup and rebuilds install it (packages/host/host/src/win/afterglow.ts)
       - name: afterglow
         if: startsWith(matrix.name, 'windows')
@@ -311,6 +325,7 @@ jobs:
       - uses: ./.github/actions/bun
         with:
           production: "true"
+          afterglow: ${{ needs.prep.outputs.afterglow }}
       # the .debs alone, for the apt index
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:

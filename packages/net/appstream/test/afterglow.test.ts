@@ -75,7 +75,7 @@ describe("afterglow through a session", () => {
     expect(frames[0]![1]).toBe(1);
     expect(Array.from(frames[0]!.subarray(HeadLen))).toEqual([0, 0, 0, 2, 0x65, 0x88]);
 
-    // input: GameStream packets, a mouse move at the video's size
+    // input: afterglow's input packets, a mouse move at the video's size
     app.input(["m", 640, 360]);
     app.input(["k", true, "KeyA", "a", false]);
     await settle();
