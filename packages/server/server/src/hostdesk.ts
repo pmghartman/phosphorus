@@ -4,6 +4,7 @@
 import { join } from "node:path";
 import { AfterglowSource, Link, type Proc, pathsOf, readLink } from "@phosphorus/afterglow";
 import * as as from "@phosphorus/appstream";
+import * as aw from "@phosphorus/appweb";
 import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
@@ -28,29 +29,29 @@ const deskRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/([a-z-]+)$/;
 const maxText = 16 << 20;
 
 // every computer the tailnet names, this one too
-const known = (h: string) => h === selfHost || peers.tailnet().some((d: any) => d?.name === h);
-const osOf = (h: string) => {
+export const known = (h: string) => h === selfHost || peers.tailnet().some((d: any) => d?.name === h);
+export const osOf = (h: string) => {
   if (h === selfHost) return getPlatform() === "windows" ? "windows" : getPlatform() || "";
   return String((peers.tailnet().find((d: any) => d?.name === h) as any)?.os ?? "");
 };
 // runs phosphorus: a terminal there is phosphorus's own, powershell on Windows
 const phosphorusOn = (h: string) => h === selfHost || h in peers.peerIPs();
 
-function note(user: string, tool: string, args: Record<string, any>, err?: unknown) {
+export function note(user: string, tool: string, args: Record<string, any>, err?: unknown) {
   const row: Record<string, any> = { user, via: "desktop", tool, args, ok: !err, host: selfHost };
   if (err) row.error = errText(err);
   auditRow(row);
 }
 
-type Who = { s: users.Session; host: string };
+export type Who = { s: users.Session; host: string };
 
 // the session's key: the phosphorus user, the host, the login it signs in as
-const keyOf = (w: Who, login: string) => `${w.s.user}\0${w.host}\0${login}`;
+export const keyOf = (w: Who, login: string) => `${w.s.user}\0${w.host}\0${login}`;
 const cacheKey = (w: Who) => `desk\0${w.s.user}`;
 
 type Cached = { desk: hd.Desk; apps?: hd.Item[]; icons: string[] };
 
-async function session(w: Who): Promise<hd.Session> {
+export async function session(w: Who): Promise<hd.Session> {
   const [user, pass, ok] = await users.HostLogin(w.s, w.host);
   if (!ok) throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
   const t0 = Date.now();
@@ -87,7 +88,7 @@ function remember(w: Who, s: hd.Session) {
   hd.cachePut(w.host, cacheKey(w), JSON.stringify(k));
 }
 
-class Coded extends Error {
+export class Coded extends Error {
   constructor(
     public status: number,
     msg: string,
@@ -137,7 +138,7 @@ const blobRes = (b: hd.Blob, cache: string) =>
   });
 
 // the path asked for made clean; the host's own permissions for the login decide the rest
-function allowed(s: hd.Session, p: string): string {
+export function allowed(s: hd.Session, p: string): string {
   const ok = hd.norm(p, s.os === "windows");
   if (!ok) throw new Coded(400, "not a full path");
   return ok;
@@ -219,11 +220,15 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       return sendJSON(200, await deskOp(w, { op: "tasks" }), nc);
     case "running": {
       const [login] = await users.HostLogin(w.s, w.host);
-      // a Windows host's apps run on its own phosphorus: asked there
+      // the apps served to the browser from here, whatever the host
+      const web = aw
+        .list(keyOf(w, login))
+        .map((a) => ({ id: a.id, title: a.title, name: a.info?.name ?? "", web: true }));
+      // a Windows host's streamed apps run on its own phosphorus: asked there
       if (w.host !== selfHost && osOf(w.host) === "windows" && phosphorusOn(w.host))
-        return sendJSON(200, { apps: await peerList(w, login) }, nc);
+        return sendJSON(200, { apps: [...(await peerList(w, login)), ...web] }, nc);
       const apps = as.list(keyOf(w, login)).map((a) => ({ id: a.id, title: a.title, name: a.start.name }));
-      return sendJSON(200, { apps }, nc);
+      return sendJSON(200, { apps: [...apps, ...web] }, nc);
     }
     case "read": {
       const p = allowed(s, q.get("path") ?? "");

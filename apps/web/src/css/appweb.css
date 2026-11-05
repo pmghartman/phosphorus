@@ -1,0 +1,161 @@
+/* --- a host's app served as itself: its frame the whole window, our head only where it has none */
+
+.dk-aw .dk-body {
+  background: var(--bg);
+}
+.dk-aw.aw-bare .dk-head {
+  display: none;
+}
+/* the app left room for the window's buttons: ours there, in its colours */
+.dk-aw.aw-bare.aw-overlay .dk-head {
+  display: flex;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  height: var(--aw-ov-h, 30px);
+  padding: 0;
+  /* the app's colour, focused or not */
+  background: var(--aw-ov-bg, transparent) !important;
+  border: 0;
+}
+.dk-aw.aw-overlay .dk-title {
+  display: none;
+}
+.dk-aw.aw-overlay .dk-btns {
+  gap: 0;
+  height: 100%;
+}
+.dk-aw.aw-overlay .dk-btns button {
+  width: 2.75rem;
+  height: 100%;
+  border-radius: 0;
+  color: var(--aw-ov-fg, var(--muted));
+}
+/* an app on its way: the pointer says so, a note only if it's slow */
+.aw-wait,
+.aw-wait * {
+  cursor: progress;
+}
+.dk-aw.aw-fixed .dk-max,
+.dk-aw.aw-fixed .dk-edge {
+  display: none;
+}
+.dk-aw:fullscreen .dk-head {
+  display: none;
+}
+.dk-task.aw-flash {
+  animation: aw-flash 1s ease-in-out 3;
+}
+@keyframes aw-flash {
+  50% {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+
+/* a message or a picker over its window, as a sheet */
+.aw-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12%;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+}
+.aw-sheet-desk {
+  padding-top: 15vh;
+}
+.aw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(26rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  padding: 0.9rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  outline: none;
+  animation: pop-in 0.12s ease-out;
+}
+.aw-card-title {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.aw-msg {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.aw-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+}
+.aw-check {
+  font-size: var(--fs-sm);
+}
+.aw-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.aw-picker {
+  width: min(36rem, calc(100% - 2rem));
+  height: min(28rem, calc(100% - 2rem));
+}
+.aw-bar {
+  display: flex;
+  gap: 0.4rem;
+}
+.aw-where,
+.aw-name {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 0.3rem 0.45rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.aw-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  outline: none;
+}
+.aw-row {
+  text-align: left;
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 0.25rem 0.5rem;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aw-row.dir::before {
+  content: "▸ ";
+  color: var(--muted);
+}
+.aw-row:hover {
+  background: var(--tab-hover);
+}
+.aw-row.on {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.aw-say {
+  min-height: 1em;
+  color: var(--warn);
+  font-size: var(--fs-xs);
+}

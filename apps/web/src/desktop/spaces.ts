@@ -9,8 +9,8 @@ import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS } from '../lib/dom.ts';
 import { dk, PREF_LS } from '../lib/state.ts';
 import { newSid } from '../lib/util.ts';
+import { hostApp } from './desk/hostapp.ts';
 import { api, hostInfo, hostLoad, hostWarm, type Item, itemKey } from './desk/hosts.ts';
-import { streamWin } from './desk/hoststream.ts';
 import { dkIcons, dkLiveHosts } from './desk/icons.ts';
 import { siteOf } from './desk/sites.ts';
 import { osGlyph, osOf } from './desk/terminal.ts';
@@ -157,7 +157,7 @@ export function openHostItem(h: string, it: Item) {
   if (own === 'terminal') return void hostTerm(h, it.kind === 'cli' ? (it.run ?? '') : '');
   const site = siteOf(it);
   if (site) return void window.open(site.url, '_blank', 'noopener');
-  if (it.path) return streamWin(h, it);
+  if (it.path) return hostApp(h, it);
   dkSay(`${it.name} has nothing to start it by`);
 }
 
@@ -178,7 +178,7 @@ export const itemTip = (h: string, it: Item) => {
 
 // a site app's menu entry for the host's own copy, streamed
 export const streamPick = (h: string, it: Item): [string, () => void, boolean][] =>
-  siteOf(it) && (it.path || it.id) ? [[`stream from ${h}`, () => streamWin(h, it), true]] : [];
+  siteOf(it) && (it.path || it.id) ? [[`open from ${h}`, () => hostApp(h, it), true]] : [];
 
 // --- the shared desktop's apps: any host's, added from its desktop or the apps menu -------
 

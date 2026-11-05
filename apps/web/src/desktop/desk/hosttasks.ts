@@ -185,13 +185,16 @@ async function tick() {
   timer = setTimeout(() => void tick(), k?.error || !k?.features.has('processes') ? slowMs : everyMs);
 }
 
-onSpace(() => {
-  paint();
-  void tick();
-});
-onStreams(() => {
-  paint();
-  void tick();
+// registered once every module is in: spaces.ts can still be loading when this one runs
+queueMicrotask(() => {
+  onSpace(() => {
+    paint();
+    void tick();
+  });
+  onStreams(() => {
+    paint();
+    void tick();
+  });
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && !timer) void tick();

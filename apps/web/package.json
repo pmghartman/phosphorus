@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@phosphorus/appweb": "workspace:*",
     "@phosphorus/theme": "workspace:*",
     "@phosphorus/wire": "workspace:*",
     "@xterm/addon-fit": "0.11.0",
