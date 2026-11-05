@@ -32,6 +32,8 @@ type Tile = {
   sub?: string;
   open: () => void;
   menu?: () => Act[];
+  // phosphorus's own: the desk icon's colour by its kind
+  kind?: string;
 };
 
 let wrap: HTMLElement | undefined;
@@ -102,8 +104,14 @@ function sections(): [string, Tile[]][] {
   if (h) {
     const i = hostInfo(h);
     const own: Tile[] = [
-      { name: 'terminal', title: `a terminal on ${h}`, glyph: DK_GLYPHS.terminal!, open: () => hostTerm(h) },
-      { name: 'files', title: `every drive on ${h}`, glyph: DK_GLYPHS.files!, open: () => hostFiles(h) },
+      {
+        name: 'terminal',
+        title: `a terminal on ${h}`,
+        glyph: DK_GLYPHS.terminal!,
+        kind: 'terminal',
+        open: () => hostTerm(h),
+      },
+      { name: 'files', title: `every drive on ${h}`, glyph: DK_GLYPHS.files!, kind: 'files', open: () => hostFiles(h) },
     ];
     const pins = (i.desk?.pins ?? []).map((it) => hostTile(h, it));
     const seen = new Set();
@@ -118,8 +126,8 @@ function sections(): [string, Tile[]][] {
     ];
   }
   const own: Tile[] = [
-    { name: 'terminal', title: 'terminal', glyph: DK_GLYPHS.terminal!, open: dkTermApp },
-    { name: 'files', title: 'files', glyph: DK_GLYPHS.files!, open: () => void filesWin() },
+    { name: 'terminal', title: 'terminal', glyph: DK_GLYPHS.terminal!, kind: 'terminal', open: dkTermApp },
+    { name: 'files', title: 'files', glyph: DK_GLYPHS.files!, kind: 'files', open: () => void filesWin() },
     ...dkWebApps().map(
       (a): Tile => ({
         name: a.id,
@@ -129,8 +137,14 @@ function sections(): [string, Tile[]][] {
         open: () => void dkWebApp(a.id),
       }),
     ),
-    { name: 'service wizard', title: 'service wizard', glyph: DK_GLYPHS.apps!, open: () => dkOpenApp('apps') },
-    { name: 'settings', title: 'settings', glyph: DK_GLYPHS.settings!, open: () => dkSettings() },
+    {
+      name: 'service wizard',
+      title: 'service wizard',
+      glyph: DK_GLYPHS.apps!,
+      kind: 'apps',
+      open: () => dkOpenApp('apps'),
+    },
+    { name: 'settings', title: 'settings', glyph: DK_GLYPHS.settings!, kind: 'settings', open: () => dkSettings() },
   ];
   const shared = sharedApps()
     .filter((a) => dk.creds.has(a.host))
@@ -145,7 +159,10 @@ function sections(): [string, Tile[]][] {
 }
 
 function tile(t: Tile): HTMLButtonElement {
-  const b = Object.assign(el('button', 'dk-app-tile'), { type: 'button', title: t.title });
+  const b = Object.assign(el('button', `dk-app-tile${t.kind ? ` dk-app-k-${t.kind}` : ''}`), {
+    type: 'button',
+    title: t.title,
+  });
   const ic = el('span', 'dk-app-ic');
   ic.append(dkGlyph(t.glyph ?? DK_GLYPHS.app!));
   // the host's own icon, asked again while it's still being read from the host

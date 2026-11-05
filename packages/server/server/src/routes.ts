@@ -1,4 +1,5 @@
 // every request on the frontend port, and the ingress's leftovers
+import { protoOK, protoWhy } from "@phosphorus/afterglow";
 import * as catalog from "@phosphorus/catalog";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
@@ -17,6 +18,7 @@ import { blocks, highlight, markdown } from "@phosphorus/web-md";
 import * as webapps from "@phosphorus/webapps";
 import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
+import * as afterglow from "./afterglow.ts";
 import { appRoute } from "./apps.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
 import { haRoute } from "./ha.ts";
@@ -318,6 +320,40 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       const s = users.Of(c);
       const admin = (!!s && s.admin) || (adminPass === "" && isLoopback(c));
       return chainAction(str(p.action), str(p.password), admin);
+    });
+  }
+  // afterglow kept up apart from phosphorus: its latest release, a host's own update, the mesh's
+  if (pathname === "/api/afterglow/check" && method === "GET") {
+    if (!(await isLocalOrPeer(c))) return forbidden();
+    try {
+      const m = await afterglow.latest(q.has("fresh"));
+      const ok = protoOK(m.proto);
+      return sendJSON(200, {
+        version: m.version,
+        proto: m.proto,
+        compatible: ok,
+        why: ok ? "" : protoWhy(m.proto, m.version),
+      });
+    } catch (e) {
+      return sendJSON(200, { error: errText(e) });
+    }
+  }
+  if (pathname === "/api/afterglow/local" && method === "POST") {
+    if (!(await isTailnet(c))) return forbidden();
+    return onJSON(c, 1024, false, (p) => {
+      void afterglow.updateSelf(str(p.by) || "mesh");
+      return [202, { host: selfHost }];
+    });
+  }
+  if (pathname === "/api/afterglow/update" && method === "POST") {
+    const s = users.Of(c);
+    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    return onJSON(c, 4096, true, async (p) => {
+      const hosts = (Array.isArray(p.hosts) ? p.hosts : [])
+        .map(str)
+        .filter((h: string) => /^[a-z0-9][a-z0-9-]*$/.test(h));
+      if (!hosts.length) return [400, { error: "no hosts" }];
+      return [200, { hosts: await afterglow.updateMesh(hosts, s?.user || "admin") }];
     });
   }
   // the installer's catalogue: apps from the catalogues and opened repos, and

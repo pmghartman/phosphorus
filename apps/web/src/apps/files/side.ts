@@ -55,7 +55,7 @@ function deskSide(fm: Fm, h: string): HTMLElement[] {
   }
   for (const r of list ?? []) {
     const label = r.label && !r.label.startsWith('/dev/') ? `${r.name} ${r.label}` : r.name;
-    out.push(place(label, deskRel(r.path), r.path, 'host'));
+    out.push(place(label, deskRel(r.path), r.path, 'drive'));
   }
   return out;
 }

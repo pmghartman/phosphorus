@@ -8,6 +8,7 @@ import {
   home,
   homeDir,
   isLinux,
+  isWindows,
   print,
   println,
   readTrim,
@@ -139,6 +140,10 @@ export async function main(cmd: string, args: string[]): Promise<number> {
         break;
       case "version":
         println(version());
+        break;
+      // after an afterglow update: the newest copy taken up (Windows' service; Linux runs it per stream)
+      case "afterglow":
+        if (isWindows) await (await import("./win/afterglow.ts")).ensureAfterglow();
         break;
       default:
         print(usageText);

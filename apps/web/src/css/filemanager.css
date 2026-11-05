@@ -267,6 +267,9 @@
 .fm-place .fm-host {
   color: var(--rose);
 }
+.fm-drive {
+  color: var(--sky);
+}
 .fm-status {
   flex: none;
   display: flex;

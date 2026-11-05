@@ -16,13 +16,11 @@
     "licenses": "bun scripts/licenses.ts",
     "icons": "bun scripts/icons.ts",
     "deps": "bun scripts/deps.ts",
-    "afterglow": "bun scripts/afterglow.ts && bun install",
     "app": "bun scripts/appbuild.ts",
     "fmt": "biome check --write .",
     "lint": "biome ci ."
   },
   "dependencies": {
-    "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.3",
     "@phosphorus/minisign": "workspace:*",
     "@phosphorus/theme": "workspace:*",
     "@phosphorus/tools": "workspace:*",

@@ -4,6 +4,7 @@
 
 import { dkAppsChanged } from '../desktop/desk.ts';
 import { dkFocus, dkSize, dkTouch, dkWin } from '../desktop/windows.ts';
+import { agOpen, agPane } from '../features/afterglowup.ts';
 import { updateModal, updateOpen } from '../features/update.ts';
 import { DK_GLYPHS, dkGlyph, el, stash } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
@@ -99,9 +100,16 @@ const SECTIONS: Section[] = [
     admin: true,
     draw: (body) => {
       updateModal.hidden = false;
+      agPane.hidden = false;
       const back = borrow(body, updateModal);
+      // afterglow's own updates: here alone, never the bar's update popup
+      const backAg = borrow(body, agPane);
       updateOpen();
-      return back;
+      void agOpen();
+      return () => {
+        back();
+        backAg();
+      };
     },
   },
   {

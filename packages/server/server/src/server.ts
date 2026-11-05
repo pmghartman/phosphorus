@@ -10,6 +10,7 @@ import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
 import { logf, markHot, marshal } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
+import * as afterglow from "./afterglow.ts";
 import { adminPass, baseDomain, getPlatform, selfHost, selfInfo, tsAPIKey, Version } from "./config.ts";
 import { ownHA } from "./ha.ts";
 import type { Res } from "./http.ts";
@@ -37,6 +38,7 @@ export function publishHost() {
     wildcard: wildcard(),
     stacks: stacks.statuses(),
     docker: stacks.dockerInfo(),
+    afterglow: afterglow.status(),
     ...catalog.facts(),
   });
 }

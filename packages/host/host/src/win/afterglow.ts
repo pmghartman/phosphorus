@@ -1,21 +1,32 @@
 // afterglow set up on this Windows host: phosphorus's fork of Apollo
-// (github.com/pmghartman/afterglow), which the release carries under afterglow/
-// (synced into the home with the rest of it), its files as @phosphorus/afterglow
-// writes them. Run by the elevated setup and by every rebuild (the service's, as SYSTEM), each step done
+// (github.com/pmghartman/afterglow), the newest copy this phosphorus speaks with: the one
+// the release seeded under afterglow/ or one its own afterglow updates put in
+// afterglow-update/, its files as @phosphorus/afterglow writes them. Run by the elevated
+// setup, by every rebuild (the service's, as SYSTEM) and after an afterglow update, each step done
 // only when it isn't already: its data folder for SYSTEM and administrators alone,
 // its config and the link file the frontend reads, the SudoVDA virtual display driver
 // (so a host with no monitor streams), and the PhosphorusAfterglow service, restarted
 // when a release brings a new afterglow.exe
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { appsText, confText, driverVer, linkPort, linkText, pathsOf, svcBinPath, tokenOf } from "@phosphorus/afterglow";
+import {
+  allAfterglow,
+  appsText,
+  confText,
+  driverVer,
+  linkPort,
+  linkText,
+  pathsOf,
+  pickAfterglow,
+  svcBinPath,
+  tokenOf,
+} from "@phosphorus/afterglow";
 import { at, fileExists, output, quiet, run, say } from "../base.ts";
 import { ps } from "./setup.ts";
 
 export const afterglowSvc = "PhosphorusAfterglow";
 
-export const afterglowRoot = () => at("afterglow");
 const dataDir = () => at("state", "data", "afterglow");
 
 // the service's state by sc's number, 0 when there's no such service
@@ -72,9 +83,11 @@ async function ensureDriver(root: string, data: string) {
 
 // everything afterglow needs, done once; quiet when there's no afterglow in this release
 export async function ensureAfterglow(): Promise<void> {
-  const root = afterglowRoot();
+  const pick = pickAfterglow(at(), true);
+  if (!pick) return;
+  const root = pick.dir;
   const exe = join(root, "afterglow.exe");
-  if (!fileExists(exe) || !fileExists(join(root, "tools", "afterglowsvc.exe"))) return;
+  if (!fileExists(join(root, "tools", "afterglowsvc.exe"))) return;
   if (!(await quiet("net", "session"))) {
     // a rebuild from an ordinary shell: the service's own rebuild sets it up later
     if ((await state()) === 0) say("afterglow: needs admin to set up; phos setup does it");
@@ -143,6 +156,16 @@ export async function ensureAfterglow(): Promise<void> {
   }
   if (!(await quiet("sc", "start", afterglowSvc)))
     say("afterglow: its service didn't start; see %SYSTEMROOT%\\Temp\\afterglow.log");
+  pruneUpdates(root);
+}
+
+// the updates' older copies gone once the service runs another; one still held tried next time
+function pruneUpdates(keep: string) {
+  for (const i of allAfterglow(at(), true))
+    if (i.from === "update" && i.dir !== keep)
+      try {
+        rmSync(i.dir, { recursive: true, force: true });
+      } catch {}
 }
 
 // the service gone, the driver left to whatever else may use it (an Apollo install)

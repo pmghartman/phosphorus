@@ -5,7 +5,6 @@
     "": {
       "name": "phosphorus",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.3",
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/theme": "workspace:*",
         "@phosphorus/tools": "workspace:*",
@@ -172,7 +171,7 @@
     "packages/host/host": {
       "name": "@phosphorus/host",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.3",
+        "@phosphorus/afterglow": "workspace:*",
         "@phosphorus/appfeed": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/procs": "workspace:*",
@@ -284,10 +283,13 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/net/afterglow": {
+      "name": "@phosphorus/afterglow",
+    },
     "packages/net/appstream": {
       "name": "@phosphorus/appstream",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.3",
+        "@phosphorus/afterglow": "workspace:*",
       },
     },
     "packages/net/delta": {
@@ -331,7 +333,7 @@
     "packages/server/server": {
       "name": "@phosphorus/server",
       "dependencies": {
-        "@phosphorus/afterglow": "github:pmghartman/afterglow#v0.3",
+        "@phosphorus/afterglow": "workspace:*",
         "@phosphorus/app-sdk": "workspace:*",
         "@phosphorus/appstream": "workspace:*",
         "@phosphorus/catalog": "workspace:*",
@@ -393,7 +395,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.3", "", { "os": "win32", "cpu": "x64" }, "sha512-GhtOPphBWlnCepqpNk/w5eGN5oGRCzL20EbAkL1XCIpyboeVC9R642noyT43l8LSenGS4qz9IL8sKPfwY37V/Q=="],
 
-    "@phosphorus/afterglow": ["@phosphorus/afterglow@github:pmghartman/afterglow#ad0b72a", {}, "pmghartman-afterglow-ad0b72a", "sha512-MXbx4jkqinR3dA63cxVdUQe03usuc6tY4xj1gXFlHCrIgs8rBGKmmCpWT6C0SneEL6nbUaNqslFLRGD0zpJl6w=="],
+    "@phosphorus/afterglow": ["@phosphorus/afterglow@workspace:packages/net/afterglow"],
 
     "@phosphorus/app-chat": ["@phosphorus/app-chat@workspace:optional/chat"],
 

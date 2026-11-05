@@ -159,7 +159,7 @@ function hostPower(action: string): Res {
 
 // binSelf the installed phosphorus binary, else this one: the compiled
 // executable, or bun with the entry script when run from source
-function binSelf(): string[] {
+export function binSelf(): string[] {
   const p = join(RepoDir, "bin", process.platform === "win32" ? "phosphorus.exe" : "phosphorus");
   if (existsSync(p)) return [p];
   return /^bun(\.exe)?$/.test(basename(process.execPath)) ? [process.execPath, Bun.main] : [process.execPath];

@@ -76,6 +76,7 @@ window or popup while open and back here on close -->
         <span class="update-progress-label" id="update-progress-label"></span>
       </div>
       <div class="update-mesh" id="update-mesh">
+        <div class="update-section">phosphorus</div>
         <p class="update-latest" id="update-latest" hidden></p>
         <ul class="update-versions" id="update-versions"></ul>
         <div class="update-actions" id="update-start">
@@ -87,6 +88,15 @@ window or popup while open and back here on close -->
       </div>
     </div>
                 </div>
+    <!-- afterglow, phosphorus's streaming host, updated on its own; settings › update alone: features/afterglowup.ts -->
+    <div class="update-pane update-ag" id="update-ag" hidden>
+      <div class="update-section">afterglow</div>
+      <p class="update-latest" id="update-ag-latest"></p>
+      <ul class="update-versions" id="update-ag-versions"></ul>
+      <div class="update-actions">
+        <button type="button" class="btn" id="update-ag-go">update afterglow</button>
+      </div>
+    </div>
     <div class="view" id="view-status"><div class="st-wait">connecting</div></div>
     <!-- optional apps for the mesh, drawn by apps/store.ts -->
     <div class="view" id="view-apps"></div>

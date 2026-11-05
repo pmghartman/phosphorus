@@ -3,6 +3,8 @@
 // frame waits on the rate control, one IDR per start and none after (a viewer that
 // needs a picture gets a fresh encoder), each packet flushed the moment it's muxed
 
+import { protoOfFeatures, protoOK, versionCmp } from "@phosphorus/afterglow";
+
 export type Encoder = "nvenc" | "vaapi" | "x264";
 
 export type Caps = {
@@ -16,8 +18,13 @@ export type Caps = {
   afterglow: string;
 };
 
-// where a Phosphorus release puts afterglow on a Linux host: its home, then the package's
-export const afterglowPaths = ["/var/lib/phosphorus/afterglow/afterglow", "/usr/lib/phosphorus/afterglow/afterglow"];
+// where afterglow is on a Linux host: the home's afterglow updates, the release's seed
+// in the home, then the package's
+export const afterglowPaths = [
+  "/var/lib/phosphorus/afterglow-update/*/afterglow",
+  "/var/lib/phosphorus/afterglow/afterglow",
+  "/usr/lib/phosphorus/afterglow/afterglow",
+];
 
 // what the host has, one shell line's answer
 export const probeCmd = [
@@ -25,9 +32,9 @@ export const probeCmd = [
   "command -v ffmpeg >/dev/null 2>&1 && ffmpeg -hide_banner -encoders 2>/dev/null | grep -oE 'h264_(nvenc|vaapi)' | sed 's/^/enc:/'",
   "[ -r /dev/dri/renderD128 ] && [ -w /dev/dri/renderD128 ] && echo dri",
   "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && echo nvidia",
-  // afterglow's own word on what it serves, the first that answers (one built for
-  // another arch or a newer glibc says nothing)
-  `for a in ${afterglowPaths.join(" ")}; do [ -x "$a" ] && f=$("$a" --features 2>/dev/null) && echo "afterglow:$a $f" && break; done`,
+  // every afterglow's own word on what it serves (one built for another arch or a newer
+  // glibc says nothing)
+  `for a in ${afterglowPaths.join(" ")}; do [ -x "$a" ] && f=$("$a" --features 2>/dev/null) && echo "afterglow:$a $f"; done`,
   "true",
 ].join("; ");
 
@@ -37,11 +44,18 @@ export function parseCaps(out: string): Caps {
   if (l.has("enc:h264_nvenc") && l.has("nvidia")) encoders.push("nvenc");
   if (l.has("enc:h264_vaapi") && l.has("dri")) encoders.push("vaapi");
   encoders.push("x264");
-  // afterglow:<path> afterglow <version> <features...>
+  // afterglow:<path> afterglow <version> <features...>: the newest serving stdio in a
+  // protocol this phosphorus speaks, one that doesn't left for ffmpeg
   let afterglow = "";
+  let best = "";
   for (const line of l) {
-    const m = /^afterglow:(\S+) afterglow \S+ (.*)$/.exec(line);
-    if (m && m[2]!.split(/\s+/).includes("stdio")) afterglow = m[1]!;
+    const m = /^afterglow:(\S+) afterglow (\S+) (.*)$/.exec(line);
+    const words = m?.[3]!.split(/\s+/) ?? [];
+    if (!m || !words.includes("stdio") || !protoOK(protoOfFeatures(words))) continue;
+    if (!afterglow || versionCmp(m[2]!, best) > 0) {
+      afterglow = m[1]!;
+      best = m[2]!;
+    }
   }
   return {
     xvfb: l.has("have:Xvfb"),

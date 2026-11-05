@@ -8,6 +8,7 @@ import { dk, st } from '../lib/state.ts';
 import { pollState } from '../lib/sync.ts';
 import { newerVersion } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
+import { agOnBehind, agOpen, agRender } from './afterglowup.ts';
 import { hostPlatform } from './mesh/mesh.ts';
 import { noteAdd, noteSeen, notifying, notifyMesh, notifyOs } from './notes.ts';
 
@@ -417,11 +418,12 @@ export function updateState(state: State): void {
   // the confirm prompt borrowing this same pane, its text otherwise lost
   if (updateConfirm.hidden) applyChain(chain, !!state.chainMine);
   else renderVersions();
+  agRender();
 }
 
 // --- updates waiting: the mesh's release, a blue dot and one note
 
-export const updates: Record<string, string> = { mesh: '' };
+export const updates: Record<string, string> = { mesh: '', afterglow: '' };
 // the newest release the feed last named; the dot held against every state push, so a
 // finished walk clears it at once rather than at the next feed check
 let feedLatest = '';
@@ -454,6 +456,7 @@ function paintUpdates() {
     if (notifying()) notifyOs(title, `v${updates[k]}`);
   };
   say('mesh', 'mesh update');
+  say('afterglow', 'afterglow update');
   try {
     localStorage.setItem(UPDATE_NOTED, JSON.stringify(noted));
   } catch {}
@@ -468,8 +471,16 @@ export async function checkUpdates(): Promise<void> {
       updates.mesh = feedLatest && behindOf(feedLatest) ? feedLatest : '';
       renderUpdateButton();
     } catch {}
+    await agOpen(false);
   }
   paintUpdates();
 }
 // a look once the desk comes up, then every few hours
 setInterval(checkUpdates, 6 * 3600 * 1000);
+
+// afterglow's release ahead of a host: the same dot and note as the mesh's
+agOnBehind((v) => {
+  if (v === updates.afterglow) return;
+  updates.afterglow = v;
+  paintUpdates();
+});

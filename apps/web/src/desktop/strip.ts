@@ -107,15 +107,16 @@ function card(h: string): HTMLButtonElement {
   });
   b.setAttribute('role', 'option');
   b.setAttribute('aria-selected', String(h === dk.space));
+  const pic = shot(h);
+  if (locked) pic.append(dkGlyph(DK_GLYPHS.lock!, 'dk-card-lock'));
   const label = el('span', 'dk-card-t');
-  label.append(dkGlyph(locked ? DK_GLYPHS.lock! : spaceGlyph(h), 'dk-card-ic'), el('span', '', spaceName(h)));
-  b.append(shot(h), label);
-  if (wins) b.append(el('span', 'dk-card-n', `${wins} ${wins === 1 ? 'window' : 'windows'}`));
-  if (locked) {
-    const lock = el('span', 'dk-card-lock');
-    lock.append(dkGlyph(DK_GLYPHS.lock!), el('span', '', 'log in'));
-    b.append(lock);
-  }
+  label.append(
+    dkGlyph(locked ? DK_GLYPHS.lock! : spaceGlyph(h), 'dk-card-ic'),
+    el('span', 'dk-card-name', spaceName(h)),
+  );
+  const note = locked ? 'log in' : wins ? `${wins} ${wins === 1 ? 'window' : 'windows'}` : '';
+  if (note) label.append(el('span', 'dk-card-n', note));
+  b.append(pic, label);
   b.addEventListener('click', () => {
     // the login asked for by the switcher's button, the strip closed under it
     if (locked) {

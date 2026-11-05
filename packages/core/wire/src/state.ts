@@ -113,6 +113,26 @@ export interface HostInfo {
   stacks?: Record<string, StackStatus>;
   // docker here, for the install check
   docker?: DockerInfo;
+  // the afterglow this host runs and its own afterglow update's last word (server afterglow.ts)
+  afterglow?: AfterglowStatus;
+}
+
+export interface AfterglowStatus {
+  version?: string;
+  proto?: number;
+  from?: "release" | "update";
+  state: "idle" | "updating" | "failed";
+  error?: string;
+  at?: number;
+}
+
+// /api/afterglow/check: afterglow's latest release and whether this phosphorus speaks its protocol
+export interface AfterglowLatest {
+  version?: string;
+  proto?: number;
+  compatible?: boolean;
+  why?: string;
+  error?: string;
 }
 
 export interface FoundPage {

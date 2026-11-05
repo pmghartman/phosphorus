@@ -114,6 +114,13 @@ describe("a Linux host's app", () => {
     expect(parseCaps(probe(false)).afterglow).toBe("");
     // an older afterglow, no --stdio: not it
     expect(parseCaps("afterglow:/x/afterglow afterglow 0.2 cursor").afterglow).toBe("");
+    // the newest that serves it in a protocol phosphorus speaks; none named speaks 1
+    const both = [
+      "afterglow:/var/lib/phosphorus/afterglow/afterglow afterglow 0.9 stdio",
+      "afterglow:/var/lib/phosphorus/afterglow-update/0.10/afterglow afterglow 0.10 stdio proto=1",
+      "afterglow:/var/lib/phosphorus/afterglow-update/0.11/afterglow afterglow 0.11 stdio proto=99",
+    ].join("\n");
+    expect(parseCaps(both).afterglow).toBe("/var/lib/phosphorus/afterglow-update/0.10/afterglow");
   });
 
   test("through afterglow over the runner: argv, frames, the title, the clipboard, a polite close", async () => {

@@ -83,6 +83,8 @@ export const FM_KINDS: Record<string, string[]> = {
 };
 
 export function fmKind(e: { name: string; dir?: boolean }): string {
+  // a Windows drive at a host's disk's top; no folder's name has a colon there
+  if (e.dir && /^[A-Za-z]:$/.test(e.name)) return 'drive';
   if (e.dir) return 'dir';
   const x = fmExt(e.name);
   for (const k in FM_KINDS) if (FM_KINDS[k]!.includes(x)) return k;
@@ -99,6 +101,7 @@ export const FM_GLYPHS: Record<string, string> = {
   archive: 'M3.5 1.5h9v13h-9zM8 1.5v2M8 4.5v1M8 6.5v1M7 8.5h2v2H7z',
   pdf: 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 9.5h5M5.5 12h3.5',
   host: ICONS.host!,
+  drive: 'M1.5 9h13v4.5h-13zM3 9l1.6-5.5h6.8L13 9M11.5 11.25h.01',
 };
 
 export const fmIcon = (kind: string) => dkGlyph(FM_GLYPHS[kind]!, `fm-${kind}`);

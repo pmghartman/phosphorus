@@ -292,3 +292,29 @@
     animation-duration: 2.4s;
   }
 }
+
+/* the pane's two sections, phosphorus and afterglow, each named over its hosts */
+.update-section {
+  padding: 0.55rem 0.75rem 0.1rem;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.update-ag {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.update-row.differs .update-state {
+  color: var(--accent);
+}
+/* a host's failed afterglow update: why, under its row */
+.update-row .update-why {
+  grid-column: 1 / -1;
+  color: var(--offmesh);
+  font-size: var(--fs-xs);
+  white-space: normal;
+}
+/* the bar's popup: phosphorus's update alone, so no section name over it */
+.dk-update-pop .update-section {
+  display: none;
+}
