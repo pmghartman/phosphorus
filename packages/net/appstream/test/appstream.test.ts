@@ -181,11 +181,12 @@ describe.skipIf(!canRun)("live", () => {
     const cfg = bins.find((b) => b[0] === MsgConfig)!;
     expect(new DataView(cfg.buffer).getUint16(4, true)).toBe(640);
     expect(await until(() => got.some((m) => m.t === "windows" && m.list.length === 1))).toBe(true);
-    // typed into: the title follows the shell's prompt, a command run changes it
+    // typed into: the title follows the shell's prompt, a command run changes it (and
+    // holds it a moment: a prompt that sets the title would put it straight back)
     // typed again until the shell is up to read it
     const typed = () => got.some((m) => m.t === "title" && m.s === "streamed-ok");
     for (let i = 0; i < 5 && !typed(); i++) {
-      s.input(["x", "printf '\\033]0;streamed-ok\\007'\n"]);
+      s.input(["x", "printf '\\033]0;streamed-ok\\007'; sleep 2\n"]);
       await until(typed, 1500);
     }
     expect(typed()).toBe(true);

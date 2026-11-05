@@ -11,7 +11,13 @@ export type Caps = {
   python: boolean;
   dbus: boolean;
   encoders: Encoder[];
+  // afterglow on the host, the path of one that serves --stdio: what streams its apps
+  // when it's there (linuxsource.ts), the agent and ffmpeg when it isn't
+  afterglow: string;
 };
+
+// where a Phosphorus release puts afterglow on a Linux host: its home, then the package's
+export const afterglowPaths = ["/var/lib/phosphorus/afterglow/afterglow", "/usr/lib/phosphorus/afterglow/afterglow"];
 
 // what the host has, one shell line's answer
 export const probeCmd = [
@@ -19,6 +25,9 @@ export const probeCmd = [
   "command -v ffmpeg >/dev/null 2>&1 && ffmpeg -hide_banner -encoders 2>/dev/null | grep -oE 'h264_(nvenc|vaapi)' | sed 's/^/enc:/'",
   "[ -r /dev/dri/renderD128 ] && [ -w /dev/dri/renderD128 ] && echo dri",
   "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && echo nvidia",
+  // afterglow's own word on what it serves, the first that answers (one built for
+  // another arch or a newer glibc says nothing)
+  `for a in ${afterglowPaths.join(" ")}; do [ -x "$a" ] && f=$("$a" --features 2>/dev/null) && echo "afterglow:$a $f" && break; done`,
   "true",
 ].join("; ");
 
@@ -28,18 +37,28 @@ export function parseCaps(out: string): Caps {
   if (l.has("enc:h264_nvenc") && l.has("nvidia")) encoders.push("nvenc");
   if (l.has("enc:h264_vaapi") && l.has("dri")) encoders.push("vaapi");
   encoders.push("x264");
+  // afterglow:<path> afterglow <version> <features...>
+  let afterglow = "";
+  for (const line of l) {
+    const m = /^afterglow:(\S+) afterglow \S+ (.*)$/.exec(line);
+    if (m && m[2]!.split(/\s+/).includes("stdio")) afterglow = m[1]!;
+  }
   return {
     xvfb: l.has("have:Xvfb"),
     ffmpeg: l.has("have:ffmpeg"),
     python: l.has("have:python3"),
     dbus: l.has("have:dbus-run-session"),
     encoders,
+    afterglow,
   };
 }
 
-// what the host lacks, said as what to install, "" when nothing
+// what the host lacks, said as what to install, "" when nothing: afterglow needs Xvfb
+// alone, the agent and ffmpeg the rest
 export function missing(c: Caps): string {
-  const need = [!c.xvfb && "xvfb", !c.ffmpeg && "ffmpeg", !c.python && "python3"].filter(Boolean);
+  const need = c.afterglow
+    ? [!c.xvfb && "xvfb"].filter(Boolean)
+    : [!c.xvfb && "xvfb", !c.ffmpeg && "ffmpeg", !c.python && "python3"].filter(Boolean);
   return need.length ? `app streaming needs ${need.join(", ")} on the host (apt install ${need.join(" ")})` : "";
 }
 

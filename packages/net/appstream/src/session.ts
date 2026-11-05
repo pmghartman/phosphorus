@@ -5,11 +5,11 @@
 // a Linux host (xsource.ts), or a Windows host's afterglow
 // (@phosphorus/afterglow, whose source keeps the same Source contract)
 
-import { XSource } from "./xsource.ts";
+import { LinuxSource } from "./linuxsource.ts";
 
 // a command running on the host: its stdin, its stdout, its end
 export interface Chan {
-  write(d: string): void;
+  write(d: string | Uint8Array): void;
   onData(fn: (b: Uint8Array) => void): void;
   onClose(fn: () => void): void;
   close(): void;
@@ -151,7 +151,7 @@ export class AppSession {
     source: Source | Runner,
     public start: Start,
   ) {
-    this.source = isRunner(source) ? new XSource(source) : source;
+    this.source = isRunner(source) ? new LinuxSource(source) : source;
     this.title = start.name;
   }
 
