@@ -39,6 +39,29 @@ describe("relay", () => {
     expect(up).toEqual(['["key"]', '["slow"]']);
     expect(down.length).toBe(3);
   });
+
+  test("a big keyframe still going out isn't taken for a viewer behind", () => {
+    let q = 0;
+    const down: (string | Uint8Array)[] = [];
+    const up: string[] = [];
+    const pass = relayFrames(
+      { send: (d) => void down.push(d), queued: () => q },
+      { send: (d) => void up.push(String(d)), queued: () => 0 },
+    );
+    // a 200 KiB keyframe, most of it queued when the next frame comes
+    const key = new Uint8Array(200 << 10);
+    key[0] = MsgFrame;
+    key[1] = 1;
+    pass(key, true);
+    q = 180 << 10;
+    pass(new Uint8Array([MsgFrame, 0, 0, 0, 0, 0, 0, 0, 9]), true);
+    expect(up).toEqual([]);
+    expect(down.length).toBe(2);
+    // past twice the keyframe: behind after all
+    q = 401 << 10;
+    pass(new Uint8Array([MsgFrame, 0, 0, 0, 0, 0, 0, 0, 9]), true);
+    expect(up).toEqual(['["key"]']);
+  });
 });
 
 // --- the session with a source that makes keyframes on request ------------------------

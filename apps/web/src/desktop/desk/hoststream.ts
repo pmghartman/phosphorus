@@ -418,7 +418,18 @@ export function streamWin(hd: HD, it: Item | { id: string; name: string }) {
     const h = streamH || r.height;
     return [Math.round(((e.clientX - r.left) * w) / r.width), Math.round(((e.clientY - r.top) * h) / r.height)];
   };
-  stage.addEventListener('pointermove', (e) => send(['m', ...at(e)]));
+  // each move as the mouse reports it (pointerrawupdate, in a secure page), not batched
+  // to the next animation frame as pointermove is: up to a frame sooner on the host. The
+  // pointer itself is drawn here from the host's shape; what it hovers answers sooner
+  let lastAt = '';
+  const move = (e: Event) => {
+    const p = at(e as PointerEvent);
+    const k = `${p[0]},${p[1]}`;
+    if (k === lastAt) return;
+    lastAt = k;
+    send(['m', ...p]);
+  };
+  stage.addEventListener('onpointerrawupdate' in window ? 'pointerrawupdate' : 'pointermove', move);
   stage.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     stage.setPointerCapture(e.pointerId);
