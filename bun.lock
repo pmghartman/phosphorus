@@ -330,6 +330,9 @@
         "@types/ssh2": "1.15.6",
       },
     },
+    "packages/net/tun": {
+      "name": "@phosphorus/tun",
+    },
     "packages/net/wg": {
       "name": "@phosphorus/wg",
     },
@@ -473,6 +476,8 @@
     "@phosphorus/tools": ["@phosphorus/tools@workspace:packages/ai/tools"],
 
     "@phosphorus/tray-app": ["@phosphorus/tray-app@workspace:apps/tray"],
+
+    "@phosphorus/tun": ["@phosphorus/tun@workspace:packages/net/tun"],
 
     "@phosphorus/update": ["@phosphorus/update@workspace:packages/mesh/update"],
 

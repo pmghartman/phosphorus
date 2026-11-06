@@ -23,6 +23,13 @@
       "license": "https://raw.githubusercontent.com/juanfont/headscale/v{v}/LICENSE"
     },
     {
+      "name": "Wintun",
+      "spdx": "LicenseRef-Wintun-Prebuilt-Binaries",
+      "pin": ["packages/host/host/src/tools.ts", "Wintun\\s*=\\s*\"([^\"]+)\""],
+      "source": "https://www.wintun.net",
+      "license": "https://git.zx2c4.com/wintun/plain/prebuilt-binaries-license.txt?h={v}"
+    },
+    {
       "name": "llama.cpp",
       "spdx": "MIT",
       "pin": ["packages/ai/tools/src/index.ts", "LlamaTag\\s*=\\s*\"([^\"]+)\""],

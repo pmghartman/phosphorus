@@ -251,7 +251,12 @@ const sbom = {
     version: p.version,
     ...(p.purl ? { purl: p.purl } : {}),
     licenses: [
-      pick(p.spdx) || !p.spdx.includes(" ") ? { license: { id: p.spdx || "NOASSERTION" } } : { expression: p.spdx },
+      // a LicenseRef isn't an SPDX id, so it goes by name
+      p.spdx.startsWith("LicenseRef-")
+        ? { license: { name: p.spdx } }
+        : pick(p.spdx) || !p.spdx.includes(" ")
+          ? { license: { id: p.spdx || "NOASSERTION" } }
+          : { expression: p.spdx },
     ],
     externalReferences: [{ type: "website", url: p.source }],
   })),
