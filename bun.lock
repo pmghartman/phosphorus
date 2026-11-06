@@ -330,6 +330,9 @@
         "@types/ssh2": "1.15.6",
       },
     },
+    "packages/net/wg": {
+      "name": "@phosphorus/wg",
+    },
     "packages/net/wsock": {
       "name": "@phosphorus/wsock",
     },
@@ -484,6 +487,8 @@
     "@phosphorus/webapps": ["@phosphorus/webapps@workspace:packages/mesh/webapps"],
 
     "@phosphorus/webstatic": ["@phosphorus/webstatic@workspace:packages/server/webstatic"],
+
+    "@phosphorus/wg": ["@phosphorus/wg@workspace:packages/net/wg"],
 
     "@phosphorus/wire": ["@phosphorus/wire@workspace:packages/core/wire"],
 
