@@ -35,6 +35,7 @@ import {
   STOPPED,
   svcActive,
   svcInstalled,
+  svcRecovery,
   svcStart,
   svcStop,
   tailscaleCLI,
@@ -159,6 +160,8 @@ export async function serve(main: (stop: Stop) => Promise<number>): Promise<numb
     return main(stop);
   }
   dispatch(stop);
+  // installs from before the flag: set from the service itself, LocalSystem may
+  void svcRecovery().catch(() => {});
   let code = 1;
   try {
     code = await main(stop);

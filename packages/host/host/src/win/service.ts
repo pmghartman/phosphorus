@@ -36,8 +36,8 @@ export async function createService() {
       svcName,
       "phosphorus run: the frontend, the tunnel and the model as its own processes",
     );
-    await quiet("sc", "failure", svcName, "reset=", "0", "actions=", "restart/5000");
   }
+  await svcRecovery();
   // SY and BA full, interactive and service users query, authenticated users start and stop
   await run(
     "sc",
@@ -45,6 +45,13 @@ export async function createService() {
     svcName,
     "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CCLCSWRPWPLOCRRC;;;AU)",
   );
+}
+
+// svcRecovery restarted 5s after any failed stop, one it reported with an exit
+// code too, not only a crash: run exits 1 so the service comes back
+export async function svcRecovery() {
+  await quiet("sc", "failure", svcName, "reset=", "0", "actions=", "restart/5000");
+  await quiet("sc", "failureflag", svcName, "1");
 }
 
 // svcWait true once the service is in want, false past wait
