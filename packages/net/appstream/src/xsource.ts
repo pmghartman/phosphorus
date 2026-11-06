@@ -133,6 +133,8 @@ export class XSource implements Source {
         return sink.say({ t: "clip", s: String(m.s ?? "") });
       case "log":
         return sink.say({ t: "note", s: String(m.s ?? "") });
+      case "motion":
+        return sink.motion?.(Math.max(0, Number(m.px) || 0) * 4);
       case "size":
         return this.pix?.size(clamp(m.w, 1, 16383), clamp(m.h, 1, 16383));
       case "rect":
@@ -207,6 +209,11 @@ export class XSource implements Source {
 
   refresh() {
     if (this.pix) this.send(["refresh"]);
+  }
+
+  // while video streams: how much changes, from the agent, for the way back to pixels
+  motion(on: boolean) {
+    this.send(["motion", on ? 1 : 0]);
   }
 
   // --- video: ffmpeg on the agent's display ------------------------------------------------

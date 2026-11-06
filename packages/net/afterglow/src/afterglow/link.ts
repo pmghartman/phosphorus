@@ -51,6 +51,10 @@ export const Out = {
   config: 0x90,
   frame: 0x91,
   cursor: 0x92,
+  // pixels: [pad][u16 gen][u16 w][u16 h]
+  size: 0x93,
+  // pixels: [u8 flags][u16 gen][u32 seq][u16 x][u16 y][u16 w][u16 h] then the pixels
+  rect: 0x94,
 } as const;
 
 export const maxLen = 64 << 20;
@@ -140,6 +144,20 @@ export const configOf = (msg: Uint8Array) => ({
 });
 // a frame message: key, gen; the message itself is the viewer's, its first 8 bytes room
 export const frameOf = (msg: Uint8Array) => ({ key: msg[1] === 1, gen: u16(msg, 2) });
+
+// a size message: the pixels' view
+export const sizeOf = (msg: Uint8Array) => ({ gen: u16(msg, 2), w: u16(msg, 4), h: u16(msg, 6) });
+// a rect message: one rectangle of the view, its pixels after the header
+export const rectOf = (msg: Uint8Array) => ({
+  deflated: (msg[1]! & 1) === 1,
+  msbFirst: (msg[1]! & 2) === 2,
+  gen: u16(msg, 2),
+  x: u16(msg, 8),
+  y: u16(msg, 10),
+  w: u16(msg, 12),
+  h: u16(msg, 14),
+  data: msg.subarray(16),
+});
 
 // a cursor message: the pointer's shape as a PNG with its hotspot, none when hidden
 export const cursorOf = (msg: Uint8Array) => ({

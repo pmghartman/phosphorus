@@ -16,6 +16,26 @@ export const frameMessage = (gen: number, key: boolean, avcc: number[]) =>
 export const configMessage = (gen: number, w: number, h: number, avcc: number[]) =>
   message(Out.config, new Uint8Array([0, ...u16(gen), ...u16(w), ...u16(h), ...avcc]));
 
+// a size message: [type][pad][gen][w][h]
+export const sizeMessage = (gen: number, w: number, h: number) =>
+  message(Out.size, new Uint8Array([0, ...u16(gen), ...u16(w), ...u16(h)]));
+
+// a rect message: [type][flags][gen][seq u32][x][y][w][h] then the pixels
+export const rectMessage = (gen: number, seq: number, r: [number, number, number, number], px: number[], flags = 0) =>
+  message(
+    Out.rect,
+    new Uint8Array([
+      flags,
+      ...u16(gen),
+      seq & 0xff,
+      (seq >> 8) & 0xff,
+      (seq >> 16) & 0xff,
+      seq >>> 24,
+      ...r.flatMap(u16),
+      ...px,
+    ]),
+  );
+
 // a cursor message: [type][visible][hot x][hot y][w][h] then the PNG
 export const cursorMessage = (visible: boolean, x: number, y: number, w: number, h: number, png: number[]) =>
   message(Out.cursor, new Uint8Array([visible ? 1 : 0, ...u16(x), ...u16(y), ...u16(w), ...u16(h), ...png]));

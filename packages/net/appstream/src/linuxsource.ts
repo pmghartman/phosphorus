@@ -97,6 +97,10 @@ export class LinuxSource implements Source {
     this.inner?.refresh?.();
   }
 
+  motion(on: boolean) {
+    this.inner?.motion?.(on);
+  }
+
   input(m: unknown[], w: number, h: number) {
     this.inner?.input(m, w, h);
   }

@@ -11,8 +11,8 @@
 #   {"argv": [...], "w", "h", "sw", "sh", "dpi", "scale", "dbus": bool}
 # then arrays: ["m",x,y] ["b",n,down] ["w",dx,dy] ["k",down,keycode,keysym]
 # ["x",text] ["r",w,h] ["raise",id] ["clip",text] ["close"] ["quit"]
-# ["pixels",on] ["refresh"]
-# Out: {"t":"ready"|"title"|"windows"|"cursor"|"clip"|"exit"|"log"|"size", ...}
+# ["pixels",on] ["refresh"] ["motion",on]
+# Out: {"t":"ready"|"title"|"windows"|"cursor"|"clip"|"exit"|"log"|"size"|"motion", ...}
 # and {"t":"rect","x","y","w","h","n","z","o"} followed by n bytes: the pixels,
 # 32 bits each, deflated when z
 # Python 3.6 and its standard library, nothing else; libX11, libXtst, libXfixes,
@@ -614,6 +614,11 @@ damage_base = -1
 dirty = []          # damaged since the last flush: x, y, w, h on the display
 dirty_at = 0.0
 last_flush = 0.0
+# while video streams instead: how much changes, told twice a second as pixels damaged
+motion_on = False
+motion_px = 0
+motion_at = 0.0
+MOTION_EVERY = 0.5
 # changes gathered this long before they're read: one read for a burst of drawing
 GATHER = 0.005
 # and read no more often than this: a flood of change stays a stream of rectangles
@@ -707,22 +712,39 @@ def refresh():
     out(t="size", w=vw, h=vh)
     send_rect(0, 0, vw, vh)
 
+# XDamage on the whole display, once: raw rectangles, each change as drawn, merged here
+def want_damage():
+    global damage, damage_base
+    if damage or not Xd:
+        return bool(damage)
+    a, b = c_int(), c_int()
+    if Xd.XDamageQueryExtension(dpy, byref(a), byref(b)):
+        damage_base = a.value
+        damage = Xd.XDamageCreate(dpy, root, 0)
+    return bool(damage)
+
 def set_pixels(on):
-    global pixels_on, damage, damage_base, dirty
-    on = bool(on) and bool(Xd)
-    if on and not damage:
-        a, b = c_int(), c_int()
-        if Xd.XDamageQueryExtension(dpy, byref(a), byref(b)):
-            damage_base = a.value
-            # raw rectangles: each change as drawn, merged here
-            damage = Xd.XDamageCreate(dpy, root, 0)
-        else:
-            on = False
+    global pixels_on, dirty
+    on = bool(on) and want_damage()
     pixels_on = on
     dirty = []
     if on:
         refresh()
     elif damage:
+        Xd.XDamageSubtract(dpy, damage, 0, 0)
+
+def set_motion(on):
+    global motion_on, motion_px, motion_at
+    motion_on = bool(on) and want_damage()
+    motion_px = 0
+    motion_at = time.time()
+
+def flush_motion():
+    global motion_px, motion_at
+    motion_at = time.time()
+    out(t="motion", px=motion_px)
+    motion_px = 0
+    if damage and not pixels_on:
         Xd.XDamageSubtract(dpy, damage, 0, 0)
 
 # --- the clipboard -------------------------------------------------------------------
@@ -804,6 +826,8 @@ def on_line(line):
         set_pixels(m[1] if len(m) > 1 else True)
     elif k == "refresh":
         refresh()
+    elif k == "motion":
+        set_motion(m[1] if len(m) > 1 else True)
     elif k == "close":
         close_main()
     elif k == "quit":
@@ -811,7 +835,7 @@ def on_line(line):
     X.XFlush(dpy)
 
 def on_x():
-    global dirty_at
+    global dirty_at, motion_px
     e = XEvent()
     while X.XPending(dpy):
         X.XNextEvent(dpy, byref(e))
@@ -853,6 +877,8 @@ def on_x():
             if pixels_on:
                 dirty.append((d.area.x, d.area.y, d.area.width, d.area.height))
                 dirty_at = dirty_at or time.time()
+            elif motion_on:
+                motion_px += d.area.width * d.area.height
     X.XFlush(dpy)
 
 # --- the app ---------------------------------------------------------------------------
@@ -948,6 +974,8 @@ def main():
             now = time.time()
             if now - dirty_at >= GATHER and now - last_flush >= FLUSH_GAP:
                 flush_rects()
+        if motion_on and not pixels_on and time.time() - motion_at >= MOTION_EVERY:
+            flush_motion()
         if wins:
             seen_window, gone_at = True, 0.0
         if proc.poll() is not None and not wins:

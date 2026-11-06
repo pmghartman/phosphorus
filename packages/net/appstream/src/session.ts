@@ -89,6 +89,9 @@ export interface Sink {
   say(m: { t: string } & Record<string, unknown>): void;
   // the app is gone
   exit(error: string, log?: string, code?: number): void;
+  // while video streams: raw bytes of the display that changed since the last word, from
+  // a source that can tell (the agent's XDamage); the session's way back to pixels
+  motion?(rawBytes: number): void;
 }
 
 export interface Source {
@@ -111,6 +114,8 @@ export interface Source {
   pixels?(sink: PixelSink): void;
   stopPixels?(): void;
   refresh?(): void;
+  // motion told (sink.motion) while video streams, for the way back to pixels
+  motion?(on: boolean): void;
   // one input message from the viewer, already checked as an array; w, h the video's size
   input(m: unknown[], w: number, h: number): void;
   // the viewer's window resized: the app's to match (the video restarts after)
@@ -149,8 +154,10 @@ export const pixelTuning = {
   // pixels changing faster than this (raw bytes a second), this long: video
   toVideoRawBps: 48e6,
   toVideoAfterMs: 1500,
-  // video thinner than this (kilobits a second), this long: pixels
+  // video thinner than this (kilobits a second), this long: pixels; where the source
+  // tells motion instead, pixels changing slower than this (raw bytes a second)
   toPixelsKbps: 300,
+  toPixelsRawBps: 6e6,
   toPixelsAfterMs: 3000,
   tickMs: 500,
 };
@@ -182,6 +189,8 @@ export class AppSession {
   private pixelsOn = false;
   // the viewer fell behind: rectangles skipped until the whole view comes again
   private needFull = false;
+  // the pixels' view as the source last said, told again to a viewer that comes later
+  private pixSize?: { w: number; h: number };
   private w = 0;
   private h = 0;
   private sw = 0;
@@ -204,6 +213,8 @@ export class AppSession {
   // what moved since the last tick: raw pixel bytes, encoded video bytes
   private rawAcc = 0;
   private encAcc = 0;
+  // a source that tells motion while video streams: judged by it, not by the video's bytes
+  private motionTold = false;
   private busySince = 0;
   private quietSince = 0;
   readonly created = Date.now();
@@ -256,6 +267,10 @@ export class AppSession {
           this.viewer?.json({ t: "exit", error, log: log ?? "", code });
           this.end(error || "exited");
         },
+        motion: (b) => {
+          this.motionTold = true;
+          this.rawAcc += b;
+        },
       },
     );
     this.stats.enc = this.source.label;
@@ -295,8 +310,10 @@ export class AppSession {
     this.needKey = true;
     if (!this.opened) return;
     if (this.mode === "pixels") {
-      if (this.pixelsOn) this.refresh();
-      else this.startPixels();
+      if (this.pixelsOn) {
+        if (this.pixSize) this.sendSize(this.gen, this.pixSize.w, this.pixSize.h);
+        this.refresh();
+      } else this.startPixels();
     } else if (this.videoOn && this.source.keyframes) this.askKey();
     else this.restart("viewer");
   }
@@ -393,7 +410,11 @@ export class AppSession {
     const gen = ++this.gen;
     const live = () => gen === this.gen && !this.ended && this.pixelsOn;
     this.source.pixels({
-      size: (w, h) => live() && this.sendSize(gen, w, h),
+      size: (w, h) => {
+        if (!live()) return;
+        this.pixSize = { w, h };
+        this.sendSize(gen, w, h);
+      },
       rect: (x, y, w, h, data, deflated, msb) => live() && this.rect(gen, x, y, w, h, data, deflated, msb),
     });
     this.tick(true);
@@ -501,7 +522,7 @@ export class AppSession {
         this.busySince ||= now;
         if (now - this.busySince >= t.toVideoAfterMs) this.switchTo("video", "moving");
       } else this.busySince = 0;
-    } else if (kbps < t.toPixelsKbps && this.canPixels) {
+    } else if ((this.motionTold ? raw < t.toPixelsRawBps : kbps < t.toPixelsKbps) && this.canPixels) {
       this.quietSince ||= now;
       if (now - this.quietSince >= t.toPixelsAfterMs) this.switchTo("pixels", "still");
     } else this.quietSince = 0;
@@ -511,6 +532,8 @@ export class AppSession {
     if (mode === this.mode || this.ended) return;
     if (mode === "video") this.stopPixels();
     else this.stopVideo();
+    this.motionTold = false;
+    this.source.motion?.(mode === "video" && this.canPixels);
     this.mode = mode;
     this.stats.mode = mode;
     this.busySince = this.quietSince = 0;
@@ -526,6 +549,7 @@ export class AppSession {
     this.gen++;
     this.videoOn = false;
     this.source.stopVideo();
+    this.source.motion?.(false);
   }
 
   // a fresh video at the viewer's size: its first frame a keyframe. Kept to one a

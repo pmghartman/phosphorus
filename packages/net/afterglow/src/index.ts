@@ -44,9 +44,20 @@ export {
   Out,
   type Proc,
   type Ready,
+  rectOf,
+  sizeOf,
   type Transport,
 } from "./afterglow/link.ts";
 export { protoOf, protoOfFeatures, protoOK, protoRange, protoWhy } from "./afterglow/proto.ts";
 export { AfterglowSource, type AfterglowTarget } from "./afterglow/source.ts";
 
-export { FrameRoom, type Opened, type Sink, type Source, type Start, type Video, type VideoSink } from "./source.ts";
+export {
+  FrameRoom,
+  type Opened,
+  type PixelSink,
+  type Sink,
+  type Source,
+  type Start,
+  type Video,
+  type VideoSink,
+} from "./source.ts";

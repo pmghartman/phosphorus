@@ -4,9 +4,21 @@
 // frame the encoder made is the one the viewer gets, copied once. The app runs on
 // between videos and viewers
 
-import type { Opened, Sink, Source, Video, VideoSink } from "../source.ts";
+import type { Opened, PixelSink, Sink, Source, Video, VideoSink } from "../source.ts";
 import { InputPacker } from "./input.ts";
-import { configOf, cursorOf, frameOf, In, jsonOf, Link, type LinkAddr, Out, type Transport } from "./link.ts";
+import {
+  configOf,
+  cursorOf,
+  frameOf,
+  In,
+  jsonOf,
+  Link,
+  type LinkAddr,
+  Out,
+  rectOf,
+  sizeOf,
+  type Transport,
+} from "./link.ts";
 
 export type AfterglowTarget = {
   // where afterglow listens (its link file), or a stream to an `afterglow --stdio`
@@ -42,7 +54,19 @@ export type AfterglowTarget = {
 
 const clamp = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
 
-type Running = { gen: number; v: Video; sink?: VideoSink; got: boolean };
+// one run on the host: video, or the pixels as they change (afterglow's "pixels" feature)
+type Running = {
+  gen: number;
+  v: Video;
+  pixels: boolean;
+  sink?: VideoSink;
+  pix?: PixelSink;
+  got: boolean;
+  // the view's size the host said, for a sink that takes the run up later
+  size?: { w: number; h: number };
+};
+// the rate pixels are gathered at: a slot of about 8 ms
+const pixelFps = 120;
 
 export class AfterglowSource implements Source {
   readonly keyframes = true;
@@ -54,8 +78,10 @@ export class AfterglowSource implements Source {
   private cur?: Running;
   private gen = 0;
   private finished = false;
-  // what the launched app can be asked: "clipboard", "raise", "close", "notes"
+  // what the launched app can be asked: "clipboard", "raise", "close", "notes", "pixels"
   private features = new Set<string>();
+  // the view's size, for a pixel run started without one
+  private size = { w: 0, h: 0 };
   private keys = new InputPacker((pkt) => this.cur && this.link?.send(In.input, pkt));
   timings: Record<string, number> = {};
   private name = "";
@@ -67,6 +93,11 @@ export class AfterglowSource implements Source {
   // taking over from it
   get linkNow(): Link | undefined {
     return !this.finished && this.link?.alive && this.link.ready ? this.link : undefined;
+  }
+
+  // whether this afterglow sends pixels, known once launched
+  get hasPixels() {
+    return this.features.has("pixels");
   }
 
   async open(s: Opened, sink: Sink): Promise<void> {
@@ -121,8 +152,11 @@ export class AfterglowSource implements Source {
     }
     this.features = new Set(Array.isArray(r.features) ? r.features.map(String) : []);
     this.timings = { link: t1 - t0, launch: performance.now() - t1 };
-    // the video started now, kept for the viewer about to attach
-    this.startVideo({ w: s.w, h: s.h, fps, kbps: 20_000, full: s.full });
+    this.size = { w: s.w, h: s.h };
+    // the picture started now, kept for the viewer about to attach: pixels where the
+    // host sends them (the session's first choice), video otherwise
+    if (this.hasPixels) this.startRun({ w: s.w, h: s.h, fps: pixelFps, kbps: 20_000, full: false }, true);
+    else this.startRun({ w: s.w, h: s.h, fps, kbps: 20_000, full: s.full }, false);
     this.name = s.name;
     sink.meta({ t: "title", s: s.name });
     // drawn in by the host: the page's own hidden, so there's one. Otherwise the
@@ -134,9 +168,9 @@ export class AfterglowSource implements Source {
     return clamp(fps || this.t.fps || 120, 10, 240);
   }
 
-  private startVideo(v: Video, sink?: VideoSink): Running {
+  private startRun(v: Video, pixels: boolean, sink?: VideoSink, pix?: PixelSink): Running {
     this.gen = (this.gen + 1) & 0xffff;
-    const r: Running = { gen: this.gen, v, sink, got: false };
+    const r: Running = { gen: this.gen, v, pixels, sink, pix, got: false };
     this.cur = r;
     this.link?.json(In.video, {
       gen: r.gen,
@@ -145,7 +179,8 @@ export class AfterglowSource implements Source {
       fps: v.fps,
       kbps: v.kbps,
       yuv444: v.full,
-      draw_cursor: !!this.t.drawCursor,
+      draw_cursor: !pixels && !!this.t.drawCursor,
+      pixels,
     });
     return r;
   }
@@ -170,7 +205,28 @@ export class AfterglowSource implements Source {
         const c = this.cur;
         if (!c || Number(j.gen) !== c.gen) return;
         this.cur = undefined;
+        if (c.pixels) {
+          // the pixels stopped by themselves (a display lost): again, for the sink that has them
+          if (c.pix) setTimeout(() => !this.finished && !this.cur && this.startRun(c.v, true, undefined, c.pix), 250);
+          return;
+        }
         c.sink?.ended(c.got);
+        return;
+      }
+      case Out.size: {
+        const s = sizeOf(m);
+        const c = this.cur;
+        if (!c || s.gen !== c.gen) return;
+        c.size = { w: s.w, h: s.h };
+        c.pix?.size(s.w, s.h);
+        return;
+      }
+      case Out.rect: {
+        const r = rectOf(m);
+        const c = this.cur;
+        if (!c?.pix || r.gen !== c.gen) return;
+        c.got = true;
+        c.pix.rect(r.x, r.y, r.w, r.h, r.data, r.deflated, r.msbFirst);
         return;
       }
       case Out.cursor: {
@@ -199,24 +255,51 @@ export class AfterglowSource implements Source {
     v = { ...v, fps: this.fpsOf(v.fps) };
     const c = this.cur;
     // the video the open started, at the size asked for: taken as it is, a keyframe asked
-    if (c && !c.sink && c.v.w === v.w && c.v.h === v.h && c.v.fps === v.fps && c.v.full === v.full) {
+    if (c && !c.pixels && !c.sink && c.v.w === v.w && c.v.h === v.h && c.v.fps === v.fps && c.v.full === v.full) {
       c.sink = sink;
       c.v.kbps = v.kbps;
       this.link?.send(In.idr);
       return;
     }
-    this.startVideo(v, sink);
+    this.startRun(v, false, sink);
   }
 
   stopVideo() {
     // the open's video, no viewer's yet: kept for the video() that comes straight after
-    if (!this.cur || !this.cur.sink) return;
+    if (!this.cur || this.cur.pixels || !this.cur.sink) return;
     this.cur = undefined;
     this.link?.send(In.stopVideo);
   }
 
   keyframe() {
     this.link?.send(In.idr);
+  }
+
+  // --- pixels: the host reads the rectangles that change and sends them ----------------
+
+  pixels(sink: PixelSink) {
+    if (!this.hasPixels) return;
+    const c = this.cur;
+    // the run the open started, nobody's yet: taken as it is, its size told, the whole
+    // view asked for
+    if (c?.pixels && !c.pix) {
+      c.pix = sink;
+      if (c.size) sink.size(c.size.w, c.size.h);
+      this.link?.send(In.idr);
+      return;
+    }
+    const v = c?.v ?? { w: this.size.w, h: this.size.h, fps: pixelFps, kbps: 20_000, full: false };
+    this.startRun({ ...v, fps: pixelFps }, true, undefined, sink);
+  }
+
+  stopPixels() {
+    if (!this.cur?.pixels || !this.cur.pix) return;
+    this.cur = undefined;
+    this.link?.send(In.stopVideo);
+  }
+
+  refresh() {
+    if (this.cur?.pixels) this.link?.send(In.idr);
   }
 
   input(m: unknown[], w: number, h: number) {
@@ -235,8 +318,13 @@ export class AfterglowSource implements Source {
     this.keys.input(m, c.v.w || w, c.v.h || h);
   }
 
-  // the video restarts at the new size when the session asks; afterglow's display follows
-  resize() {}
+  // video restarts at the new size when the session asks, afterglow's display following;
+  // pixels go on at the new size from here, a fresh run for the same sink
+  resize(w: number, h: number) {
+    this.size = { w, h };
+    const c = this.cur;
+    if (c?.pixels && c.pix && (c.v.w !== w || c.v.h !== h)) this.startRun({ ...c.v, w, h }, true, undefined, c.pix);
+  }
 
   // as the app's own close button: where afterglow can ask it that way, the app stays
   // until it closes (it may ask to save first); otherwise it's ended

@@ -45,6 +45,13 @@ export interface Sink {
   exit(error: string, log?: string, code?: number): void;
 }
 
+// the pixels as they change: the view's size, then each rectangle, 32-bit BGRx, deflated
+// (zlib) or raw, in the display's byte order
+export interface PixelSink {
+  size(w: number, h: number): void;
+  rect(x: number, y: number, w: number, h: number, data: Uint8Array, deflated: boolean, msbFirst: boolean): void;
+}
+
 export interface Source {
   // a keyframe can be asked of the running video; otherwise a fresh video makes one
   readonly keyframes: boolean;
@@ -52,11 +59,19 @@ export interface Source {
   readonly label: string;
   // the least time between two fresh videos: what one costs the host to start
   readonly restartGapMs?: number;
+  // whether video can be made at all; true when unsaid
+  readonly canVideo?: boolean;
+  // whether pixels come, known once open; true when unsaid and pixels() exists
+  readonly hasPixels?: boolean;
   open(s: Opened, sink: Sink): Promise<void>;
   // a fresh video at this size and rate, replacing any running; its first frame a keyframe
   video(v: Video, sink: VideoSink): void;
   stopVideo(): void;
   keyframe(): void;
+  // the pixels as they change, until stopped; refresh: the whole view again
+  pixels?(sink: PixelSink): void;
+  stopPixels?(): void;
+  refresh?(): void;
   // one input message from the viewer, already checked as an array; w, h the video's size
   input(m: unknown[], w: number, h: number): void;
   // the viewer's window resized: the app's to match (the video restarts after)

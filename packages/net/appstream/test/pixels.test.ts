@@ -55,7 +55,14 @@ class PixSource implements Source {
   videos: Video[] = [];
   refreshes = 0;
   stops = 0;
-  async open(_s: unknown, _sink: Sink) {}
+  sink?: Sink;
+  motions: boolean[] = [];
+  async open(_s: unknown, sink: Sink) {
+    this.sink = sink;
+  }
+  motion(on: boolean) {
+    this.motions.push(on);
+  }
   pixels(s: PixelSink) {
     this.pix = s;
   }
@@ -151,12 +158,17 @@ describe("session: pixels", () => {
       expect(src.stops).toBe(1);
       expect(src.videos.length).toBe(1);
       expect(msgs.at(-1)).toMatchObject({ t: "mode", mode: "video", why: "moving" });
-      // thin video: pixels again
+      // motion asked of the source while video streams; a loud video with little motion
+      // told is still: pixels again
+      expect(src.motions.at(-1)).toBe(true);
       src.vid!.config(new Uint8Array([1, 0x64, 0, 0x1f]), 800, 600);
-      src.vid!.frame(true, new Uint8Array(8 + 2), true);
+      const loud = setInterval(() => src.vid?.frame(true, new Uint8Array(8 + 4000), true), 5);
+      src.sink!.motion!(10);
       await Bun.sleep(80);
+      clearInterval(loud);
       expect(s.mode).toBe("pixels");
       expect(msgs.at(-1)).toMatchObject({ t: "mode", mode: "pixels", why: "still" });
+      expect(src.motions.at(-1)).toBe(false);
       // the viewer picks video: it holds through quiet
       s.input(["mode", "video"]);
       expect(s.mode).toBe("video");
