@@ -8,7 +8,7 @@ import { dkSpaceGone } from '../desktop/spaces.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { dkClose } from '../desktop/windows.ts';
 import { acctCall } from '../lib/api.ts';
-import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from '../lib/dom.ts';
+import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk } from '../lib/dom.ts';
 import { applyTheme, modeNow } from '../lib/scheme.ts';
 import { type Account, dk, PREF_LS, PREF_OF, st } from '../lib/state.ts';
 import { connectState, stateStop, stateUp } from '../lib/sync.ts';
@@ -454,11 +454,5 @@ export function dkForget(host: string) {
   dkIcons();
 }
 
-// the user's glyph, an admin's crowned
-export function dkUserGlyph(): SVGSVGElement {
-  if (!st.acct?.admin) return dkGlyph(DK_GLYPHS.user!);
-  // the user's head lowered, the crown on it
-  const svg = dkGlyph('M8 4.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2zM2.5 15c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2');
-  svg.appendChild(svgEl('path', { d: DK_GLYPHS.crown!, class: 'dk-crown' }));
-  return svg;
-}
+// the user's glyph; an admin is named as one in the control panel
+export const dkUserGlyph = (): SVGSVGElement => dkGlyph(DK_GLYPHS.user!);

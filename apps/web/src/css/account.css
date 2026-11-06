@@ -158,19 +158,12 @@
   width: 0.85rem;
   height: 0.85rem;
 }
-.dk-bar .dk-profile .dk-crown {
-  stroke: var(--warn);
-}
 .dk-bar .dk-profile .ic {
   overflow: visible;
 }
 .dk-profile:hover .dk-clock,
 .dk-profile[aria-expanded="true"] .dk-clock {
   color: inherit;
-}
-.dk-bar .dk-profile:hover .dk-crown,
-.dk-bar .dk-profile[aria-expanded="true"] .dk-crown {
-  stroke: currentColor;
 }
 
 /* a title on a card's top edge: its lower half the card's own fill over the

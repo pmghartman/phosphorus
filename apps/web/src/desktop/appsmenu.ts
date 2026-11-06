@@ -164,7 +164,7 @@ function sections(): [string, Tile[]][] {
       kind: 'apps',
       open: () => dkOpenApp('apps'),
     },
-    { name: 'settings', title: 'settings', glyph: DK_GLYPHS.settings!, kind: 'settings', open: () => dkSettings() },
+    { name: 'settings', title: 'settings', glyph: DK_GLYPHS.gear!, kind: 'settings', open: () => dkSettings() },
   ];
   const shared = sharedApps()
     .filter((a) => dk.creds.has(a.host))
