@@ -211,9 +211,12 @@ test("public ports: TCP and UDP carried to the service, a dropped spec closed", 
 
 // a server sending these bytes once anything arrives, minding its own backpressure
 function bulk(big: Uint8Array) {
+  // off -1: nothing asked yet, a drain before the request writing nothing
   const pump = (s: Socket<{ off: number }>) => {
+    if (s.data.off < 0) return;
     while (s.data.off < big.length) {
-      const n = s.write(big, s.data.off);
+      // a view, not write's byteOffset: Linux's Bun takes the whole buffer's length as the default byteLength
+      const n = s.write(big.subarray(s.data.off));
       if (n <= 0) return;
       s.data.off += n;
     }
