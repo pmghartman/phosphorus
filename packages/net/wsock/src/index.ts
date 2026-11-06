@@ -2,6 +2,7 @@
 // and the request context every handler is given: the socket's address, whether
 // the ingress handed it over, the server to upgrade on
 import type { Server, ServerWebSocket } from "bun";
+import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/util";
 
 // a socket not answering pings dropped
 export const HeartbeatMs = 3000;
@@ -219,3 +220,8 @@ export const headerHas = (h: Headers, k: string, token: string) =>
 
 export const remoteIP = (server: Server<any>, req: Request) =>
   (server.requestIP(req)?.address ?? "").replace(/^::ffff:/, "");
+
+// the request over TLS: this server's, or a mesh peer's ingress saying so
+export const isHTTPS = (c: Ctx) =>
+  c.url.protocol === "https:" ||
+  ((isLoopbackAddr(c.ip) || isTailnetAddr(c.ip)) && c.req.headers.get("x-forwarded-proto") === "https");

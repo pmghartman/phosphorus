@@ -1,0 +1,181 @@
+import { expect, test } from "bun:test";
+import { forwardPorts, sniOf, split } from "@phosphorus/proxy";
+import { splitClient } from "../src/edge.ts";
+
+// a ClientHello naming server, as a browser's first bytes
+function hello(server: string | undefined): Uint8Array {
+  const name = new TextEncoder().encode(server ?? "");
+  const sni = server === undefined ? [] : [0, 0, (name.length + 5) >> 8, (name.length + 5) & 0xff, (name.length + 3) >> 8, (name.length + 3) & 0xff, 0, name.length >> 8, name.length & 0xff, ...name];
+  const exts = [...sni, 0, 0x17, 0, 0];
+  const body = [
+    3, 3, ...new Array(32).fill(7),
+    0,
+    0, 2, 0x13, 0x01,
+    1, 0,
+    exts.length >> 8, exts.length & 0xff, ...exts,
+  ];
+  const hs = [1, 0, body.length >> 8, body.length & 0xff, ...body];
+  return new Uint8Array([0x16, 3, 1, hs.length >> 8, hs.length & 0xff, ...hs]);
+}
+
+test("the server name read from a ClientHello, in pieces, or not TLS at all", () => {
+  const h = hello("App.Example.com");
+  expect(sniOf(h)).toBe("app.example.com");
+  expect(sniOf(h.subarray(0, 20))).toBeUndefined();
+  expect(sniOf(hello(undefined))).toBe("");
+  expect(sniOf(new TextEncoder().encode("GET / HTTP/1.1\r\n"))).toBeNull();
+});
+
+// an echo server tagging what it got, and the client address it saw through the splitter
+function echo(tag: string) {
+  let seen: { address: string; port: number } | undefined;
+  const l = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(s, d) {
+        seen = { address: s.remoteAddress, port: s.remotePort };
+        s.write(new TextEncoder().encode(tag));
+        s.write(d);
+      },
+    },
+  });
+  return { port: l.port, stop: () => l.stop(true), seen: () => seen };
+}
+
+async function through(port: number, bytes: Uint8Array): Promise<Uint8Array> {
+  return new Promise((res, rej) => {
+    const got: Uint8Array[] = [];
+    let timer: ReturnType<typeof setTimeout>;
+    Bun.connect({
+      hostname: "127.0.0.1",
+      port,
+      socket: {
+        open(s) {
+          s.write(bytes);
+        },
+        data(s, d) {
+          got.push(new Uint8Array(d));
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            s.end();
+            res(new Uint8Array(got.flatMap((g) => [...g])));
+          }, 100);
+        },
+        close() {},
+        error(_s, e) {
+          rej(e);
+        },
+        connectError(_s, e) {
+          rej(e);
+        },
+      },
+    });
+  });
+}
+
+test("443 split by server name: the control's bytes to it, the rest to the ingress, the client remembered", async () => {
+  const ingress = echo("I:");
+  const control = echo("C:");
+  const sp = split(0, "127.0.0.1");
+  sp.setIngress(ingress.port);
+  sp.setControl("Control.Example.com", control.port);
+  try {
+    const text = (b: Uint8Array) => new TextDecoder("latin1").decode(b);
+    const a = await through(sp.port, hello("control.example.com"));
+    expect(text(a).startsWith("C:\x16")).toBe(true);
+    const b = await through(sp.port, hello("app.example.com"));
+    expect(text(b).startsWith("I:\x16")).toBe(true);
+    const c = await through(sp.port, new TextEncoder().encode("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
+    expect(text(c).startsWith("I:GET")).toBe(true);
+    // the ingress saw the splitter on loopback; the client behind that port is known
+    expect(ingress.seen()!.address).toBe("127.0.0.1");
+    expect(splitClient(null)).toBe("");
+    // a hello cut short arrives in two writes and still routes
+    const h = hello("control.example.com");
+    const d = await new Promise<string>((res) => {
+      let got = "";
+      Bun.connect({
+        hostname: "127.0.0.1",
+        port: sp.port,
+        socket: {
+          open(s) {
+            s.write(h.subarray(0, 10));
+            setTimeout(() => s.write(h.subarray(10)), 50);
+          },
+          data(s, d) {
+            got += new TextDecoder("latin1").decode(d);
+            if (got.length >= 2 + h.length) {
+              s.end();
+              res(got);
+            }
+          },
+        },
+      });
+    });
+    expect(d.startsWith("C:")).toBe(true);
+  } finally {
+    sp.stop();
+    ingress.stop();
+    control.stop();
+  }
+});
+
+test("public ports: TCP and UDP carried to the service, a dropped spec closed", async () => {
+  const svc = echo("S:");
+  const udpSvc = await Bun.udpSocket<"uint8array">({
+    hostname: "127.0.0.1",
+    port: 0,
+    binaryType: "uint8array",
+    socket: {
+      data(s, b, port, addr) {
+        s.send(new TextEncoder().encode("U:" + new TextDecoder().decode(b)), port, addr);
+      },
+    },
+  });
+  const pick = () => {
+    const l = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+    const p = l.port;
+    l.stop(true);
+    return p;
+  };
+  const tcpPub = pick(),
+    udpPub = pick();
+  let fw = await forwardPorts(
+    [
+      { name: "a", proto: "tcp", pub: tcpPub, ip: "127.0.0.1", port: svc.port },
+      { name: "b", proto: "udp", pub: udpPub, ip: "127.0.0.1", port: udpSvc.port },
+    ],
+    undefined,
+    "127.0.0.1",
+  );
+  try {
+    expect(fw.status()).toEqual({ [`tcp:${tcpPub}`]: "", [`udp:${udpPub}`]: "" });
+    const got = await through(tcpPub, new TextEncoder().encode("hello"));
+    expect(new TextDecoder().decode(got)).toBe("S:hello");
+    const back = await new Promise<string>(async (res) => {
+      const c = await Bun.udpSocket<"uint8array">({
+        binaryType: "uint8array",
+        socket: {
+          data(s, b) {
+            res(new TextDecoder().decode(b));
+            s.close();
+          },
+        },
+      });
+      c.send("ping", udpPub, "127.0.0.1");
+    });
+    expect(back).toBe("U:ping");
+    // the TCP port dropped: its listener gone, the UDP one kept
+    fw = await forwardPorts([{ name: "b", proto: "udp", pub: udpPub, ip: "127.0.0.1", port: udpSvc.port }], fw, "127.0.0.1");
+    expect(Object.keys(fw.status())).toEqual([`udp:${udpPub}`]);
+    const closed = await through(tcpPub, new Uint8Array([1]))
+      .then(() => false)
+      .catch(() => true);
+    expect(closed).toBe(true);
+  } finally {
+    fw.stop();
+    svc.stop();
+    udpSvc.close();
+  }
+});
