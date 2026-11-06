@@ -82,7 +82,7 @@
   color: var(--fg);
 }
 .store-nav-row.on {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
   color: var(--fg);
 }
 .store-nav-ic {

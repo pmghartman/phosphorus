@@ -305,7 +305,7 @@
   fill: var(--fg);
 }
 .mesh-panel.expanded .mesh-stat-row[data-host]:active {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
 }
 .mesh-svg .mesh-node.pending {
   animation: mesh-host-pending 0.8s ease-in-out infinite alternate;

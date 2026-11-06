@@ -4,15 +4,15 @@
 :root {
   --header-h: 1.5rem;
   /* the type scale: every size in the sheets one of these */
-  --fs-3xs: 0.66rem;
-  --fs-2xs: 0.7rem;
-  --fs-xs: 0.74rem;
-  --fs-sm: 0.79rem;
-  --fs-md: 0.83rem;
-  --fs-base: 0.875rem;
-  --fs-lg: 1rem;
-  --fs-xl: 1.25rem;
-  --fs-2xl: 1.5rem;
+  --fs-3xs: 0.64rem;
+  --fs-2xs: 0.68rem;
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.76rem;
+  --fs-md: 0.8rem;
+  --fs-base: 0.8125rem;
+  --fs-lg: 0.95rem;
+  --fs-xl: 1.15rem;
+  --fs-2xl: 1.35rem;
   /* spacing on a 4px grid, for what's written from here on */
   --sp-1: 0.25rem;
   --sp-2: 0.5rem;
@@ -115,7 +115,7 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-size: var(--fs-base);
-  line-height: 1.45;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -252,8 +252,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
-  min-height: 1.85rem;
-  padding: 0.28rem 0.8rem;
+  min-height: 1.7rem;
+  padding: 0.22rem 0.7rem;
   font: inherit;
   font-size: var(--fs-sm);
   line-height: 1.25;

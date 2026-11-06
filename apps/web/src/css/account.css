@@ -249,11 +249,11 @@
   border-color: rgb(255 255 255 / 0.2);
 }
 .dk-walled .dk-icon.sel .dk-tile {
-  background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1));
-  border-color: color-mix(in srgb, var(--accent) 70%, #fff);
+  background: rgb(255 255 255 / 0.22);
+  border-color: rgb(255 255 255 / 0.4);
 }
 .dk-walled .dk-icon.sel .dk-label {
-  background: var(--accent);
+  background: rgb(255 255 255 / 0.22);
   color: #fff;
   text-shadow: none;
 }

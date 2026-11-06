@@ -44,7 +44,7 @@
   font-size: var(--fs-xs);
 }
 .dk-sw-row.cur {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
   color: var(--fg);
 }
 .dk-sw-row.cur .dk-sw-s {

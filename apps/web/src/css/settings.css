@@ -44,8 +44,8 @@
 }
 .set-nav .dk-ap-tab {
   position: relative;
-  gap: 0.6rem;
-  padding: 0.45rem 0.65rem;
+  gap: 0.55rem;
+  padding: 0.3rem 0.6rem;
   border-radius: var(--set-r);
 }
 .set-nav .dk-ap-tab .ic {
@@ -106,8 +106,8 @@
 }
 .set-body {
   flex: 1 1 auto;
-  gap: 0.8rem;
-  padding: 1.1rem 1.6rem 1.8rem;
+  gap: 0.7rem;
+  padding: 0.9rem 1.3rem 1.6rem;
 }
 /* forms and lists at a readable width, the status, graph and models across the whole page */
 .set-body :is(.set-sub, .set-acct, .set-host-cfg, .set-host-rest, .set-cl, .update-pane) {
@@ -119,7 +119,7 @@
   display: flex;
   align-items: baseline;
   gap: 1ch;
-  margin: 1.2rem 0 0.1rem;
+  margin: 0.9rem 0 0.1rem;
   padding: 0;
   border: 0;
   color: var(--fg);
@@ -143,14 +143,14 @@
   background: var(--card);
 }
 .set-card > * {
-  padding: 0.6rem 0.9rem;
+  padding: 0.5rem 0.8rem;
 }
 .set-card > * + * {
   border-top: 1px solid var(--border);
 }
 .set-card .dk-ap-row {
   grid-template-columns: 10rem minmax(0, 1fr);
-  min-height: 2.6rem;
+  min-height: 2.3rem;
 }
 .set-card .dk-ap-k {
   color: var(--fg);
@@ -160,7 +160,7 @@
   width: min(100%, 20rem);
 }
 .set-card .dk-ap-check {
-  min-height: 2.6rem;
+  min-height: 2.3rem;
 }
 /* lists: the hosts, the page logins, the users, the shares; a card of rows */
 .set-body .dk-rows {
@@ -371,7 +371,7 @@
 }
 .set-hostchip.on {
   color: var(--fg);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
 }
 .set-hostchip:not(.on):is(:hover, :focus-visible) {
   color: var(--fg);

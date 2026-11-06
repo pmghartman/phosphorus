@@ -187,7 +187,7 @@
 }
 .dk-icon:hover .dk-tile,
 .dk-icon:focus-visible .dk-tile {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
 .dk-icon:focus-visible {
   outline: none;
@@ -195,17 +195,9 @@
 .dk-icon:active .dk-tile {
   transform: translateY(1px);
 }
-.dk-icon.dk-terminal .ic {
-  color: var(--accent);
-}
-.dk-icon.dk-files .ic {
-  color: var(--sand);
-}
-.dk-icon.dk-service .ic {
-  color: var(--teal);
-}
-.dk-icon.dk-settings .ic {
-  color: var(--sage);
+/* every icon one ink, the page's own; colour stays for the mesh graph */
+.dk-icon .ic {
+  color: var(--fg);
 }
 .dk-mono text {
   fill: currentColor;
@@ -708,7 +700,7 @@
   cursor: pointer;
 }
 .dk-menu button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
   color: var(--fg);
 }
 .dk-menu button.danger {
@@ -735,7 +727,7 @@
   color: var(--dim);
 }
 .dk-menu-item.open > .dk-menu-more:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
   color: var(--fg);
 }
 .dk-menu .dk-submenu {

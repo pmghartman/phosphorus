@@ -152,7 +152,7 @@
   background: var(--tab-hover);
 }
 .aw-row.on {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
 }
 .aw-say {
   min-height: 1em;

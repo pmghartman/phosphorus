@@ -18,7 +18,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.3rem 0.6rem;
   background: none;
   border: 0;
   color: var(--muted);
@@ -42,7 +42,7 @@
 }
 .dk-ap-tab.on {
   color: var(--fg);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
 .dk-ap-body {
   min-height: 0;
@@ -136,7 +136,7 @@
   color: var(--fg);
 }
 .dk-ap-seg.on {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
   color: var(--fg);
 }
 .dk-ap-seg .theme-icon {
