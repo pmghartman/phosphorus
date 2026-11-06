@@ -145,7 +145,8 @@ test("a dropped link comes back, and the writes made meanwhile arrive", async ()
 }, 30_000);
 
 test("the chat app installs on every host from its signed feed, its lines cross, and a host away catches up", async () => {
-  expect((await m.call("alpha", "app.install", { id: "chat" }))[0]).toBe(200);  for (const h of names)
+  expect((await m.call("alpha", "app.install", { id: "chat" }))[0]).toBe(200);
+  for (const h of names)
     await m.until(
       async () => (await m.call(h, "app.running")).some((a: any) => a.id === "chat" && a.version === "1.0.0"),
       `chat running on ${h}`,
