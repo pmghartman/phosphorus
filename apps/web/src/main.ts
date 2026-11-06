@@ -1,16 +1,15 @@
 // the page's entry: the desktop and its apps, one bundle
-// the leaves first: markdown, the themes and the icons; then the
+// the leaves first: markdown, light or dark and the icons; then the
 // modules of one strongly connected graph whose top-level code touches only the leaves,
 // the DOM and hoisted functions
 import './lib/md.ts';
-import './lib/theme.ts';
+import './lib/scheme.ts';
 import './lib/icons.ts';
 import './features/mesh/mesh.ts';
 import './features/home/home.ts';
 import './features/notes.ts';
 import './features/update.ts';
 import './lib/sync.ts';
-import './lib/scheme.ts';
 import './desktop/shortcuts.ts';
 import './desktop/windows.ts';
 import './desktop/taskbar.ts';

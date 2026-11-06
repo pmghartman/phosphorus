@@ -40,8 +40,6 @@ export const deskApps = new Set<string>();
 export const PREF_LS: Record<string, string> = {
   icons: 'phosphorus-dk-icons',
   theme: 'phosphorus-theme',
-  palette: 'phosphorus-palette',
-  custom: 'phosphorus-theme-custom',
   color: 'phosphorus-chat-color',
   agentview: 'phosphorus-agent-view',
   svctab: 'phosphorus-services-in-tabs',
@@ -51,7 +49,7 @@ export const PREF_LS: Record<string, string> = {
 };
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 
-// the desk once up: its layers, bar and status items
+// the desk once up: its layers and bar
 export interface Desk {
   el: HTMLElement;
   icons: HTMLElement;
@@ -59,9 +57,6 @@ export interface Desk {
   tasks: HTMLElement;
   hosts: HTMLElement;
   bar: HTMLElement;
-  menubar: HTMLElement;
-  app: HTMLElement;
-  items: Record<string, HTMLElement | null>;
 }
 // a files window's picks on their way: dragged, or cut or copied
 export interface FmDrag {

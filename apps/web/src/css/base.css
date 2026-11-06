@@ -33,14 +33,13 @@
   --z-spot: 100002;
 }
 
-/* every color, font, shadow and corner token comes from the theme library, packages/theme/themes.json,
-   its rules bundled in here by the build (webbuild); this sheet holds structure, keyed by a theme's
-   look (data-palette), rounded controls (data-round) and a proportional page font (data-sans) */
+/* every color, font, shadow and corner token comes from the theme, packages/core/theme/theme.json,
+   its rules bundled in here by the build (webbuild); this sheet holds structure */
 
 * {
   box-sizing: border-box;
 }
-/* square corners everywhere, the browser's own controls included */
+/* the browser's own corners off everything, the theme's on by --r-* (workspace.css) */
 *,
 *::before,
 *::after,
@@ -130,7 +129,7 @@ body {
   box-shadow: var(--lift);
 }
 
-/* system a screen, dark a filled moon, light a sun, oled a hollow thin moon */
+/* system a screen, dark a filled moon, light a sun, black a hollow thin moon */
 .theme-icon {
   flex: none;
   width: 0.85rem;
@@ -144,7 +143,7 @@ body {
 .theme-icon.dark {
   fill: currentColor;
 }
-.theme-icon.oled {
+.theme-icon.black {
   stroke-width: 0.9;
 }
 

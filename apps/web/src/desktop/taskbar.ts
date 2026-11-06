@@ -1,14 +1,11 @@
-// the task bar: its clock, the status items where the layout puts them, the host chips,
+// the task bar along the bottom: the windows, the host chips, the status items and the clock,
 // every popup grown out of a bar button
 
 import { hostSwitchNow } from '../features/mesh/mesh.ts';
-import { toastPlace } from '../features/notes.ts';
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
-import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
 import { when } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { dkAppsBtn } from './appsmenu.ts';
 import { dkMenu, dkMenuEl } from './desk.ts';
 import { dkStripPaint } from './strip.ts';
 import { dkMin, dkShown } from './windows.ts';
@@ -35,36 +32,6 @@ export function dkHomeBtn(): HTMLButtonElement {
   });
   return b;
 }
-
-// the status items where the layout puts them: the menu bar while one's up (never a phone's), else
-// the bar; in the layout's order, the rest hidden
-export function dkPlaceItems(): void {
-  const d = dk.desk;
-  if (!d?.bar) return;
-  const L = layoutNow();
-  const home = !isMobile() && L.menubar !== 'off' ? d.menubar : d.bar;
-  // the apps menu first: before the menu bar's name, else just after the bar's own start
-  const apps = dkAppsBtn();
-  if (home === d.menubar) d.menubar.insertBefore(apps, d.app);
-  else d.bar.insertBefore(apps, d.bar.querySelector('.dk-home')?.nextSibling ?? d.bar.firstChild);
-  for (const id of [...L.items, ...BAR_ITEMS.filter((i) => !L.items.includes(i))]) {
-    const n = d.items[id];
-    if (!n) continue;
-    n.classList.toggle('dk-unshown', !L.items.includes(id));
-    home.append(n);
-  }
-  for (const p of document.querySelectorAll<Pop>('.dk-pop')) p.dkPlace?.();
-  toastPlace();
-}
-addEventListener(PALETTE_EVENT, dkPlaceItems);
-
-// the edge a bar sits on: a phone's always the bottom
-export const dkBarSide = (bar: HTMLElement): string =>
-  isMobile() || !bar.classList.contains('dk-bar')
-    ? 'bottom'
-    : bar.classList.contains('dk-menubar')
-      ? layoutNow().menubar
-      : layoutNow().bar;
 
 export function dkClock(): void {
   if (dk.clock) dk.clock.textContent = when(Date.now(), true);
@@ -146,31 +113,14 @@ export function dkAnchor(
       // the bar's edges the limits, so a popup lines up with it
       const barEl = (a.btn.closest('.dk-bar') as HTMLElement | null) || a.btn;
       const bar = barEl.getBoundingClientRect();
-      const side = dkBarSide(barEl);
       // fixed, but inside the bar its blur makes the bar the frame of reference
       const cb = dkFixedFrame(pop);
       pop.style.top = 'auto';
       pop.style.right = 'auto';
-      pop.style.bottom = 'auto';
-      // a side bar's beside it, level with its button and kept on the screen
-      if (side === 'left' || side === 'right') {
-        if (a.tall) pop.style.height = `${Math.min(a.tall, innerHeight - 2 * DK_POP_EDGE)}px`;
-        if (a.fill) pop.style.width = `${Math.min(innerWidth - bar.width - DK_POP_GAP - 2 * DK_POP_EDGE, a.fill)}px`;
-        const x = side === 'left' ? bar.right + DK_POP_GAP : bar.left - DK_POP_GAP - pop.offsetWidth;
-        const y = Math.max(
-          DK_POP_EDGE,
-          Math.min(innerHeight - DK_POP_EDGE - pop.offsetHeight, a.btn.getBoundingClientRect().top),
-        );
-        pop.style.left = `${x - cb.left}px`;
-        pop.style.top = `${y - cb.top}px`;
-        return;
-      }
       const lo = Math.max(DK_POP_EDGE, bar.left);
       const hi = Math.min(innerWidth - DK_POP_EDGE, bar.right);
-      if (side === 'top') pop.style.top = `${bar.bottom + DK_POP_GAP - cb.top}px`;
-      else pop.style.bottom = `${cb.bottom - bar.top + DK_POP_GAP}px`;
-      const room = side === 'top' ? innerHeight - bar.bottom : bar.top;
-      if (a.tall) pop.style.height = `${Math.min(a.tall, room - DK_POP_GAP - DK_POP_EDGE)}px`;
+      pop.style.bottom = `${cb.bottom - bar.top + DK_POP_GAP}px`;
+      if (a.tall) pop.style.height = `${Math.min(a.tall, bar.top - DK_POP_GAP - DK_POP_EDGE)}px`;
       if (a.fill) pop.style.width = `${Math.min(hi - lo, a.fill)}px`;
       // against the screen's right edge, as the bar ends; a button on the left half grows rightward
       const bl = a.btn.getBoundingClientRect().left;

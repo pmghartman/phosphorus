@@ -1,4 +1,4 @@
-/* --- the appearance window: sections down a rail, each a page of labelled controls ----------- */
+/* --- settings' pages: a rail, each page's labelled controls (settings.css lays the window out) -- */
 .dk-ap-pane {
   display: grid;
   grid-template-columns: 7rem minmax(0, 1fr);
@@ -72,9 +72,6 @@
   align-items: center;
   gap: 0.15rem 0.7rem;
 }
-.dk-ap-row:has(> .dk-ap-items) {
-  align-items: start;
-}
 .dk-ap-k {
   color: var(--muted);
 }
@@ -94,20 +91,6 @@
 .dk-ap-in:focus {
   border-color: var(--accent);
   outline: none;
-}
-.dk-ap-color {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.dk-ap-color input[type="color"] {
-  width: 2.4rem;
-  height: 1.7rem;
-  padding: 0.1rem;
-  cursor: pointer;
-}
-.dk-ap-color .dk-ap-note {
-  grid-column: auto;
 }
 /* a checkbox with its sentence, a note under the sentence */
 .dk-ap-check {
@@ -161,134 +144,7 @@
   width: 0.8rem;
   height: 0.8rem;
 }
-/* the themes, cards: a swatch, a name and a line about each, the worn one marked */
-.dk-ap-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-  gap: 0.4rem;
-}
-.dk-ap-card {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.25rem;
-  padding: 0.5rem 0.6rem;
-  min-width: 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-.dk-ap-card:hover,
-.dk-ap-card:focus-visible {
-  border-color: var(--accent);
-  outline: none;
-}
-.dk-ap-card.on {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.dk-ap-card-top {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-.dk-ap-card.on .dk-ap-card-name {
-  color: var(--accent);
-}
-.dk-ap-card.on .dk-ap-card-name::after {
-  content: " \2713";
-}
-.dk-ap-card-about {
-  color: var(--muted);
-  font-size: var(--fs-2xs);
-  line-height: 1.3;
-}
-.dk-ap-swatch {
-  width: 0.9rem;
-  height: 0.9rem;
-  flex: none;
-  border: 1px solid var(--border);
-}
-/* the bar's items: each shown or not, moved earlier or later */
-/* the status items: a short list at its names' width, not the page's */
-.dk-ap-items {
-  display: flex;
-  flex-direction: column;
-  justify-self: start;
-  width: max-content;
-  min-width: min(100%, 11rem);
-  border: 1px solid var(--border);
-}
-.dk-ap-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.05rem 0.6rem 0.05rem 0.45rem;
-  line-height: 1.35;
-}
-.dk-ap-item + .dk-ap-item {
-  border-top: 1px solid var(--border);
-}
-.dk-ap-item input {
-  margin: 0;
-  accent-color: var(--accent);
-}
-.dk-ap-item label {
-  flex: 1;
-  cursor: pointer;
-}
-.dk-ap-item input:disabled + label {
-  color: var(--muted);
-  cursor: default;
-}
-/* an item's drag handle, before it; the row lifted while dragged, the others sliding aside */
-:root .dk-ap-pane .dk-ap-grip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.1rem;
-  align-self: stretch;
-  margin-left: -0.25rem;
-  padding: 0;
-  background: none;
-  border: 0;
-  color: var(--muted);
-  cursor: grab;
-  touch-action: none;
-}
-:root .dk-ap-pane .dk-ap-grip .ic {
-  width: 0.85rem;
-  height: 0.85rem;
-  stroke-width: 2.4;
-}
-:root .dk-ap-pane .dk-ap-grip:hover:not(:disabled),
-:root .dk-ap-pane .dk-ap-grip:focus-visible {
-  color: var(--fg);
-}
-:root .dk-ap-pane .dk-ap-grip:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-.dk-ap-items.dragging,
-.dk-ap-items.dragging .dk-ap-grip {
-  cursor: grabbing;
-  user-select: none;
-}
-.dk-ap-items.dragging .dk-ap-item:not(.lifted) {
-  transition: transform 0.15s ease;
-}
-.dk-ap-item.lifted {
-  position: relative;
-  z-index: 1;
-  background: var(--card);
-  box-shadow: var(--drop);
-  outline: 1px solid var(--accent);
-}
-/* plain buttons: the wallpaper's, the way back to a theme */
+/* plain buttons: the wallpaper's */
 .dk-ap-acts {
   display: flex;
   flex-wrap: wrap;

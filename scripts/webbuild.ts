@@ -5,7 +5,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
-import { load } from "@phosphorus/theme";
+import { css } from "@phosphorus/theme";
 import { gzipSync } from "bun";
 
 const src = process.argv[2] ?? "apps/web";
@@ -58,7 +58,7 @@ const res = await Bun.build({
       name: "phosphorus-themes",
       setup(b) {
         b.onResolve({ filter: /^phosphorus:themes$/ }, () => ({ path: "themes.css", namespace: "phosphorus-themes" }));
-        b.onLoad({ filter: /.*/, namespace: "phosphorus-themes" }, () => ({ contents: load().css(), loader: "css" }));
+        b.onLoad({ filter: /.*/, namespace: "phosphorus-themes" }, () => ({ contents: css(), loader: "css" }));
       },
     },
   ],

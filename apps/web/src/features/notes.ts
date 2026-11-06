@@ -2,7 +2,7 @@
 
 import type { Chain, State } from '@phosphorus/wire';
 import { dkPressed } from '../desktop/desk/windows.ts';
-import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
+import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { ago2 } from '../lib/util.ts';
@@ -221,18 +221,12 @@ function toastShow(n: Note) {
   t.timer = setTimeout(() => toastClose(t!), TOAST_MS);
 }
 
-// right over the task bar that's showing, its clock never covered; under it were it on top, the
-// screen's corner by a side bar
+// right over the task bar that's showing, its clock never covered
 export function toastPlace(): void {
   if (!toastHost) return;
-  const el = [...document.querySelectorAll<HTMLElement>('.dk-bar:not(.dk-menubar)')].find(
-    (b) => b.getBoundingClientRect().height > 0,
-  );
-  const side = el ? dkBarSide(el) : 'bottom';
-  const bar = el && side !== 'left' && side !== 'right' ? el.getBoundingClientRect() : null;
-  const top = side === 'top';
-  toastHost.style.top = top ? `${bar!.bottom + 8}px` : '';
-  toastHost.style.bottom = top ? '' : `${bar ? Math.max(0, innerHeight - bar.top) + 8 : 12}px`;
+  const el = [...document.querySelectorAll<HTMLElement>('.dk-bar')].find((b) => b.getBoundingClientRect().height > 0);
+  const bar = el?.getBoundingClientRect();
+  toastHost.style.bottom = `${bar ? Math.max(0, innerHeight - bar.top) + 8 : 12}px`;
 }
 addEventListener('resize', toastPlace);
 

@@ -141,9 +141,6 @@
 .dk-apps-t {
   font-size: var(--fs-sm);
 }
-:root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-apps-t {
-  display: none;
-}
 .dk-apps-btn .ic {
   width: 0.95rem;
   height: 0.95rem;
@@ -325,13 +322,6 @@
 }
 .dk-space-btn[aria-expanded="true"] .dk-space-chev {
   transform: rotate(180deg);
-}
-/* a bar at the top: the shelf opens down, the chevron saying so */
-:root[data-l-bar="top"] .dk-space-chev {
-  transform: rotate(180deg);
-}
-:root[data-l-bar="top"] .dk-space-btn[aria-expanded="true"] .dk-space-chev {
-  transform: none;
 }
 
 /* the filmstrip: a shelf on the task bar, every desktop a card of its own wallpaper; above

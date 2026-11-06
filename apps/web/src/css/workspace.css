@@ -1,22 +1,102 @@
-/* --- the phosphorus look: a calm workspace shell over the shared parts --------------------------- */
+/* --- the workstation shell: corners, type, desk icons, windows and the bar over the shared parts -- */
 
-/* a plain desk, a faint glow of the accent from its top corner; no dots, no art */
-:root[data-palette="phosphorus"] .dk-desk:not(.dk-walled *) {
-  background:
-    radial-gradient(70rem 40rem at 15% -10%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
-    var(--desk);
+/* --r-* the corners: ctl a control's, pop a popup's, card a panel's, win a window's */
+/* every control rounded; zero specificity, so a class's own corners (round pips) still win */
+:where(
+  button,
+  input,
+  select,
+  textarea,
+  .dk-task,
+  .dk-tray,
+  .dk-space-btn,
+  .fm-row,
+  .fm-crumbs,
+  .toast,
+  .dk-snap,
+  .dk-band,
+  .update-row,
+  .fm-share,
+  .dk-ap-tab
+) {
+  border-radius: var(--r-ctl);
 }
-:root[data-palette="phosphorus"] .dk-art {
-  display: none;
+:where(.home-col, .about-info, .mesh-panel) {
+  border-radius: var(--r-card);
+}
+:where(
+  .dk-note-pop,
+  .dk-ctl-pop,
+  .dk-menu,
+  .modal-box,
+  .dk-login,
+  .acct-unlock,
+  .set-mesh > .mesh-panel,
+  .dk-ctl-out,
+  .dk-ctl-row,
+  .dk-ap-segs,
+  .dk-icon .dk-tile
+) {
+  border-radius: var(--r-pop);
+}
+.dk-ap-segs {
+  padding: 2px;
+  gap: 2px;
+}
+/* each segment its own pill inset in the track, so its fill never meets a straight edge */
+.dk-ap-seg {
+  padding-block: calc(0.35rem - 2px);
+  border-radius: max(0px, calc(var(--r-pop) - 3px));
+}
+.dk-ap-seg + .dk-ap-seg {
+  border-left: 0;
+}
+.dk-win {
+  overflow: clip;
+}
+.dk-win.dk-agent::after {
+  border-radius: inherit;
+}
+@media (min-width: 721px) {
+  .dk-win:not([data-snap="max"]) {
+    border-radius: var(--r-win);
+  }
+}
+/* tables, gauges and art laid out in character cells: mono whatever the page's type */
+:is(code, pre, samp, .st-probe, .st-panel-body, .dk-cl-arg) {
+  font-family: var(--mono);
+}
+
+/* panels filled and rounded, their titles inside over the content, not cut into the frame */
+:is(.home-col, .about-info) {
+  --edge: var(--card);
+  padding-top: 0.65rem;
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: var(--r-card);
+  box-shadow: none;
+}
+.home-col-head,
+.about-info::before {
+  position: static;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 0 0 0.4rem;
+  background: none;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--fg);
 }
 
 /* desk icons: bare glyphs and page icons of one size, a soft box only under the pointer or picked */
-:root[data-palette="phosphorus"] .dk-icon {
+.dk-icon {
   width: 5.75rem;
   gap: 0.35rem;
   padding: 0.45rem 0.2rem 0.35rem;
 }
-:root[data-palette="phosphorus"] .dk-icon .dk-tile {
+.dk-icon .dk-tile {
   position: relative;
   width: 2.75rem;
   height: 2.75rem;
@@ -27,102 +107,93 @@
     background-color 0.12s,
     border-color 0.12s;
 }
-:root[data-palette="phosphorus"] .dk-icon .dk-tile .ic {
+.dk-icon .dk-tile .ic {
   width: 1.45rem;
   height: 1.45rem;
 }
-:root[data-palette="phosphorus"] .dk-icon .dk-tile-img .dk-favicon {
+.dk-icon .dk-tile-img .dk-favicon {
   width: 1.85rem;
   height: 1.85rem;
 }
-:root[data-palette="phosphorus"] .dk-icon:is(:hover, :focus-visible) .dk-tile {
+.dk-icon:is(:hover, :focus-visible) .dk-tile {
   background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
-:root[data-palette="phosphorus"] .dk-icon.sel .dk-tile {
+.dk-icon.sel .dk-tile {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
-:root[data-palette="phosphorus"] .dk-icon .dk-label {
+.dk-icon .dk-label {
   font-size: var(--fs-xs);
   line-height: 1.25;
 }
-:root[data-palette="phosphorus"] .dk-icon .dk-sub {
+.dk-icon .dk-sub {
   margin-top: -0.25rem;
   color: var(--muted);
 }
-:root[data-palette="phosphorus"] .dk-tile .dk-public {
+.dk-tile .dk-public {
   right: -0.2rem;
   bottom: -0.2rem;
 }
 
-/* windows: a roomier title bar, the unfocused one stepping back */
-:root[data-palette="phosphorus"] .dk-head {
+/* windows: the title at the left of a roomier bar, glyph buttons at its right, the unfocused one stepping back */
+.dk-head {
   height: 2.25rem;
   padding-left: 0.85rem;
   font-size: var(--fs-md);
 }
-:root[data-palette="phosphorus"] .dk-btns button {
+.dk-btns button {
   width: 2rem;
   height: 1.75rem;
 }
-:root[data-palette="phosphorus"] .dk-win:not(.focused) .dk-head {
+.dk-win:not(.focused) .dk-head {
   background: color-mix(in srgb, var(--card) 55%, var(--bg));
 }
 
-/* the bar: edge to edge, the windows at its start, status at the end */
+/* the bar: a floating panel, the windows at its start, status at its end */
 @media (min-width: 721px) {
-  :root[data-palette="phosphorus"] .dk-bar:not(.dk-menubar) {
-    height: 3rem;
-    padding: 0 0.5rem;
+  .dk-bar {
+    height: 2.75rem;
+    padding: 0 0.4rem;
     gap: 0.25rem;
-    background: color-mix(in srgb, var(--tabbar) 94%, transparent);
+    font-size: var(--fs-sm);
+    background: color-mix(in srgb, var(--tabbar) 90%, transparent);
   }
-  :root[data-palette="phosphorus"] .dk-bar:not(.dk-menubar) .dk-tasks {
+  .dk-bar .dk-tasks {
     gap: 0.25rem;
   }
-  :root[data-palette="phosphorus"] .dk-bar:not(.dk-menubar) .dk-task:first-child {
-    margin-left: 0;
-  }
-  :root[data-palette="phosphorus"] .dk-bar:not(.dk-menubar) .dk-task:last-child {
-    margin-right: 0;
-  }
-  :root[data-palette="phosphorus"] .dk-bar:not(.dk-menubar) .dk-task {
-    height: 2.25rem;
-    padding: 0 0.75rem;
+  .dk-bar .dk-task {
+    height: 2rem;
+    padding: 0 0.7rem;
     color: var(--muted);
   }
-  :root[data-palette="phosphorus"] .dk-bar:not(.dk-menubar) .dk-task.active {
+  .dk-bar .dk-task.active {
     color: var(--fg);
   }
   /* the status icons: even squares, the glyphs a size up */
-  :root[data-palette="phosphorus"] .dk-bar .dk-tray:not(.dk-profile, .dk-apps-btn) {
-    width: 2.25rem;
-    height: 2.25rem;
+  .dk-bar .dk-tray:not(.dk-profile, .dk-apps-btn) {
+    width: 2rem;
+    height: 2rem;
     margin: auto 0;
   }
-  :root[data-palette="phosphorus"] .dk-bar .dk-tray .ic {
+  .dk-bar .dk-tray .ic {
     width: 1.05rem;
     height: 1.05rem;
   }
-  :root[data-palette="phosphorus"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) {
+  .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) {
     color: var(--fg);
   }
   /* the clock and the user set off by a hairline */
-  :root[data-palette="phosphorus"] .dk-bar .dk-ctl {
+  .dk-bar > .dk-clock {
     margin-left: 0.35rem;
-    padding-left: 0.6rem;
+    padding-left: 0.75rem;
     border-left: 1px solid var(--border);
+    color: var(--muted);
   }
-  :root[data-palette="phosphorus"] .dk-bar .dk-ctl > .dk-profile {
-    height: 2.25rem;
+  .dk-bar .dk-ctl > .dk-profile {
+    height: 2rem;
     margin: auto 0;
     padding: 0 0.6rem;
     border-radius: var(--r-ctl, 0);
     color: var(--fg);
-    font-size: var(--fs-sm);
-  }
-  :root[data-palette="phosphorus"] .dk-bar .dk-ctl > .dk-profile .dk-clock {
-    margin-right: 0.5rem;
-    color: var(--muted);
   }
 }

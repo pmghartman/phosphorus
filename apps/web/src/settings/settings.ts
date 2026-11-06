@@ -9,13 +9,12 @@ import { updateModal, updateOpen } from '../features/update.ts';
 import { DK_GLYPHS, dkGlyph, el, stash } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { agentsSection } from './agents.ts';
-import { AP_SUBS, type ApSub, appearanceSection, appearanceSub } from './appearance.ts';
+import { appearanceSection } from './appearance.ts';
 import { HOST_SUBS, hostsSection, hostsSub } from './hosts.ts';
 import { PROFILE_SUBS, profileSection, profileSub } from './profile.ts';
 import { usersSection } from './users.ts';
 
 export type SettingsAt = 'profile' | 'appearance' | 'users' | 'agents' | 'hosts' | 'update' | 'about';
-export type { ApSub };
 
 // a section: drawn into the body, handing back what it borrowed when left
 interface Section {
@@ -59,10 +58,8 @@ const SECTIONS: Section[] = [
     label: 'appearance',
     glyph: () => DK_GLYPHS.palette!,
     group: 'you',
-    blurb: 'theme, fonts, bars',
-    subs: () => AP_SUBS,
-    sub: appearanceSub,
-    draw: (body, sub) => appearanceSection(body, sub as ApSub | undefined),
+    blurb: 'light or dark, wallpaper',
+    draw: appearanceSection,
   },
   {
     id: 'hosts',

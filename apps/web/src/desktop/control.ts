@@ -1,5 +1,5 @@
-// --- the control panel: the clock and the user one button; under it light or dark, the way to
-// settings and log out
+// --- the control panel: the user's button; under it light, dark or black, the way to settings
+// and log out
 import { acctLogout, dkUserGlyph } from '../features/account.ts';
 import { checkUpdates } from '../features/update.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
@@ -16,7 +16,7 @@ export function dkControlTray(): HTMLElement {
     ariaLabel: 'control panel',
   });
   b.setAttribute('aria-expanded', 'false');
-  b.append(dk.clock!, dkUserGlyph(), el('span', 'dk-profile-name', st.acct?.user || ''));
+  b.append(dkUserGlyph(), el('span', 'dk-profile-name', st.acct?.user || ''));
   const pop = Object.assign(el('div', 'dk-ctl-pop dk-pop'), { hidden: true }) as Pop;
   wrap.append(b, pop);
   dkAnchor(pop, b, { fill: 240 });

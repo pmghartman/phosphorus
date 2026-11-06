@@ -12,16 +12,13 @@
     select,
     textarea,
     .dk-ap-tab,
-    .dk-ap-item,
     .dk-ap-segs,
-    .dk-ap-card,
-    .dk-ap-items,
     .update-row,
     .mesh-panel
   ) {
   border-radius: var(--set-r);
 }
-:root[data-round] .set-pane .dk-ap-seg {
+.set-pane .dk-ap-seg {
   border-radius: max(0px, calc(var(--set-r) - 2px));
 }
 .set-nav {

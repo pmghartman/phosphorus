@@ -21,6 +21,7 @@ import { iconUrl, onIcons } from '../../lib/iconcache.ts';
 import { iconKnown, iconLearn, iconOrder } from '../../lib/iconmem.ts';
 import { dk, PREF_LS, st } from '../../lib/state.ts';
 import { dkSettings } from '../../settings/settings.ts';
+import { dkAppsBtn } from '../appsmenu.ts';
 import { dkControlTray } from '../control.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
@@ -36,7 +37,7 @@ import {
   openHostItem,
   sharedApps,
 } from '../spaces.ts';
-import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
+import { dkBar, dkChips, dkClock, dkHomeBtn } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
 import { hostInfo, type Item, iconSrc, itemKey } from './hosts.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
@@ -50,39 +51,20 @@ export function dkDesktop(): void {
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
   const desk = el('div', 'dk-desk');
+  // the bar: a phone's way home, the apps menu, the windows, the host chips, then the status items
   const bar = dkBar(tasks, hosts);
-  bar.prepend(dkHomeBtn());
-  const ctl = dkControlTray();
-  const bell = dkBellTray();
-  const agent = st.acct?.boot ? null : dkMcpTray();
-  const mesh = st.acct?.boot ? null : dkMeshQuick();
-  const update = st.acct?.boot ? null : dkUpdateQuick();
-  bar.append(...[mesh, update, agent].filter((x): x is HTMLElement => !!x), bell, ctl);
-  const menubar = el('div', 'dk-bar dk-menubar');
-  const app = el('span', 'dk-menubar-app');
-  app.append(dkGlyph(DK_GLYPHS.phi!, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
-  menubar.append(app);
-  desk.append(dkArt(), icons, wins, menubar, bar);
+  bar.prepend(dkHomeBtn(), dkAppsBtn());
+  const status = st.acct?.boot ? [] : [dkMeshQuick(), dkUpdateQuick(), dkMcpTray()];
+  bar.append(...status.filter((x): x is HTMLElement => !!x), dkBellTray(), dk.clock!, dkControlTray());
+  dkWallPaint();
+  desk.append(icons, wins, bar);
   dkView.replaceChildren(desk);
   dkBand(icons);
   dkDeskMenu(icons);
-  dk.desk = {
-    el: desk,
-    icons,
-    wins,
-    tasks,
-    hosts,
-    bar,
-    menubar,
-    app,
-    items: { hosts, mesh, update, agent, bell, clock: dk.clock!, profile: ctl },
-  };
-  dkPlaceItems();
+  dk.desk = { el: desk, icons, wins, tasks, hosts, bar };
   dk.chips = '';
   dkChips();
   new ResizeObserver(() => dkLayout()).observe(icons);
-  // the menu bar's width, a dock beside it on the same edge kept clear of it
-  new ResizeObserver(() => desk.style.setProperty('--dk-mb-w', `${menubar.offsetWidth}px`)).observe(menubar);
   // the desk resized, floating windows kept on it
   new ResizeObserver(() => {
     const W = wins.clientWidth;
@@ -109,18 +91,7 @@ export function dkDesktop(): void {
 // a phone's windows always filling the screen
 mobileQuery.addEventListener('change', () => {
   if (isMobile()) for (const w of dk.wins.values()) dkSnap(w, 'max');
-  dkPlaceItems();
 });
-
-export function dkArt(): HTMLElement {
-  dkWallPaint();
-  const art = el('div', 'dk-art');
-  // the mark painted in the theme's glyph colors (about.css)
-  const mark = el('span', 'about-mark');
-  mark.setAttribute('aria-hidden', 'true');
-  art.appendChild(mark);
-  return art;
-}
 
 // on each minute's turn, not up to 5s after it
 (function dkClockTick() {

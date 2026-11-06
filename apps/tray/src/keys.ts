@@ -2,16 +2,15 @@
 // a random path: which keys are set, never their values; the typed ones into .env
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Default, load, type Tokens } from "@phosphorus/theme";
+import { type Tokens, tokens } from "@phosphorus/theme";
 import keysHtml from "../assets/keys.html" with { type: "file" };
 import { frontendURL, hostCmd, keyState, keyStatus, keysMissing } from "./host.ts";
 
 // the form in the theme library's colors, the mesh's own, light or dark as the system is
 function keysTheme(): string {
-  const lib = load();
   const vars = (t: Tokens) =>
     `--bg: ${t["--bg"]}; --fg: ${t["--fg"]}; --muted: ${t["--muted"]}; --line: ${t["--border"]}; --field: ${t["--card"]}; --accent: ${t["--accent"]}; --ok: ${t["--online"]}; --bad: ${t["--offmesh"]};`;
-  return `:root { ${vars(lib.tokens(Default, "light"))} }\n  @media (prefers-color-scheme: dark) { :root { ${vars(lib.tokens(Default, "dark"))} } }`;
+  return `:root { ${vars(tokens("light"))} }\n  @media (prefers-color-scheme: dark) { :root { ${vars(tokens("dark"))} } }`;
 }
 
 const keysPage = () => readFileSync(keysHtml as unknown as string, "utf8").replace("/*theme*/", keysTheme());

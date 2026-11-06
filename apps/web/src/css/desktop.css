@@ -78,45 +78,19 @@
   justify-content: flex-end;
 }
 
-/* a grid: the windows' area (w) amid a bar and a menu bar at any edge (data-l-bar, data-l-menubar) */
+/* a grid: the windows' area (w) over the bar (bb); the desk one plain color, a picture of the user's over it */
 .dk-desk {
   position: relative;
   flex: 1;
   min-width: 0;
   display: grid;
-  grid-template: "mt mt mt" auto "bt bt bt" auto "bl w br" minmax(0, 1fr) "bb bb bb" auto "mb mb mb" auto / auto minmax(
-      0,
-      1fr
-    ) auto;
-  background:
-    radial-gradient(color-mix(in srgb, var(--fg) 8%, transparent) 1px, transparent 1px) 0 0 / 24px 24px,
-    var(--desk, var(--bg));
+  grid-template: "w" minmax(0, 1fr) "bb" auto / minmax(0, 1fr);
+  background: var(--desk, var(--bg));
 }
-/* the user's own picture over the dots, the art hidden */
 .dk-walled .dk-desk {
   background:
     var(--dk-wall) center / cover no-repeat,
-    var(--bg);
-}
-.dk-walled .dk-art {
-  display: none;
-}
-.dk-art {
-  position: absolute;
-  grid-area: w;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.035;
-  pointer-events: none;
-  user-select: none;
-  overflow: hidden;
-}
-.dk-art .about-mark {
-  width: 26rem;
-  height: 26rem;
-  max-width: none;
+    var(--desk, var(--bg));
 }
 .dk-icons {
   position: absolute;
@@ -632,7 +606,7 @@
   user-select: none;
 }
 
-/* a floating panel, as plasma's: off every edge, square, over a blur of the desk */
+/* a floating panel along the bottom: off every edge, over a blur of the desk */
 .dk-bar {
   grid-area: bb;
   height: 2.3rem;
@@ -643,6 +617,7 @@
   gap: 0.6rem;
   padding: 0 0.35rem;
   border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
   font-size: var(--fs-xs);
   background: color-mix(in srgb, var(--tabbar) 82%, transparent);
   backdrop-filter: blur(10px) saturate(1.2);
@@ -658,6 +633,9 @@
 }
 .dk-task {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   max-width: 10rem;
   padding: 0.25rem 0.65rem;
   background: none;
@@ -678,14 +656,27 @@
   background: color-mix(in srgb, var(--fg) 7%, transparent);
   border-color: color-mix(in srgb, var(--fg) 10%, transparent);
 }
+/* a window's icon and title on its button */
+.dk-task-ic {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+.dk-task-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .dk-hosts {
   display: flex;
   align-items: center;
   color: var(--muted);
 }
 .dk-clock {
+  padding: 0 0.35rem;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* right click menus, on the page above every window */

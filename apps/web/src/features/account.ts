@@ -2,17 +2,16 @@
 // of host and page logins kept on the mesh, sealed with its password
 
 import type { Me, UserRow } from '@phosphorus/wire';
-import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
+import { dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
 import { DK_USERS_KEY, dkProbe, dkUsers } from '../desktop/login.ts';
 import { dkSpaceGone } from '../desktop/spaces.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { dkClose } from '../desktop/windows.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from '../lib/dom.ts';
-import { applyTheme, systemLight } from '../lib/scheme.ts';
+import { applyTheme, modeNow } from '../lib/scheme.ts';
 import { type Account, dk, PREF_LS, PREF_OF, st } from '../lib/state.ts';
 import { connectState, stateStop, stateUp } from '../lib/sync.ts';
-import { themeFromStorage } from '../lib/theme.ts';
 
 const dkView = document.getElementById('view-desktop')!;
 
@@ -80,7 +79,7 @@ function acctLogin(setup: boolean, as = '') {
   const stage = el('div', 'dk-stage');
   stage.appendChild(form);
   const desk = el('div', 'dk-desk');
-  desk.append(dkArt(), stage, dkBar());
+  desk.append(stage, dkBar());
   dkView.replaceChildren(desk);
   user.focus();
 }
@@ -127,7 +126,7 @@ export async function acctSave(): Promise<string> {
 }
 
 // the page's own settings in localStorage, mirrored to the user's home
-// the theme with them: light or dark, the theme picked and a custom one, alike on every host
+// light, dark or black with them, alike on every host
 let prefsTimer: ReturnType<typeof setTimeout> | null = null;
 let prefsQuiet = false;
 
@@ -193,12 +192,7 @@ function acctPrefs(prefs: Record<string, string>, at = 0) {
   }
   prefsQuiet = false;
   if (seed) prefsSoon();
-  let theme: string | null = null;
-  try {
-    theme = localStorage.getItem(PREF_LS.theme!);
-  } catch {}
-  themeFromStorage();
-  applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
+  applyTheme(modeNow());
 }
 
 // the session rechecked, backing off to 5 minutes while this host doesn't answer;
@@ -292,7 +286,7 @@ function acctSetup() {
   const stage = el('div', 'dk-stage');
   stage.appendChild(box);
   const desk = el('div', 'dk-desk');
-  desk.append(dkArt(), stage, dkBar());
+  desk.append(stage, dkBar());
   dkView.replaceChildren(desk);
 }
 

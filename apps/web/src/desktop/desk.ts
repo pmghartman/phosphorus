@@ -7,7 +7,6 @@ import './desk/webapps.ts';
 export const dkView = document.getElementById('view-desktop')!;
 export { dkWallClear, dkWallPick, dkWallSet } from '../settings/appearance.ts';
 export {
-  dkArt,
   dkDesktop,
   dkHostsGone,
   dkIcon,

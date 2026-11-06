@@ -6,7 +6,6 @@ import { away, noteAdd, notifying, notifyOs } from '../../features/notes.ts';
 import { jsonPost } from '../../lib/api.ts';
 import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
-import { PALETTE_EVENT } from '../../lib/theme.ts';
 import { type DkWin, dkFocus, dkNav, dkSize, dkWin, type NavFrame } from '../windows.ts';
 import { dkTerminal } from './terminal.ts';
 import { dkOpenTerminal } from './windows.ts';
@@ -146,10 +145,9 @@ const retheme = () => {
     if (f.isConnected) sendTheme(f);
     else themed.delete(f);
 };
-addEventListener(PALETTE_EVENT, retheme);
 new MutationObserver(retheme).observe(document.documentElement, {
   attributes: true,
-  attributeFilter: ['data-theme', 'data-palette', 'data-theme-id', 'style'],
+  attributeFilter: ['data-theme', 'style'],
 });
 
 function bridge(w: DkWin, frame: HTMLIFrameElement) {

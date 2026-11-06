@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#141414">
+<meta name="theme-color" content="#131316">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>phosphorus</title>
@@ -13,31 +13,12 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/style.css">
 <script>
-// the browser's own light or dark unless a theme was picked, and the color theme, set before paint
+// light, dark or black as picked, else the browser's own, set before paint
 (() => {
   let pick = null;
   try { pick = localStorage.getItem('phosphorus-theme'); } catch {}
   const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
-  // the theme as theme.ts last put it up: its look, rounded corners, page font, a custom one's css
-  const r = document.documentElement;
-  let a = null;
-  try { a = JSON.parse(localStorage.getItem('phosphorus-theme-applied')); } catch {}
-  const look = a?.look;
-  r.dataset.palette = look && look !== 'custom' ? look : 'phosphorus';
-  if (a?.id) r.dataset.themeId = a.id;
-  r.toggleAttribute('data-round', !!a?.round);
-  r.toggleAttribute('data-sans', !!a?.sans);
-  // its layout: bars and window chrome, as data-l-*
-  for (const [k, v] of Object.entries(a?.layout || {})) if (typeof v === 'string') r.dataset[`l${k[0].toUpperCase()}${k.slice(1)}`] = v;
-  if (a?.css) {
-    r.setAttribute('data-custom', '');
-    r.toggleAttribute('data-custom-desk', !!a.desk);
-    const s = document.createElement('style');
-    s.id = 'phosphorus-custom';
-    s.textContent = a.css;
-    document.head.append(s);
-  }
+  if (theme === 'light' || theme === 'black') document.documentElement.dataset.theme = theme;
 })();
 </script>
 </head>
@@ -109,7 +90,7 @@ window or popup while open and back here on close -->
         <div class="about-info">
           <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
           <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0. <a class="about-link" href="/licenses/LICENSE.txt" target="_blank" rel="noopener">Read the license</a></span></div>
-          <div class="about-row"><span class="about-key">bundled</span><span class="about-val">Bun (MIT), Tailscale (BSD-3-Clause) and cloudflared (Apache-2.0), with the npm packages in the app and this page, xterm.js and KaTeX among them, each under its own license.</span></div>
+          <div class="about-row"><span class="about-key">bundled</span><span class="about-val">Bun (MIT), Tailscale (BSD-3-Clause), headscale (BSD-3-Clause) and cloudflared (Apache-2.0), with the npm packages in the app and this page, xterm.js and KaTeX among them, each under its own license.</span></div>
           <div class="about-row"><span class="about-key">downloaded</span><span class="about-val">llama.cpp (MIT), fetched by a host that runs a model; a model&rsquo;s weights come under their own license. Services installed from the service wizard run under their own licenses, shown on each one&rsquo;s page.</span></div>
           <div class="about-row"><span class="about-key">notices</span><span class="about-val">Every component&rsquo;s license text, also beside the app as THIRD_PARTY_NOTICES.txt. <a class="about-link" href="/licenses/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">Read the third-party notices</a></span></div>
         </div>

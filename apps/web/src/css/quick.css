@@ -50,16 +50,16 @@
 .dk-mesh-pop .mesh-header > * {
   background: var(--card);
 }
-/* rounded: the count inside the card's top edge, nothing cut through the corner */
-:root[data-round] :is(.dk-mesh-pop, .set-mesh) .mesh-header {
+/* the count inside the card's top edge, nothing cut through the corner */
+:is(.dk-mesh-pop, .set-mesh) .mesh-header {
   top: 0.55rem;
   right: 0.6rem;
   transform: none;
 }
-:root[data-round] :is(.dk-mesh-pop, .set-mesh) .mesh-header > * {
+:is(.dk-mesh-pop, .set-mesh) .mesh-header > * {
   background: none;
 }
-:root[data-round] :is(.dk-mesh-pop, .set-mesh) .mesh-body {
+:is(.dk-mesh-pop, .set-mesh) .mesh-body {
   padding-top: 1.9rem;
 }
 

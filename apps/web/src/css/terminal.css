@@ -174,26 +174,6 @@
   color: inherit;
 }
 
-/* windows terminal's own: campbell's black under a dark grey bar, always */
-:root[data-palette="win11"] .dk-terms .dk-tab {
-  color: #c0c0c0;
-}
-:root[data-palette="win11"] .dk-terms .dk-tab.active {
-  border-color: transparent;
-  background: #0c0c0c;
-  color: #ffffff;
-}
-:root[data-palette="win11"] .dk-terms .dk-tab:hover:not(.active) {
-  background: #2d2d2d;
-  color: #ffffff;
-}
-:root[data-palette="win11"] .dk-terms :is(.dk-tab-x, .dk-tab-add, .dk-tab-pick) {
-  color: #ffffff;
-}
-:root[data-palette="win11"] .dk-terms :is(.dk-tab-x, .dk-tab-add, .dk-tab-pick):hover {
-  background: #3a3a3a;
-}
-
 /* a phone's: a strip of tabs that scrolls across the tall title bar */
 @media (max-width: 720px) {
   .dk-terms .dk-head {

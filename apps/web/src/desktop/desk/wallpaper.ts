@@ -185,7 +185,7 @@ export function dkDeskMenu(icons: HTMLElement) {
           ]
         : []),
       ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
-      ['appearance…', () => dkSettings('appearance', 'desktop'), true],
+      ['appearance…', () => dkSettings('appearance'), true],
       null,
       [
         'select all',
