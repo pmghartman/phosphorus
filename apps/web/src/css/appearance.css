@@ -60,7 +60,7 @@
   padding-bottom: 0.2rem;
   border-bottom: 1px solid var(--border);
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-ap-head:first-child {
   margin-top: 0;

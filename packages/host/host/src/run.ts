@@ -27,7 +27,7 @@ import {
 } from "./base.ts";
 import { nativeEnvFile, runEnv, withPath } from "./native.ts";
 import { os, type Stop } from "./os.ts";
-import { tailnetJoin, tailscaleStatus } from "./tailnet.ts";
+import { keepName, keptName, labelOf, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
 import { ensureTools } from "./tools.ts";
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
@@ -200,12 +200,11 @@ export async function runMain(stop: Stop): Promise<number> {
     if (control) await stopChild(control);
     throw e;
   }
-  say(`on the tailnet as ${dns}`);
-  const first = dns.split(".")[0] ?? "";
-  process.env.SELF_HOST = first
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  // phosphorus's name for this host, the transport's first label on the first run
+  const name = keptName() || labelOf(dns);
+  keepName(name);
+  say(`on the tailnet as ${dns}, on the mesh as ${name}`);
+  process.env.SELF_HOST = name;
   process.env.HOST_SSH_PORT = "22";
   // the mesh's domain from the store, the frontend's BASE_DOMAIN; the tailnet alone without one
   const withDomain = () => {

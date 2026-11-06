@@ -88,7 +88,7 @@
 }
 .dk-cl-title {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-cl-state {
   color: var(--muted);
@@ -124,7 +124,7 @@
 .dk-cl-sec-t {
   padding: 0.6rem 0.85rem 0.3rem;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
 }
 /* the calls a running log like a coding agent's: a bullet and the call, its outcome hung under it */
 .dk-cl-calls {
@@ -175,7 +175,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-cl-arg {
   font-size: var(--fs-xs);

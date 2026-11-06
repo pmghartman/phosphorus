@@ -1,125 +1,79 @@
-// who is on the tailnet: tailscale's own status, read now and then; the trust
-// map behind the tailnet gate; which hosts tailscale calls offline, and since when
-import { errText, flushWrites, Notes, noteMagicDNS, now, obj, run, SelfHost } from "@phosphorus/util";
+// who is on the mesh: the store's host records, the transport's peers not yet
+// recorded beside them, and the trust map behind the tailnet gate
+import { noteMagicDNS, now, SelfHost } from "@phosphorus/util";
+import { control, magicDomain } from "./control.ts";
+import { allHosts, devices } from "./registry.ts";
+import { type TransportPeer, transportDNS, transportIP, transportPeers } from "./transport.ts";
 
-const notes = new Notes("mesh");
+// registered: the host's own record, else the transport's word alone
+export type Peer = { host: string; ip: string; os: string; registered: boolean };
 
-export type Peer = { host: string; ip: string; os: string; online: boolean };
-type TSNode = {
-  DNSName?: string;
-  TailscaleIPs?: string[] | null;
-  Online?: boolean;
-  OS?: string;
-  Tags?: string[] | null;
-};
-
-let selfIP = "";
 let lastPeers: Peer[] = [];
 let hasPeers = false;
-let lastDiscover = 0;
-const offlineSince = new Map<string, number>();
-// tailnet address -> trusted, tag:guest devices false
+let lastTransport: TransportPeer[] = [];
+// mesh address -> trusted, guests and removed hosts false
 let trustIPs = new Map<string, boolean>();
 let trustAt = 0;
 
-// this host's tailnet IPv4, blank until discovered
-export const selfIPNow = () => selfIP;
-// the peers as tailscale last listed them
+// this host's mesh IPv4, blank until known
+export const selfIPNow = () => transportIP();
+// the peers as last listed
 export const lastKnown = () => lastPeers;
 export const discovered = () => hasPeers;
 
-// a tailnet DNS name as supervisor.sh derives SELF_HOST
-export function hostOf(dns: string): string {
-  const s = dns.replace(/\.$/, "").split(".")[0]!.toLowerCase();
-  return s.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+export const DiscoverIdleMS = 5000;
+
+// the MagicDNS suffix: the control server's domain, else the transport's own
+function noteDomain() {
+  const c = control();
+  noteMagicDNS(c ? `${SelfHost || "self"}.${magicDomain(c.url)}` : transportDNS());
 }
 
-const v4 = (ips: string[]) => ips.find((a) => a.includes(".")) ?? "";
-
-// tailscale status: every peer by its short name, this host's address and the trust map
-export async function discoverPeers(): Promise<Peer[] | undefined> {
-  // the live PATH, as Go's exec looked tailscale up; Bun's default is the one at startup
-  const r = await run(["tailscale", "status", "--json"], { timeoutMs: 3000, env: process.env });
-  let status: Record<string, any> | undefined;
-  let err = r.error ?? (r.ok ? "" : r.stderr.trim() || `exit status ${r.code}`);
-  if (!err) {
-    try {
-      status = obj(JSON.parse(r.stdout));
-    } catch (e) {
-      err = errText(e);
-    }
-  }
-  if (!status) {
-    notes.note("tailscale", `can't reach tailscaled to list peers: ${err || "not an object"}`);
-    return;
-  }
-  notes.clear("tailscale");
-  const self: TSNode = obj(status.Self) ?? {};
-  const nodes: Record<string, TSNode | null> = obj(status.Peer) ?? {};
-  const trust = new Map<string, boolean>();
-  for (const a of self.TailscaleIPs ?? []) trust.set(a, true);
-  for (const p of Object.values(nodes)) {
-    const guest = (p?.Tags ?? []).includes("tag:guest");
-    for (const a of p?.TailscaleIPs ?? []) trust.set(a, !guest);
-  }
-  selfIP = v4(self.TailscaleIPs ?? []);
-  trustIPs = trust;
-  noteMagicDNS(self.DNSName ?? "");
-  if (SelfHost) {
-    const renamed = hostOf(self.DNSName ?? "");
-    if (renamed && renamed !== SelfHost) {
-      notes.log(`renamed on the tailnet to ${renamed}, restarting to follow`);
-      await flushWrites();
-      process.exit(1);
-    }
-  }
-  const peers: Peer[] = [];
-  for (const k of Object.keys(nodes).sort()) {
-    const p = nodes[k] ?? {};
-    const h = hostOf(p.DNSName ?? "");
-    if (!h || h === SelfHost) continue;
-    peers.push({ host: h, ip: v4(p.TailscaleIPs ?? []) || h, os: p.OS ?? "", online: p.Online === true });
-  }
-  return peers;
+function listPeers(): Peer[] {
+  const recs = allHosts();
+  const named = new Set([...recs.map((h) => h.host), ...devices().map((d) => d.name)]);
+  const out: Peer[] = recs
+    .filter((h) => !h.removed && h.host !== SelfHost && h.ip)
+    .map((h) => ({ host: h.host, ip: h.ip, os: h.os, registered: true }));
+  // a host the store doesn't record yet: one still on an older phosphorus
+  for (const p of lastTransport)
+    if (!named.has(p.host) && p.host !== SelfHost && !p.guest)
+      out.push({ host: p.host, ip: p.ip, os: "", registered: false });
+  return out.sort((a, b) => (a.host < b.host ? -1 : a.host > b.host ? 1 : 0));
 }
 
-// a tailnet address of this tailnet's own devices, tag:guest ones not;
-// an unknown one looked up again, at most once a second
+function buildTrust() {
+  const t = new Map<string, boolean>();
+  for (const p of lastTransport) t.set(p.ip, !p.guest);
+  for (const d of devices()) t.set(d.ip, !d.guest);
+  for (const h of allHosts()) if (h.ip) t.set(h.ip, !h.removed);
+  const self = transportIP();
+  if (self) t.set(self, true);
+  trustIPs = t;
+}
+
+const key = (ps: Peer[]) => ps.map((p) => `${p.host}=${p.ip}`).join(",");
+
+// one look at the mesh: the peers, and whether anything about them changed
+export async function refreshPeers(): Promise<{ peers: Peer[]; changed: boolean }> {
+  lastTransport = (await transportPeers()) ?? lastTransport;
+  noteDomain();
+  buildTrust();
+  const found = listPeers();
+  const changed = !hasPeers || key(found) !== key(lastPeers);
+  lastPeers = found;
+  hasPeers = true;
+  return { peers: found, changed };
+}
+
+// a mesh address of this mesh's own devices, guests' not; an unknown one
+// looked up again, at most once a second
 export async function trusted(ip: string): Promise<boolean> {
   const known = trustIPs.get(ip);
   if (known !== undefined) return known;
   if (now() - trustAt >= 1000) {
     trustAt = now();
-    await discoverPeers();
+    await refreshPeers();
   }
   return trustIPs.get(ip) ?? false;
-}
-
-export const DiscoverIdleMS = 5000;
-
-// per host, only while tailscale itself still answers
-export function offlineMS(): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (now() - lastDiscover > 3 * DiscoverIdleMS) return out;
-  for (const [h, t] of offlineSince) out[h] = now() - t;
-  return out;
-}
-
-const key = (ps: Peer[]) => ps.map((p) => `${p.host}=${p.ip}:${p.online ? 1 : 0}`).join(",");
-
-// one look at the tailnet: the peers, and whether anything about them changed;
-// tailscaled unreachable leaves the last list standing
-export async function refreshPeers(): Promise<{ peers: Peer[]; ok: boolean; changed: boolean }> {
-  const found = await discoverPeers();
-  if (!found) return { peers: lastPeers, ok: hasPeers, changed: false };
-  const changed = !hasPeers || key(found) !== key(lastPeers);
-  lastDiscover = now();
-  const online = new Set(found.filter((p) => p.online).map((p) => p.host));
-  for (const h of online) offlineSince.delete(h);
-  for (const p of [...found, ...lastPeers])
-    if (!online.has(p.host) && !offlineSince.has(p.host)) offlineSince.set(p.host, lastDiscover);
-  for (const h of [...offlineSince.keys()]) if (!found.some((p) => p.host === h)) offlineSince.delete(h);
-  lastPeers = found;
-  hasPeers = true;
-  return { peers: found, ok: true, changed };
 }

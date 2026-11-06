@@ -1,7 +1,5 @@
-// the mesh as this host sees it: the tailnet asked who is there, one socket to
-// each phosphorus peer carrying state and the store's changes as they
-// happen, and the views the rest of the host reads: routes, devices, locks,
-// the model and failover states of live peers
+// the mesh as this host sees it: one socket to each phosphorus peer carrying
+// state and the store's changes, and the views the rest of the host reads
 import { join } from "node:path";
 import { pinTargets, type Row, rowError, settle, swap } from "@phosphorus/proxy";
 import { refresh } from "@phosphorus/services";
@@ -30,22 +28,15 @@ import {
 import { PeerCloseWrongHost, type PeerFrame, type PeerHello, type PeerReq, type PeerState } from "@phosphorus/wire";
 import type { Conn } from "@phosphorus/wsock";
 import { controlTick } from "./control.ts";
-import {
-  DiscoverIdleMS,
-  discovered,
-  hostOf,
-  lastKnown,
-  offlineMS,
-  type Peer,
-  refreshPeers,
-  selfIPNow,
-  trusted,
-} from "./discovery.ts";
+import { DiscoverIdleMS, discovered, lastKnown, type Peer, refreshPeers, selfIPNow, trusted } from "./discovery.ts";
 import { HostHeader, Link } from "./link.ts";
+import { hostOf } from "./names.ts";
+import { devices as deviceRecs, registerSelf } from "./registry.ts";
 import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
 
 export * as control from "./control.ts";
-export { HostHeader, hostOf, lastKnown, offlineMS, trusted };
+export * as registry from "./registry.ts";
+export { HostHeader, hostOf, lastKnown, trusted };
 
 const selfHost = SelfHost;
 const selfHostFile = join(RunDir, "self-host");
@@ -53,10 +44,8 @@ const sshConfigFile = join(StateDir, "ssh_config");
 const notes = new Notes("mesh");
 
 const discoverHotMS = 1000;
-// discovery kept fast this long after the tailnet changed
+// discovery kept fast this long after the mesh changed
 const discoverHotFor = 10_000;
-// a peer tailscale calls offline still dialled this long after it was last up: the flag flaps
-const dialAfterDownMs = 10 * 60 * 1000;
 // a peer's state frame older than this is no longer believed, link or no link
 const stateMaxAgeMS = 15_000;
 // own state pushed in full this often, the changed keys at once
@@ -106,6 +95,8 @@ type PeerInfo = {
   model: Record<string, any> | null;
   ha: Record<string, any> | null;
   services: Row[];
+  // the hosts it is linked to, as its state last said
+  linked: string[];
   stateAt: number;
   // the far side's digest as last heard, and the one already matched
   digest: string;
@@ -130,6 +121,7 @@ function infoFor(host: string): PeerInfo {
       model: null,
       ha: null,
       services: [],
+      linked: [],
       stateAt: 0,
       digest: "",
       synced: "",
@@ -170,6 +162,7 @@ function applyState(s: PeerInfo, f: PeerState): boolean {
   if ("chain" in f) s.chain = objOrNull(f.chain, "initiator");
   if ("model" in f) s.model = objOrNull(f.model, "");
   if ("ha" in f) s.ha = objOrNull(f.ha, "");
+  if ("linked" in f) s.linked = Array.isArray(f.linked) ? f.linked.filter((h) => typeof h === "string") : [];
   if ("services" in f) {
     const entries = (Array.isArray(f.services) ? f.services : []).map(obj);
     let bad = "";
@@ -234,6 +227,7 @@ const events = {
     const s = infos.get(link.host);
     if (s) {
       s.lock = s.chain = s.model = s.ha = null;
+      s.linked = [];
       s.synced = "";
     }
     notes.note(`peer:${link.host}`, `${link.host} is not answering on its link, is phosphorus running there?`);
@@ -293,8 +287,8 @@ export function acceptLink(conn: Conn, host: string | null, ip: string): boolean
   if (!host || !/^[a-z0-9][a-z0-9-]*$/.test(host) || host === selfHost) return refuse("no such name");
   if (dials(host)) return refuse("this host dials it, not the other way");
   const known = lastKnown().find((p) => p.host === host);
-  if (!known) return refuse("not on the tailnet");
-  // its tailnet address, or this machine's own loopback (a test mesh)
+  if (!known) return refuse("not on the mesh");
+  // its mesh address, or this machine's own loopback (a test mesh)
   if (isIPv4(known.ip) && known.ip !== ip && !isLoopbackAddr(ip)) return refuse(`${known.ip} expected`);
   notes.clear(`accept:${host}`);
   const s = infoFor(host);
@@ -346,7 +340,7 @@ function sendState(s: PeerInfo, all: boolean) {
   const link = s.link;
   if (!link?.up) return;
   const own = hooks.own();
-  const keys: Record<string, unknown> = { ...own, services: ownRows };
+  const keys: Record<string, unknown> = { ...own, services: ownRows, linked: upHosts() };
   const frame: PeerState = { type: "state" };
   let any = false;
   for (const [k, v] of Object.entries(keys)) {
@@ -373,7 +367,7 @@ function pushState() {
   }, stateCoalesceMS);
 }
 
-// the links reconciled with the tailnet: dialled where this host dials, dropped
+// the links reconciled with the mesh: dialled where this host dials, dropped
 // for hosts that left
 function reconcileLinks(peers: Peer[]) {
   const seen = new Set(peers.map((p) => p.host));
@@ -382,18 +376,12 @@ function reconcileLinks(peers: Peer[]) {
     s.link?.stop();
     infos.delete(h);
     notes.clear(`peer:${h}`);
-    notes.log(`${h} left the tailnet`);
+    notes.log(`${h} left the mesh`);
     markHot();
   }
   for (const p of peers) {
     if (!dials(p.host)) continue;
     const s = infoFor(p.host);
-    const recent = s.link ? now() - s.link.upAt < dialAfterDownMs : false;
-    if (!p.online && !recent && !s.link?.up) {
-      s.link?.stop();
-      s.link = undefined;
-      continue;
-    }
     if (!s.link) s.link = new Link(p.host, p.ip, events);
     s.link.redial(p.ip);
     s.link.startDialling();
@@ -434,6 +422,34 @@ export const lock = () => curLock;
 export const chain = () => curChain;
 
 const fresh = (s: PeerInfo) => isUp(s) && now() - s.stateAt <= stateMaxAgeMS;
+
+// --- who is up, as the whole mesh hears it ------------------------------------------------
+
+// each peer's last moment heard, by this host or a fresh peer linked to it
+const lastHeard = new Map<string, number>();
+
+// linked here, or to a peer whose state is fresh
+function heardNow(h: string): boolean {
+  const s = infos.get(h);
+  if (s && isUp(s)) return true;
+  for (const o of infos.values()) if (fresh(o) && o.linked.includes(h)) return true;
+  return false;
+}
+
+// a peer first listed counts as heard then
+function noteHeard(peers: Peer[]) {
+  const t = now();
+  const listed = new Set(peers.map((p) => p.host));
+  for (const h of [...lastHeard.keys()]) if (!listed.has(h)) lastHeard.delete(h);
+  for (const h of listed) if (heardNow(h) || !lastHeard.has(h)) lastHeard.set(h, t);
+}
+
+// per peer no host has heard, how long since one did
+export function offlineMS(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [h, t] of lastHeard) if (!heardNow(h)) out[h] = now() - t;
+  return out;
+}
 
 // live peers' failover states, by host then group
 export function peerHA(): Record<string, Record<string, any>> {
@@ -489,13 +505,14 @@ export function dropLink(host: string) {
 
 // --- the loops ----------------------------------------------------------------------------
 
-// the tailnet read, the device rows and the links following it
+// this host's record kept, the mesh read, the device rows and the links following it
 let discoverHotUntil = 0;
 async function discover() {
-  const { peers, ok, changed } = await refreshPeers();
-  if (!ok) return;
+  const { peers, changed } = await refreshPeers();
   if (changed) discoverHotUntil = now() + discoverHotFor;
-  reconcileLinks(peers);
+  const on = registerSelf(selfIPNow(), hooks.platform());
+  reconcileLinks(on ? peers : []);
+  noteHeard(peers);
   hostIPs = new Map(peers.map((p) => [p.host, p.ip]));
   if (selfHost && selfIPNow()) hostIPs.set(selfHost, selfIPNow());
   noteTailnetIPs(Object.fromEntries(hostIPs));
@@ -518,8 +535,7 @@ function rebuildDevices(peers: Peer[]) {
   for (const p of peers) {
     const s = infos.get(p.host);
     const ph = !!s && isUp(s);
-    // the device kept while its link is up, whatever tailscale's flag says
-    if (!ph && !p.online) continue;
+    if (!ph && !heardNow(p.host)) continue;
     next.push({
       name: p.host,
       os: ph ? s.platform : p.os,
@@ -528,6 +544,9 @@ function rebuildDevices(peers: Peer[]) {
       version: s?.version ?? "",
     });
   }
+  const listed = new Set(next.map((d) => d.name));
+  for (const d of deviceRecs())
+    if (!listed.has(d.name)) next.push({ name: d.name, os: "", phosphorus: false, phosphorusSeen: false });
   devices = next;
   pinTargets(peerIPs());
 }
@@ -587,7 +606,7 @@ export function start(h: Hooks) {
   store.onDelta(pushStore);
   onHot(pushState);
   markHot();
-  notes.log("one link to each phosphorus peer, the tailnet asked who is there every few seconds");
+  notes.log("one link to each phosphorus peer, the mesh's host records read every few seconds");
   void (async () => {
     for (;;) {
       try {

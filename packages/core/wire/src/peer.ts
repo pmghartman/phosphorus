@@ -21,6 +21,8 @@ export interface PeerState {
   // each failover group's state, by group
   ha?: unknown;
   services?: unknown[];
+  // the hosts the sender is linked to
+  linked?: unknown[];
 }
 
 // the store's files changed up to seq

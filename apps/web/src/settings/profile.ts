@@ -7,6 +7,7 @@ import { acctCall } from '../lib/api.ts';
 import { el, noFill } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { copyText } from '../lib/util.ts';
+import { cardify } from './settings.ts';
 
 // the parts, each its own page under profile in the rail
 export const PROFILE_SUBS = ['account', 'host logins', 'page logins'] as const;
@@ -120,10 +121,10 @@ export function profileSection(pane: HTMLElement, at?: string): void {
 
     const parts: Record<ProfileSub, HTMLElement[]> = {
       account: [el('div', 'dk-pick-head', 'signed in'), me, el('div', 'dk-pick-head', 'password'), pw, pwWhy],
-      'host logins': [hosts],
-      'page logins': [pages, el('div', 'dk-pick-head', 'add a login'), pRow, opts],
+      'host logins': [el('div', 'dk-pick-head', 'hosts'), hosts],
+      'page logins': [el('div', 'dk-pick-head', 'saved'), pages, el('div', 'dk-pick-head', 'add a login'), pRow, opts],
     };
-    body.replaceChildren(...parts[sub]);
+    body.replaceChildren(...cardify(parts[sub]));
   };
   draw();
 }

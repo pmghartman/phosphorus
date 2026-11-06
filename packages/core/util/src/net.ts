@@ -1,7 +1,6 @@
 // addresses and the tailnet: loopback and tailnet ranges, the hosts' IPv4s as
 // discovery last listed them
 import { networkInterfaces } from "node:os";
-import { run } from "./proc.ts";
 
 // 127.0.0.1 or ::1
 export const isLoopbackAddr = (a: string) => a === "127.0.0.1" || a === "::1";
@@ -52,10 +51,5 @@ export function noteMagicDNS(selfDNS: string) {
 // the MagicDNS suffix, blank until discovered
 export const magicDNS = () => magic;
 
-// a host's tailnet IPv4, blank when unknown
-export async function tailnetIP(name: string): Promise<string> {
-  const ip = knownIPs.get(name);
-  if (ip) return ip;
-  const r = await run(["tailscale", "ip", "-4", name], { timeoutMs: 3000 });
-  return r.ok ? r.stdout.trim() : "";
-}
+// a host's mesh IPv4, blank when unknown
+export const tailnetIP = async (name: string): Promise<string> => knownIPs.get(name) ?? "";

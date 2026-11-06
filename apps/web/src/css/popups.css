@@ -50,7 +50,7 @@
 }
 .modal-header > span {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .modal-close {
@@ -85,7 +85,7 @@
   padding: 0.45rem 0.75rem 0.1rem;
   font-size: var(--fs-2xs);
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
 }
 .update-host {
   overflow: hidden;
@@ -260,7 +260,7 @@
   align-items: center;
   gap: 0.6ch;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
 }
 .update-latest[data-state="ok"] {
   color: var(--online);
@@ -295,7 +295,7 @@
   padding: 0.55rem 0.75rem 0.1rem;
   color: var(--fg);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: 500;
 }
 .update-ag {
   margin-top: 0.35rem;

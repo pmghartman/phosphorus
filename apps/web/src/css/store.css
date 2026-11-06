@@ -53,7 +53,7 @@
   padding: 0.95rem 0.6rem 0.3rem;
   color: var(--muted);
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 500;
 }
 .store-nav-row {
   display: flex;
@@ -113,7 +113,7 @@
   align-items: baseline;
   gap: 0.6rem;
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .store-view-n {
   color: var(--muted);
@@ -161,13 +161,13 @@
 .store h1 {
   margin: 0;
   font-size: var(--fs-xl);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg);
 }
 .store h2 {
   margin: 0;
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
 }
 /* the wizard's banner: its wand in a tile of the accent, its name and what it does */
@@ -319,7 +319,7 @@
   min-width: 0;
 }
 .store-tile-name {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg);
 }
 .store-tile-tag {
@@ -399,7 +399,7 @@
 .store-mono {
   color: var(--tint);
   font-size: var(--fs-xl);
-  font-weight: 600;
+  font-weight: 500;
 }
 .store-icon.lg .store-mono {
   font-size: 1.8rem;
@@ -440,7 +440,7 @@
   line-height: 1.2;
   color: var(--fg);
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -626,7 +626,7 @@
   padding: 0.1rem 0.55rem;
   background: none;
   border: 1px solid var(--border);
-  border-radius: calc(var(--r-ctl, 0px) * 99);
+  border-radius: var(--r-ctl, 0);
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-xs);
@@ -762,7 +762,7 @@
   padding: 0.15rem 0.7rem;
   background: none;
   border: 1px solid var(--border);
-  border-radius: calc(var(--r-ctl, 0px) * 99);
+  border-radius: var(--r-ctl, 0);
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-xs);
@@ -805,7 +805,7 @@
 }
 .store-repo-head {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .store-repo-sub {
   color: var(--muted);
@@ -868,7 +868,7 @@
 }
 .store-route-name {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -879,7 +879,7 @@ button.store-route-name {
   border: 0;
   background: none;
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
@@ -989,7 +989,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
   margin: 1em 0 0.3em;
   color: var(--fg);
   font-size: 1em;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0;
 }
 .store-readme h1 {
@@ -1092,7 +1092,7 @@ a.store-tree-name:hover {
   color: var(--muted);
 }
 .store-verdict {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
 }
 .store-verdict.on {
@@ -1125,7 +1125,7 @@ a.store-tree-name:hover {
   color: var(--fg);
 }
 .store-check li::before {
-  font-weight: 600;
+  font-weight: 500;
 }
 .store-check li.ok::before {
   content: "\2713";
@@ -1199,7 +1199,7 @@ a.store-tree-name:hover {
 .store-role {
   padding: 0 0.45rem;
   border: 1px solid var(--border);
-  border-radius: calc(var(--r-ctl, 0px) * 99);
+  border-radius: var(--r-ctl, 0);
   color: var(--muted);
   font-size: var(--fs-2xs);
 }

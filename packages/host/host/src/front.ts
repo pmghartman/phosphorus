@@ -6,7 +6,7 @@ import { FrontendPort } from "@phosphorus/util";
 import { at, fail, keysMissing, println } from "./base.ts";
 import { readPassword } from "./ctl.ts";
 import { os } from "./os.ts";
-import { tailscaleStatus } from "./tailnet.ts";
+import { keptName, labelOf, tailscaleStatus } from "./tailnet.ts";
 
 // the desktop's addresses: the mesh's domain first when there is one, then
 // this host's name on the tailnet
@@ -94,14 +94,12 @@ async function meshState(): Promise<{ host: string; up: number; seen: number } |
   }
 }
 
-// this host's name on the tailnet, as run names it
+// this host's name on the mesh, as run names it
 export async function tailnetHost(): Promise<string> {
+  const kept = keptName();
+  if (kept) return kept;
   try {
-    const dns = String(JSON.parse(await tailscaleStatus())?.Self?.DNSName ?? "");
-    return (dns.split(".")[0] ?? "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+    return labelOf(String(JSON.parse(await tailscaleStatus())?.Self?.DNSName ?? ""));
   } catch {
     return "";
   }

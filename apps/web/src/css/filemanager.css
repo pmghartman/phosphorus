@@ -112,7 +112,7 @@
   padding: 0.35rem 0.5rem 0.3rem;
   color: var(--muted);
   font-size: var(--fs-2xs);
-  font-weight: 600;
+  font-weight: 500;
 }
 .fm-place {
   display: flex;
@@ -312,7 +312,7 @@
 .fm-ask-title {
   color: var(--fg);
   font-size: var(--fs-base);
-  font-weight: 600;
+  font-weight: 500;
 }
 .fm-ask .update-actions {
   display: flex;
@@ -328,7 +328,7 @@
   background: var(--offmesh);
   border-color: var(--offmesh);
   color: var(--bg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .fm-ask .btn.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--offmesh) 88%, var(--fg));

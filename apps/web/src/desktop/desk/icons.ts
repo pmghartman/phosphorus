@@ -54,7 +54,7 @@ export function dkDesktop(): void {
   // the bar: a phone's way home, the apps menu, the windows, the host chips, then the status items
   const bar = dkBar(tasks, hosts);
   bar.prepend(dkHomeBtn(), dkAppsBtn());
-  const status = st.acct?.boot ? [] : [dkMeshQuick(), dkUpdateQuick(), dkMcpTray()];
+  const status = [dkMeshQuick(), dkUpdateQuick(), dkMcpTray()];
   bar.append(...status.filter((x): x is HTMLElement => !!x), dkBellTray(), dk.clock!, dkControlTray());
   dkWallPaint();
   desk.append(icons, wins, bar);
@@ -248,7 +248,8 @@ export function dkIcon(
     title: sub ? `${label} on ${sub}` : label,
   });
   const tile = el('span', 'dk-tile');
-  tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind]!));
+  // settings wears the gear, as its window does (desktop/windows.ts)
+  tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind === 'settings' ? 'gear' : kind]!));
   // a site's own icon once it loads
   dkTryIcons(tile, ([] as string[]).concat(icon), again);
   b.append(tile, el('span', 'dk-label', label));

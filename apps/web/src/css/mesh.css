@@ -166,7 +166,7 @@
 .mesh-legend-model {
   width: 0.5rem;
   text-align: center;
-  font-weight: 600;
+  font-weight: 500;
   color: transparent;
   background: linear-gradient(90deg, var(--glyph-purple), var(--glyph-orange));
   -webkit-background-clip: text;
@@ -175,7 +175,7 @@
 .mesh-svg .mesh-model-mark {
   fill: url(#phosphorus-grad);
   font-family: inherit;
-  font-weight: 600;
+  font-weight: 500;
 }
 .mesh-svg .mesh-model-mark.down {
   fill: var(--dim);

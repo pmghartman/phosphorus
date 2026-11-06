@@ -94,7 +94,7 @@ const SECTIONS: Section[] = [
     label: 'network',
     glyph: () => DK_GLYPHS.lock!,
     group: 'mesh',
-    blurb: 'control server, relay, join keys',
+    blurb: 'domain, public ports, control server, relay, join keys',
     admin: true,
     draw: networkSection,
   },
@@ -139,17 +139,13 @@ const SECTIONS: Section[] = [
 
 const shown = (s: Section) => !s.admin || !!st.acct?.admin;
 
-// a section's controls grouped: each run of rows and checks in a card of its own, hairlines between
+// a section's parts as cards: each heading opens one, naming it, and holds what follows up to
+// the next heading; anything before the first heading a card of its own
 export function cardify(items: HTMLElement[]): HTMLElement[] {
   const out: HTMLElement[] = [];
   let card: HTMLElement | null = null;
   for (const x of items) {
-    if (!x.matches('.dk-ap-row, .dk-ap-check')) {
-      card = null;
-      out.push(x);
-      continue;
-    }
-    if (!card) out.push((card = el('div', 'set-card')));
+    if (!card || x.matches('.dk-ap-head, .dk-pick-head')) out.push((card = el('div', 'set-card')));
     card.append(x);
   }
   return out;
@@ -169,7 +165,7 @@ export const settingsAt = (): SettingsAt => at;
 
 // the window, opened or raised, at a section (and its own part, or a host) when named
 export function dkSettings(s?: SettingsAt, sub?: string): void {
-  if (!dk.desk || !st.acct || st.acct.boot) return;
+  if (!dk.desk || !st.acct) return;
   const pick = SECTIONS.find((x) => x.id === s && shown(x));
   if (pick) at = pick.id;
   if (!SECTIONS.some((x) => x.id === at && shown(x))) at = 'profile';

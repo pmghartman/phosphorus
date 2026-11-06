@@ -53,6 +53,8 @@ Bun.serve({
       case "link.drop":
         peers.dropLink(a.host);
         return Response.json({ ok: true });
+      case "mesh.remove":
+        return Response.json({ removed: peers.registry.removeHost(a.host) });
       case "app.install":
         return Response.json(await webapps.Install(a.id));
       case "app.running":

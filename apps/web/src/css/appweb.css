@@ -81,7 +81,7 @@
   animation: pop-in 0.12s ease-out;
 }
 .aw-card-title {
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--fs-sm);
 }
 .aw-msg {

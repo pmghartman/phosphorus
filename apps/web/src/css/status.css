@@ -46,15 +46,40 @@
 }
 .st-name {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-name.self {
   color: var(--mesh-self);
 }
 
-/* one hue for every headline and panel word: the accent; the series inside a graph keep their own */
+/* each kind of thing its own hue, on its headline's word and its panel's; the series inside a graph
+   wear the same */
 :is(.st-stat, .st-panel) {
+  --st-hue: var(--fg);
+}
+:is(.st-stat, .st-panel):is(.st-cpu, .st-cpus) {
   --st-hue: var(--accent);
+}
+:is(.st-stat, .st-panel).st-mem {
+  --st-hue: var(--sand);
+}
+:is(.st-stat, .st-panel).st-disk {
+  --st-hue: var(--sky);
+}
+:is(.st-stat, .st-panel):is(.st-net, .st-day) {
+  --st-hue: var(--teal);
+}
+:is(.st-stat, .st-panel).st-gpu {
+  --st-hue: var(--sage);
+}
+.st-panel.st-ctr {
+  --st-hue: var(--rose);
+}
+.st-panel.st-proc {
+  --st-hue: var(--sky);
+}
+.st-panel.st-model {
+  --st-hue: var(--glyph-purple);
 }
 
 /* the headlines: one card, a cell each, hairlines between however they wrap */
@@ -79,14 +104,14 @@
     0 -1px 0 var(--border);
 }
 .st-stat-k {
-  color: var(--muted);
+  color: var(--st-hue);
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-stat-v {
   color: var(--fg);
   font-size: var(--fs-xl);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -222,7 +247,7 @@
   text-align: right;
 }
 
-/* a panel: a card, its word in a head row, its body under a hairline */
+/* a panel: a card named by its word in the accent at its top, its body stacked under */
 .st-panel {
   display: flex;
   flex-direction: column;
@@ -236,8 +261,7 @@
   align-items: baseline;
   gap: 1ch;
   min-width: 0;
-  padding: 0.5rem 0.9rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.625rem 0.75rem 0;
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
@@ -248,7 +272,7 @@
 .st-panel-t {
   flex: none;
   color: var(--st-hue);
-  font-weight: 600;
+  font-weight: 500;
 }
 .st-panel-body {
   display: flex;
@@ -256,7 +280,7 @@
   flex: 1 1 auto;
   gap: 0.3rem;
   min-height: 0;
-  padding: 0.6rem 0.9rem 0.7rem;
+  padding: 0.45rem 0.75rem 0.625rem;
   font-size: var(--fs-xs);
   line-height: 1.4;
 }
@@ -372,7 +396,7 @@
 }
 /* every phosphorus process summed, set off from the roles under it */
 .st-ctr-total {
-  font-weight: 600;
+  font-weight: 500;
   padding-bottom: 0.15rem;
   margin-bottom: 0.1rem;
   border-bottom: 1px solid var(--border);
