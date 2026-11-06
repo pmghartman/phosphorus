@@ -371,7 +371,7 @@
 }
 .set-hostchip.on {
   color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .set-hostchip:not(.on):is(:hover, :focus-visible) {
   color: var(--fg);

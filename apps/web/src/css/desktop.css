@@ -700,7 +700,7 @@
   cursor: pointer;
 }
 .dk-menu button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--fg);
 }
 .dk-menu button.danger {
@@ -727,7 +727,7 @@
   color: var(--dim);
 }
 .dk-menu-item.open > .dk-menu-more:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--fg);
 }
 .dk-menu .dk-submenu {

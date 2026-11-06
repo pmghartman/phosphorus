@@ -75,7 +75,7 @@
   font-weight: 600;
 }
 .dk-btns .hd-sbtn.on {
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
 }
 /* the mode button carries a word or two, whatever the look's button width */
@@ -403,8 +403,8 @@
   background: var(--tab-hover);
 }
 .dk-card.cur {
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
-  border-color: color-mix(in srgb, var(--fg) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 /* the desktop's wallpaper, else its glyph on the desk's own colour */
 .dk-card-shot {

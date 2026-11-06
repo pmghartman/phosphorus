@@ -42,7 +42,7 @@
 }
 .dk-ap-tab.on {
   color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .dk-ap-body {
   min-height: 0;
@@ -136,7 +136,7 @@
   color: var(--fg);
 }
 .dk-ap-seg.on {
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--fg);
 }
 .dk-ap-seg .theme-icon {
