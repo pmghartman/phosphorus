@@ -4,6 +4,7 @@
 
 import { filesWin } from '../features/home/home.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
+import { iconUrl, onIcons } from '../lib/iconcache.ts';
 import { dk } from '../lib/state.ts';
 import { dkSettings } from '../settings/settings.ts';
 import { hostInfo, type Item, iconSrc, itemKey } from './desk/hosts.ts';
@@ -35,6 +36,8 @@ type Tile = {
   menu?: () => Act[];
   // phosphorus's own: the desk icon's colour by its kind
   kind?: string;
+  host?: string;
+  it?: Item;
 };
 
 let wrap: HTMLElement | undefined;
@@ -68,8 +71,21 @@ export function dkAppsBtn(): HTMLElement {
   onSpace(() => {
     if (pop && !pop.hidden) fill();
   });
+  // a host's icons landed while the menu is open: its tiles still wearing a glyph given them
+  onIcons((host) => {
+    for (const b of pop?.querySelectorAll<HTMLButtonElement>('.dk-app-tile') ?? []) {
+      const t = tileOf.get(b);
+      const ic = b.querySelector<HTMLElement>('.dk-app-ic');
+      if (!t || t.host !== host || !ic || ic.classList.contains('dk-tile-img')) continue;
+      const src = iconUrl(host, t.it);
+      if (src) dkTryIcons(ic, [src]);
+    }
+  });
   return wrap;
 }
+
+// a tile's host app, for its icon landing later
+const tileOf = new WeakMap<Element, { host: string; it: Item }>();
 
 function show(on: boolean) {
   if (!pop || !btn) return;
@@ -87,6 +103,8 @@ function show(on: boolean) {
 const hostTile = (h: string, it: Item, sub = ''): Tile => ({
   name: it.name,
   title: itemTip(h, it),
+  host: h,
+  it,
   src: iconSrc(h, it),
   glyph: it.kind === 'cli' ? DK_GLYPHS.terminal! : DK_GLYPHS.app!,
   sub,
@@ -169,6 +187,7 @@ function tile(t: Tile): HTMLButtonElement {
   ic.append(dkGlyph(t.glyph ?? DK_GLYPHS.app!));
   // the host's own icon, asked again while it's still being read from the host
   if (t.src) dkTryIcons(ic, [t.src], 3000);
+  if (t.host && t.it) tileOf.set(b, { host: t.host, it: t.it });
   b.append(ic, el('span', 'dk-app-n', t.name));
   if (t.sub) b.append(el('span', 'dk-app-s', t.sub));
   b.addEventListener('click', () => {

@@ -17,6 +17,7 @@ import {
 import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
 import { dkBellTray } from '../../features/notes.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
+import { iconUrl, onIcons } from '../../lib/iconcache.ts';
 import { iconKnown, iconLearn, iconOrder } from '../../lib/iconmem.ts';
 import { dk, PREF_LS, st } from '../../lib/state.ts';
 import { dkSettings } from '../../settings/settings.ts';
@@ -187,15 +188,18 @@ export function dkMono(label: string): SVGSVGElement {
   return svg;
 }
 
+// an icon already in this page, never learnt by its url, which lasts this page alone
+const inPage = (src: string) => src.startsWith('blob:');
+
 // the first of icons that loads, the glyph kept when none does; again: all asked once more
 // after that long, doubling, while the tile is on the desk, a host restarting answering later
 export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry = false) {
   const srcs = icons.filter(Boolean);
-  if (!srcs.length) return;
-  const known = retry ? undefined : iconKnown(srcs);
+  if (!srcs.length || (retry && tile.classList.contains('dk-tile-img'))) return;
+  const known = retry || inPage(srcs[0]!) ? undefined : iconKnown(srcs);
   const order = retry ? srcs : iconOrder(srcs);
   // none loaded last time: the glyph at once, no hole while they're asked
-  if (!retry && known !== '') {
+  if (!retry && known !== '' && !inPage(order[0]!)) {
     tile.classList.add('dk-wait');
     // the glyph shown after a while, a slow host never leaving a hole
     setTimeout(() => tile.classList.remove('dk-wait'), 600);
@@ -209,15 +213,16 @@ export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry 
   const next = (i: number) => {
     if (i === order.length) {
       tile.classList.remove('dk-wait');
-      iconLearn(srcs, '');
+      if (!srcs.some(inPage)) iconLearn(srcs, '');
       if (again)
         setTimeout(() => {
           if (tile.isConnected) dkTryIcons(tile, srcs, Math.min(again * 2, 600000), true);
         }, again);
       return;
     }
-    // the one that loaded last time up at once, the glyph back if it fails now
-    const early = i === 0 && !!known;
+    // the one that loaded last time, or one already in the page, up at once; the glyph back
+    // if it fails now
+    const early = i === 0 && (!!known || inPage(order[0]!));
     const img = Object.assign(el('img', 'dk-favicon'), {
       alt: '',
       decoding: early ? ('sync' as const) : ('async' as const),
@@ -227,7 +232,7 @@ export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry 
       'load',
       () => {
         if (!early) show(img);
-        iconLearn(srcs, order[i]!);
+        if (!inPage(order[i]!)) iconLearn(srcs, order[i]!);
       },
       { once: true },
     );
@@ -247,6 +252,17 @@ export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry 
   };
   next(0);
 }
+
+// a host's icons landed: its tiles still wearing a glyph given them
+onIcons((host) => {
+  for (const b of dkIconEls()) {
+    const ha = hostIcons.get(b);
+    if (!ha || ha.host !== host) continue;
+    const tile = b.querySelector<HTMLElement>('.dk-tile');
+    const src = tile && !tile.classList.contains('dk-tile-img') ? iconUrl(host, ha.it) : undefined;
+    if (src) dkTryIcons(tile!, [src]);
+  }
+});
 
 export function dkIcon(
   kind: string,
@@ -332,9 +348,10 @@ export function dkLiveHosts(): string[] {
   return [...dk.creds.keys()].filter((h) => up.has(h));
 }
 
-// a host's app or shortcut on a desk, its own icon, opened as phosphorus opens it
+// a host's app or shortcut on a desk, its own icon, opened as phosphorus opens it; the
+// server asked again from 3s while the host is still reading it
 function dkHostItem(h: string, it: Item, sub: string): HTMLButtonElement {
-  const b = dkIcon('app', it.name, sub, () => openHostItem(h, it), iconSrc(h, it), 30000);
+  const b = dkIcon('app', it.name, sub, () => openHostItem(h, it), iconSrc(h, it), 3000);
   b.title = itemTip(h, it);
   hostIcons.set(b, { host: h, it });
   return b;

@@ -47,7 +47,8 @@ export type Who = { s: users.Session; host: string };
 
 // the session's key: the phosphorus user, the host, the login it signs in as
 export const keyOf = (w: Who, login: string) => `${w.s.user}\0${w.host}\0${login}`;
-const cacheKey = (w: Who) => `desk\0${w.s.user}`;
+// the desk last drawn is the host login's, whoever here signs in as it
+const cacheKey = (login: string) => `desk\0login\0${login}`;
 
 type Cached = { desk: hd.Desk; apps?: hd.Item[]; icons: string[] };
 
@@ -72,7 +73,7 @@ export async function session(w: Who): Promise<hd.Session> {
     log("[hostdesk] %s: ssh and probes up in %dms", w.host, Date.now() - t0);
     note(w.s.user, "host_desktop", { host: w.host, login: user });
     // what an earlier visit issued, so the cache draws before the probe answers
-    const k = hd.cacheJSON<Cached>(w.host, cacheKey(w));
+    const k = hd.cacheJSON<Cached>(w.host, cacheKey(user));
     if (k?.desk) {
       for (const i of k.icons ?? []) c.icons.add(i);
       c.desk = k.desk;
@@ -85,7 +86,7 @@ function remember(w: Who, s: hd.Session) {
   const c = hd.ctxOf(s);
   if (!c.desk) return;
   const k: Cached = { desk: c.desk, apps: c.apps, icons: [...c.icons] };
-  hd.cachePut(w.host, cacheKey(w), JSON.stringify(k));
+  hd.cachePut(w.host, cacheKey(s.target.user), JSON.stringify(k));
 }
 
 export class Coded extends Error {
@@ -174,9 +175,9 @@ export async function hostdeskRoute(
 async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> {
   const nc = { "Cache-Control": "no-store" };
   if (op === "desktop" && q.has("cached")) {
-    const k = hd.cacheJSON<Cached>(w.host, cacheKey(w));
-    if (!(await users.HostLogin(w.s, w.host))[2])
-      throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
+    const [login, , saved] = await users.HostLogin(w.s, w.host);
+    if (!saved) throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
+    const k = hd.cacheJSON<Cached>(w.host, cacheKey(login));
     // the ssh session opened now, ready by the time the page asks for the live desk
     void session(w)
       .then((s) => k?.desk && hd.prefetch(s, w.host, [...k.desk.icons, ...k.desk.pins]))
@@ -202,13 +203,7 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     }
     case "icon": {
       const k = q.get("k") ?? "";
-      // a spec this session hasn't issued (a shared app's, on a server that never read the
-      // host): the desk and apps read first, which issue every icon the host has
-      if (!hd.issued(s, k)) {
-        await hd.desktop(s).catch(() => {});
-        if (!hd.issued(s, k)) await hd.apps(s).catch(() => {});
-        remember(w, s);
-      }
+      await issueAll(w, s, [{ name: "", kind: "file", icon: k }]);
       const b = await hd.icon(s, w.host, k, q.get("v") ?? "");
       // a miss never kept, so the page's retry asks again
       if (!b) return new Response(null, { status: 404, headers: nc });
@@ -281,6 +276,16 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
   throw new Coded(404, "not found");
 }
 
+// a spec this session hasn't issued (a shared app's, on a server that never read the
+// host): the desk and apps read first, which issue every icon the host has
+async function issueAll(w: Who, s: hd.Session, items: hd.Item[]) {
+  const unissued = () => items.some((it) => it.icon && !hd.issued(s, it.icon));
+  if (!unissued()) return;
+  await hd.desktop(s).catch(() => {});
+  if (unissued()) await hd.apps(s).catch(() => {});
+  remember(w, s);
+}
+
 async function postOp(w: Who, op: string, c: Ctx, q: URLSearchParams): Promise<Response> {
   if (op === "fs-upload") return upload(w, c, q);
   const raw = await readRaw(c, op === "save" ? maxSaveBody * 8 : maxJSONBody);
@@ -301,6 +306,23 @@ async function postOp(w: Who, op: string, c: Ctx, q: URLSearchParams): Promise<R
     case "open": {
       const it = await hd.open(s, allowed(s, str(p.path)));
       return sendJSON(200, { item: it, phosphorus: phosphorusOn(w.host) });
+    }
+    case "icons": {
+      // many icons in one answer, as data urls by spec and version; the cached ones at once,
+      // the rest read within wait ms, the remainder named so the page asks again
+      const list = Array.isArray(p.items) ? (p.items as unknown[]).slice(0, 300) : [];
+      const items: hd.Item[] = [];
+      for (const x of list) {
+        const o = obj(x);
+        if (o && typeof o.icon === "string" && o.icon)
+          items.push({ name: "", kind: "file", icon: o.icon, iv: str(o.iv) });
+      }
+      const wait = Math.min(20_000, Math.max(0, Number(p.wait) || 6000));
+      await issueAll(w, s, items);
+      const { got, missing } = await hd.icons(s, w.host, items, wait, p.slow === true);
+      const icons: Record<string, string> = {};
+      for (const [k, b] of got) icons[k] = `data:${b.type};base64,${Buffer.from(b.bytes).toString("base64")}`;
+      return sendJSON(200, { icons, missing }, { "Cache-Control": "no-store" });
     }
     case "fs-mkdir": {
       const path = allowed(s, deskAbs(str(p.path)));

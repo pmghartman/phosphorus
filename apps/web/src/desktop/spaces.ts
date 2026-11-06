@@ -7,6 +7,7 @@ import { dkUnlock } from '../features/account.ts';
 import { deskLoc, deskRel, fileOpen, filesWin } from '../features/home/home.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS } from '../lib/dom.ts';
+import { iconsWarm } from '../lib/iconcache.ts';
 import { dk, PREF_LS } from '../lib/state.ts';
 import { newSid } from '../lib/util.ts';
 import { hostApp } from './desk/hostapp.ts';
@@ -84,10 +85,17 @@ export function dkSpaceBoot() {
     history.replaceState(null, '', location.pathname + location.search);
   }
   dkSpace(h && dk.creds.has(h) ? h : '');
-  // every logged in host's ssh session opened and its last desk read while the page is idle,
-  // so the first switch onto one finds it up
+  // every logged in host read while the page is idle: its desk, apps, icons and wallpaper,
+  // so the first switch onto one paints at once; the shared desktop's apps' icons with them
   (window.requestIdleCallback ?? setTimeout)(() => {
-    for (const host of dkLiveHosts()) void hostWarm(host);
+    const shared = sharedApps();
+    for (const host of dkLiveHosts()) {
+      void hostWarm(host);
+      void iconsWarm(
+        host,
+        shared.filter((a) => a.host === host),
+      );
+    }
   });
 }
 

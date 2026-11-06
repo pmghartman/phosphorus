@@ -111,6 +111,7 @@ function sniff(b: Uint8Array, p: string): string {
 
 const iconMax = 1 << 20;
 const wallMax = 48 << 20;
+const smallWall = 1 << 20;
 
 const iconKey = (spec: string, v: string) => `icon\0${spec}\0${v}`;
 
@@ -235,7 +236,9 @@ export async function wallpaper(s: Session, host: string): Promise<Blob | undefi
   const key = `wall\0${w.path}\0${w.iv}`;
   const hit = cacheGet(host, key);
   if (hit && w.iv) return unpack(hit);
-  const blob = (await scaledWall(s, w.path)) ?? (await rawWall(s, w.path));
+  // a small picture as it is, a big one scaled on the host first
+  const st = await statOf(s, w.path).catch(() => undefined);
+  const blob = (st && st.size > smallWall && (await scaledWall(s, w.path))) || (await rawWall(s, w.path));
   if (w.iv || !win(s)) cachePut(host, key, pack(blob));
   return blob;
 }

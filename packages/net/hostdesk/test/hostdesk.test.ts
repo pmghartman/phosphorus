@@ -1,6 +1,7 @@
 // the host desktop's pure parts: the line protocol, the recycle bin's records, the
 // paths, the Linux parsers; then the sh probe against a temp home
 
+import "./env.ts";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -277,6 +278,8 @@ test.skipIf(!sh)(
     mkdirSync(join(home, "Desktop"), { recursive: true });
     const native = join(home, "Desktop", "a note.txt");
     writeFileSync(native, "hi");
+    const pic = join(home, "Desktop", "pic.bin");
+    writeFileSync(pic, "not a picture");
     // the path as sh sees it, git bash's /c/... on Windows
     const posix = (p: string) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, d: string) => `/${d.toLowerCase()}`);
     const f = posix(native);
@@ -298,11 +301,13 @@ test.skipIf(!sh)(
         .map((l) => reply(l))
         .filter((r) => !!r);
     };
-    const [del, again, nope, desk] = await run([
+    const [del, again, nope, desk, wall, noWall] = await run([
       ["delete", `${f}\n${L.trashInfo(f, Date.now())}`],
       ["delete", `${f}\n${L.trashInfo(f, Date.now())}`],
       ["format", ""],
       ["desktop", ""],
+      ["wall", posix(pic)],
+      ["wall", `${f}.missing`],
     ]);
     expect(del!.ok).toBe(true);
     expect(existsSync(native)).toBe(false);
@@ -313,6 +318,10 @@ test.skipIf(!sh)(
     expect(nope!.body).toContain("no such request");
     const env = records(desk!.body).find((r) => r.kind === "env")!;
     expect(env.body).toContain(`home=${posix(home)}`);
+    // the wallpaper scaled by a converter the host has, or left to a raw read: an ok either way
+    expect(wall!.ok).toBe(true);
+    expect(wall!.body === "" || wall!.body.startsWith("/9j/")).toBe(true);
+    expect(noWall!.ok).toBe(false);
   },
   60000,
 );
