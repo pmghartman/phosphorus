@@ -152,7 +152,7 @@ jobs:
       APP: packaging/host
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # the compile needs no dev tools (biome, tsc, resvg)
+      # the compile needs no dev tools (biome, tsc)
       - uses: ./.github/actions/bun
         with:
           production: "true"

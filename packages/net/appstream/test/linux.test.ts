@@ -2,7 +2,7 @@
 // runner (ssh's) as `afterglow --stdio` when it has one, here an afterglow of our own
 // speaking the link on the channel. The app launched by its argv, frames to the viewer
 // with their header in place, its title, the viewer's clipboard sent to the host, a
-// polite close; the agent, its pixels and ffmpeg where the host has python3
+// polite close; the agent, its pixels and ffmpeg where the host has phosphorus
 
 import { describe, expect, test } from "bun:test";
 import { In, LinkReader, linkMessage, Out } from "@phosphorus/afterglow";
@@ -10,6 +10,7 @@ import { configMessage, frameMessage, jsonMessage } from "@phosphorus/afterglow/
 import {
   AppSession,
   afterglowCmd,
+  agentCmd,
   type Chan,
   HeadLen,
   LinuxSource,
@@ -22,12 +23,12 @@ import {
 const settle = () => new Promise((r) => setTimeout(r, 30));
 
 const features = "afterglow 0.3 stdio argv notes clipboard raise close cursor";
-// afterglow's turn comes on a host with no python3 for the agent
+// afterglow's turn comes on a host with no phosphorus for the agent
 const probe = (afterglow: boolean) =>
   [
     "have:Xvfb",
     "have:ffmpeg",
-    ...(afterglow ? [] : ["have:python3"]),
+    ...(afterglow ? [] : ["bun:/usr/lib/phosphorus/bin/phosphorus"]),
     "have:dbus-run-session",
     ...(afterglow ? [`afterglow:/var/lib/phosphorus/afterglow/afterglow ${features}`] : []),
   ].join("\n");
@@ -168,19 +169,22 @@ describe("a Linux host's app", () => {
     expect(app.alive).toBe(false);
   });
 
-  test("python3 on the host: the agent, its pixels and ffmpeg", async () => {
+  test("phosphorus on the host: the agent run by it, its pixels and ffmpeg", async () => {
     const { r, ran } = runner(false);
     const src = new LinuxSource(r);
     const opening = src.open({ ...start, dpi: 96 }, { meta() {}, say() {}, exit() {} });
     await settle();
     expect(src.via).toBe("agent");
-    expect(ran.some((c) => c.includes("python3"))).toBe(true);
+    expect(ran).toContain(agentCmd("/usr/lib/phosphorus/bin/phosphorus"));
+    expect(agentCmd("/usr/lib/phosphorus/bin/phosphorus")).toStartWith(
+      "exec env BUN_BE_BUN=1 /usr/lib/phosphorus/bin/phosphorus -e '",
+    );
     expect(ran.some((c) => c.includes("--stdio"))).toBe(false);
     src.quit();
     void opening.catch(() => {});
   });
 
-  test("an afterglow that won't start on a host with no python3: the open fails, saying so", async () => {
+  test("an afterglow that won't start on a host with no phosphorus: the open fails, saying so", async () => {
     const dead = new StdioAfterglow();
     // it never says ready and its channel closes
     dead.chan.write = () => queueMicrotask(() => dead.chan.close());
@@ -188,6 +192,6 @@ describe("a Linux host's app", () => {
     const src = new LinuxSource(r);
     await expect(src.open({ ...start, dpi: 96 }, { meta() {}, say() {}, exit() {} })).rejects.toThrow();
     expect(src.via).toBe("afterglow");
-    expect(ran.some((c) => c.includes("python3"))).toBe(false);
+    expect(ran.some((c) => c.includes("BUN_BE_BUN"))).toBe(false);
   });
 });

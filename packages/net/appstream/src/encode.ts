@@ -10,7 +10,8 @@ export type Encoder = "nvenc" | "vaapi" | "x264";
 export type Caps = {
   xvfb: boolean;
   ffmpeg: boolean;
-  python: boolean;
+  // the host's phosphorus (or a bun) that runs the agent, "" when none
+  bun: string;
   dbus: boolean;
   encoders: Encoder[];
   // afterglow on the host, the path of one that serves --stdio: what streams its apps
@@ -26,9 +27,13 @@ export const afterglowPaths = [
   "/usr/lib/phosphorus/afterglow/afterglow",
 ];
 
+// where phosphorus is on a Linux host, the package's first; a bun of its own runs the agent as well
+export const bunPaths = ["/usr/lib/phosphorus/bin/phosphorus", "/var/lib/phosphorus/bin/phosphorus"];
+
 // what the host has, one shell line's answer
 export const probeCmd = [
-  "for c in Xvfb ffmpeg python3 dbus-run-session; do command -v $c >/dev/null 2>&1 && echo have:$c; done",
+  "for c in Xvfb ffmpeg dbus-run-session; do command -v $c >/dev/null 2>&1 && echo have:$c; done",
+  `for b in ${bunPaths.join(" ")} $(command -v phosphorus phos bun 2>/dev/null); do [ -x "$b" ] && { echo "bun:$b"; break; }; done`,
   "command -v ffmpeg >/dev/null 2>&1 && ffmpeg -hide_banner -encoders 2>/dev/null | grep -oE 'h264_(nvenc|vaapi)' | sed 's/^/enc:/'",
   "[ -r /dev/dri/renderD128 ] && [ -w /dev/dri/renderD128 ] && echo dri",
   "command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && echo nvidia",
@@ -60,18 +65,19 @@ export function parseCaps(out: string): Caps {
   return {
     xvfb: l.has("have:Xvfb"),
     ffmpeg: l.has("have:ffmpeg"),
-    python: l.has("have:python3"),
+    bun: [...l].find((s) => s.startsWith("bun:"))?.slice(4) ?? "",
     dbus: l.has("have:dbus-run-session"),
     encoders,
     afterglow,
   };
 }
 
-// what the host lacks, said as what to install, "" when nothing: the agent needs Xvfb
-// and python3 (ffmpeg only for video), afterglow Xvfb alone
+// what the host lacks, said as what to install, "" when nothing: the agent needs Xvfb and
+// phosphorus (ffmpeg only for video), afterglow Xvfb alone
 export function missing(c: Caps): string {
-  const need = [!c.xvfb && "xvfb", !c.python && !c.afterglow && "python3"].filter(Boolean);
-  return need.length ? `app streaming needs ${need.join(", ")} on the host (apt install ${need.join(" ")})` : "";
+  const need = [!c.xvfb && "xvfb", !c.bun && !c.afterglow && "phosphorus"].filter(Boolean);
+  if (!need.length) return "";
+  return `app streaming needs ${need.join(" and ")} on the host${c.xvfb ? "" : " (apt install xvfb)"}`;
 }
 
 export type EncodeOpts = {

@@ -7,9 +7,21 @@ import { runSync } from "@phosphorus/util";
 // left blank on a host joining a mesh
 export type Key = { name: string; label: string; hint: string; mesh: boolean };
 
-// every key phosphorus reads, TS_AUTHKEY the one a new host must bring
+// every key phosphorus reads; a new host brings MESH_KEY, or TS_AUTHKEY on a
+// mesh still on Tailscale's hosted control
 export const Keys: Key[] = [
-  { name: "TS_AUTHKEY", label: "Tailscale auth key", hint: "reusable, expires every 90 days", mesh: false },
+  {
+    name: "MESH_KEY",
+    label: "Mesh join key",
+    hint: "from settings, network on a mesh host; the only key a new host needs",
+    mesh: false,
+  },
+  {
+    name: "TS_AUTHKEY",
+    label: "Tailscale auth key",
+    hint: "only for a mesh still on Tailscale's hosted control; reusable, expires every 90 days",
+    mesh: false,
+  },
   { name: "BASE_DOMAIN", label: "Domain", hint: "optional, for access off the tailnet", mesh: true },
   {
     name: "TUNNEL_TOKEN",
@@ -47,10 +59,37 @@ export function parse(text: string): Record<string, string> {
   return out;
 }
 
-// the keys a host can't start without: TS_AUTHKEY, the rest a peer's
+// the keys a host can't start without: a join key, the rest a peer's
 export function missing(file: string): string[] {
-  const v = read(file);
-  return Keys.filter((k) => !k.mesh && !v[k.name]).map((k) => k.name);
+  return hasJoinKey(read(file)) ? [] : ["MESH_KEY"];
+}
+
+// MESH_KEY or TS_AUTHKEY set
+export const hasJoinKey = (v: Record<string, string | undefined>) => !!(v.MESH_KEY || v.TS_AUTHKEY);
+
+// a mesh join key's parts: the control server's URL and a headscale preauth key
+export type MeshKey = { url: string; key: string };
+
+const meshKeyPrefix = "phos1.";
+
+// phos1.<base64url JSON {u, k}>
+export function formatMeshKey(m: MeshKey): string {
+  return meshKeyPrefix + Buffer.from(JSON.stringify({ u: m.url, k: m.key })).toString("base64url");
+}
+
+// a mesh join key's parts, undefined when it isn't one
+export function parseMeshKey(s: string | undefined): MeshKey | undefined {
+  const t = clean(s);
+  if (!t.startsWith(meshKeyPrefix)) return undefined;
+  try {
+    const j = JSON.parse(Buffer.from(t.slice(meshKeyPrefix.length), "base64url").toString("utf8"));
+    const url = typeof j?.u === "string" ? j.u.replace(/\/+$/, "") : "";
+    const key = typeof j?.k === "string" ? j.k : "";
+    if (!/^https:\/\/[^/\s]+$/.test(url) || !key) return undefined;
+    return { url, key };
+  } catch {
+    return undefined;
+  }
 }
 
 // a pasted key: whitespace, quotes and newlines gone

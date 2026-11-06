@@ -233,26 +233,28 @@ describe("session: pixels", () => {
   });
 });
 
-const have = Bun.spawnSync(["sh", "-c", "command -v python3"]).exitCode === 0;
-
-describe.skipIf(!have)("agent", () => {
-  test("rectangles merged where they touch, the bounding box when still many", () => {
-    const code = [
-      "import sys, json; sys.argv = ['x']",
-      `src = open(${JSON.stringify(`${import.meta.dir}/../src/agent.py`)}).read()`,
-      "ns = {'__name__': 'agent'}; exec(compile(src, 'agent', 'exec'), ns)",
-      "m = ns['merge_rects']",
-      "print(json.dumps([m([(0,0,10,10),(5,5,10,10),(100,100,5,5)]), m([(0,0,1,1),(2,0,1,1)]), m([(i*20,0,5,5) for i in range(12)]), m([(0,0,0,5)])]))",
-    ].join("\n");
-    const p = Bun.spawnSync(["python3", "-c", code]);
-    expect(p.stderr.toString()).toBe("");
-    const [a, b, c, d] = JSON.parse(p.stdout.toString());
-    expect([...a].sort()).toEqual([
+describe("agent", () => {
+  test("rectangles merged where they touch, the bounding box when still many", async () => {
+    const { mergeRects } = (await import("../src/agent.js")) as unknown as {
+      mergeRects: (rs: number[][]) => number[][];
+    };
+    expect(
+      mergeRects([
+        [0, 0, 10, 10],
+        [5, 5, 10, 10],
+        [100, 100, 5, 5],
+      ]).sort(),
+    ).toEqual([
       [0, 0, 15, 15],
       [100, 100, 5, 5],
     ]);
-    expect(b).toEqual([[0, 0, 3, 1]]);
-    expect(c).toEqual([[0, 0, 225, 5]]);
-    expect(d).toEqual([]);
+    expect(
+      mergeRects([
+        [0, 0, 1, 1],
+        [2, 0, 1, 1],
+      ]),
+    ).toEqual([[0, 0, 3, 1]]);
+    expect(mergeRects(Array.from({ length: 12 }, (_, i) => [i * 20, 0, 5, 5]))).toEqual([[0, 0, 225, 5]]);
+    expect(mergeRects([[0, 0, 0, 5]])).toEqual([]);
   });
 });

@@ -25,6 +25,19 @@ test("settle", async () => {
   ).toEqual(["a/lab:path", "b/lab:subdomain", "a/sun:subdomain", "b/sun:path", "c/own:path"]);
 });
 
+test("unrebindable follows the tailnet's MagicDNS suffix", async () => {
+  const { unrebindable } = await import("@phosphorus/proxy");
+  const { noteMagicDNS } = await import("@phosphorus/util");
+  expect(unrebindable("100.64.0.3:8090")).toBe(true);
+  expect(unrebindable("vps")).toBe(true);
+  expect(unrebindable("vps.mesh.mulab.dev")).toBe(false);
+  noteMagicDNS("winsurf.mesh.mulab.dev.");
+  expect(unrebindable("vps.mesh.mulab.dev")).toBe(true);
+  expect(unrebindable("VPS.mesh.mulab.dev.:80")).toBe(true);
+  expect(unrebindable("evil.example")).toBe(false);
+  expect(unrebindable("vps.tail1234.ts.net")).toBe(false);
+});
+
 test("frameable", () => {
   expect(frameable("frame-ancestors 'none';")).toBe("frame-ancestors 'self' https://mulab.dev");
   expect(frameable("default-src 'self'; FRAME-ANCESTORS 'none'; img-src *")).toBe(

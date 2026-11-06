@@ -42,12 +42,13 @@
   <button type="submit" form="f" class="primary" id="save">Save</button>
 </div>
 <script>
-  const MAIN = ['TS_AUTHKEY', 'Tailscale auth key', 'Reusable, expires every 90 days. The only key a host joining an existing mesh needs.'];
+  const MAIN = ['MESH_KEY', 'Mesh join key', 'From settings, network on a mesh host. The only key a host joining an existing mesh needs.'];
   // the first host's, copied from a peer by every other
   const SETUP = [
     ['BASE_DOMAIN', 'Domain', 'Optional, for access off the tailnet. Copied from a peer when blank.'],
     ['TUNNEL_TOKEN', 'Cloudflare tunnel token', 'Optional, with the domain: route <domain> and *.<domain> to http://localhost:80 on it, and every service gets its own subdomain. Copied from a peer when blank.'],
-    ['TS_API_KEY', 'Tailscale API token', 'Guest join keys, guests swept after 3 days; expires every 90 days. Copied from a peer when blank.'],
+    ['TS_AUTHKEY', 'Tailscale auth key', "Only for a mesh still on Tailscale's hosted control, in place of the mesh join key."],
+    ['TS_API_KEY', 'Tailscale API token', "Only for a mesh still on Tailscale's hosted control: guest join keys, guests swept after 3 days. Copied from a peer when blank."],
     ['ADMIN_PASS', 'Admin password', "The setup admin's login and the gate on a mesh update. Copied from a peer when blank."],
   ];
   // the tray's own server, on this machine only, behind this page's random path
@@ -93,8 +94,8 @@
   }
 
   call('status').then((set) => {
-    if (!set.TS_AUTHKEY) {
-      document.getElementById('lead').textContent = 'First start. Only the Tailscale auth key is needed.';
+    if (!set.MESH_KEY && !set.TS_AUTHKEY) {
+      document.getElementById('lead').textContent = 'First start. Only the mesh join key is needed.';
     }
     const more = document.createElement('details');
     const sum = document.createElement('summary');
@@ -105,9 +106,9 @@
     count.textContent = `${n} of ${SETUP.length} set`;
     sum.append(count);
     const note = document.createElement('p');
-    note.textContent = 'All optional. Joining hosts copy them from a peer.';
+    note.textContent = 'All optional. Joining hosts copy the rest from a peer.';
     more.append(sum, note, ...SETUP.map((k) => field(k, !!set[k[0]])));
-    form.replaceChildren(field(MAIN, !!set.TS_AUTHKEY), more);
+    form.replaceChildren(field(MAIN, !!set.MESH_KEY), more);
     form.querySelector('input').focus();
   });
 

@@ -2,6 +2,7 @@
 // every other host asking it through its frontend
 
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { networkInterfaces, totalmem } from "node:os";
 import { join } from "node:path";
 import * as tools from "@phosphorus/tools";
@@ -157,7 +158,7 @@ async function gpuDevice(gpu: boolean): Promise<[string, number]> {
 
 // --- download ---------------------------------------------------------------
 
-type Download = { proc?: Subprocess; file: string; total: number; retryAt: number };
+type Download = { stop?: AbortController; file: string; total: number; retryAt: number };
 
 let dl: Download = { file: "", total: 0, retryAt: 0 };
 
@@ -176,49 +177,76 @@ async function remoteSize(u: string): Promise<number> {
   return Number.isInteger(n) ? n : 0;
 }
 
+// into the .part, resumed where it stopped; a dropped link or a busy server tried 5 more times
+async function fetchTo(url: string, part: string, signal: AbortSignal): Promise<void> {
+  for (let tries = 0; ; tries++) {
+    let lasting = false;
+    try {
+      const have = sizeOf(part);
+      const res = await fetch(url, { signal, headers: have ? { Range: `bytes=${have}-` } : {} });
+      // asked past the end: whole already when it's the size the server says
+      if (res.status === 416) {
+        await res.body?.cancel();
+        if (have && have === (await remoteSize(url))) return;
+        rmSync(part, { force: true });
+        throw new Error("the server refused the resume");
+      }
+      if (!res.ok || !res.body) {
+        await res.body?.cancel();
+        lasting = res.status < 500 && res.status !== 408 && res.status !== 429;
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const fh = await open(part, res.status === 206 ? "a" : "w");
+      try {
+        for await (const chunk of res.body) await fh.write(chunk);
+      } finally {
+        await fh.close();
+      }
+      return;
+    } catch (e) {
+      if (signal.aborted || lasting || tries >= 5) throw e;
+      await sleep(5000);
+    }
+  }
+}
+
 function pauseDownload(why: string) {
-  const { proc, file } = dl;
-  dl.proc = undefined;
-  proc?.kill();
+  const { stop, file } = dl;
+  dl.stop = undefined;
+  stop?.abort();
   notes.log(`download of ${file} paused (${why})`);
 }
 
 function ensureModel(c: Config): boolean {
-  if (dl.proc && dl.file !== c.file) pauseDownload(c.file + " named instead");
+  if (dl.stop && dl.file !== c.file) pauseDownload(c.file + " named instead");
   if (isFile(modelPath(c))) return true;
-  if (dl.proc || now() < dl.retryAt) return false;
+  if (dl.stop || now() < dl.retryAt) return false;
   const part = modelPath(c) + ".part";
-  let proc: Subprocess;
-  try {
-    proc = spawn(["curl", "-fsSL", "--retry", "5", "--retry-delay", "5", "-C", "-", "-o", part, c.url], {
-      stdin: "ignore",
-      stdout: "inherit",
-      stderr: "inherit",
-      windowsHide: true,
-    });
-  } catch (e) {
-    dl.retryAt = now() + downloadRetry;
-    notes.log(`download of ${c.file} failed (${errText(e)}), retrying in ${downloadRetry / 1000}s`);
-    return false;
-  }
-  dl = { proc, file: c.file, total: 0, retryAt: 0 };
+  const stop = new AbortController();
+  dl = { stop, file: c.file, total: 0, retryAt: 0 };
   notes.log(`downloading ${c.file} from ${new URL(c.url).host}`);
   remoteSize(c.url).then((n) => {
-    if (dl.proc === proc) dl.total = n;
+    if (dl.stop === stop) dl.total = n;
   });
-  proc.exited.then((code) => {
-    if (dl.proc !== proc) return;
-    dl.proc = undefined;
-    if (code === 0) {
+  fetchTo(c.url, part, stop.signal).then(
+    () => {
+      if (dl.stop !== stop) return;
+      dl.stop = undefined;
       try {
         renameSync(part, join(modelDir, dl.file));
         notes.log(dl.file + " downloaded");
-        return;
-      } catch {}
-    }
-    dl.retryAt = now() + downloadRetry;
-    notes.log(`download of ${dl.file} failed (${proc.signalCode ?? code}), retrying in ${downloadRetry / 1000}s`);
-  });
+      } catch (e) {
+        dl.retryAt = now() + downloadRetry;
+        notes.log(`download of ${dl.file} not kept (${errText(e)}), retrying in ${downloadRetry / 1000}s`);
+      }
+    },
+    (e) => {
+      if (dl.stop !== stop) return;
+      dl.stop = undefined;
+      dl.retryAt = now() + downloadRetry;
+      notes.log(`download of ${dl.file} failed (${errText(e)}), retrying in ${downloadRetry / 1000}s`);
+    },
+  );
   return false;
 }
 
@@ -230,7 +258,7 @@ let installed: Installed | undefined;
 function replaceOld(c: Config) {
   if (installed && installed.url === c.url) return;
   if (installed && installed.file) {
-    if (dl.proc) pauseDownload(c.file + " named instead");
+    if (dl.stop) pauseDownload(c.file + " named instead");
     stopServer();
     for (const f of [installed.file, installed.file + ".part"]) {
       try {
@@ -427,7 +455,7 @@ function claim(c: Config): Record<string, any> {
     machine: memTotal(),
   };
   if (c.host) {
-    const d = dl.proc ? { done: sizeOf(modelPath(c) + ".part"), total: dl.total } : null;
+    const d = dl.stop ? { done: sizeOf(modelPath(c) + ".part"), total: dl.total } : null;
     Object.assign(out, {
       file: c.file,
       size: sizeOf(modelPath(c)),
@@ -469,7 +497,7 @@ async function tick() {
   else tools.remove();
   toolState = st;
   if (!c.host || !c.file) {
-    if (dl.proc) pauseDownload(c.host ? "[model] url cleared" : "[model] host is off");
+    if (dl.stop) pauseDownload(c.host ? "[model] url cleared" : "[model] host is off");
     stopServer();
     fitNeed = 0;
     fitWhy = !c.host
@@ -518,6 +546,7 @@ export async function main(): Promise<number> {
   try {
     rmSync(claimFile);
   } catch {}
-  for (const p of [srv.proc, dl.proc]) if (p) stop(p);
+  if (srv.proc) stop(srv.proc);
+  dl.stop?.abort();
   return 0;
 }

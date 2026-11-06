@@ -23,7 +23,7 @@ import { vpnState } from "./tailnet.ts";
 // start bring-up, safe to re-run: checks, the one-time admin setup, then
 // the rebuild, which starts the service and waits on the frontend
 export async function start() {
-  if (keysMissing()) throw fail(`no TS_AUTHKEY in ${envPath()}, run phosphorus to enter the keys`);
+  if (keysMissing()) throw fail(`no MESH_KEY in ${envPath()}, run phosphorus to enter the keys`);
   envfile.lock(envPath());
   await os.prepareOS(await os.svcActive());
   const todo = await os.needSetup();

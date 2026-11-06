@@ -1,5 +1,5 @@
 // the tools run beside phosphorus, pinned and checked: tailscale on Linux, cloudflared
-// everywhere; fetched into state/cache/tools only when a pin moves, never shipped
+// everywhere, headscale on the control host; fetched into state/cache/tools when a pin moves
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,11 +10,27 @@ import { os } from "./os.ts";
 
 export const Tailscale = "1.104.1";
 export const Cloudflared = "2026.10.4";
+export const Headscale = "0.29.7";
 
 const cf = `https://github.com/cloudflare/cloudflared/releases/download/${Cloudflared}`;
 
 // one pinned download: its files, out of a .tgz when members names them
-type Pin = { name: string; ver: string; url: string; sha256: string; files: Record<string, string> };
+export type Pin = { name: string; ver: string; url: string; sha256: string; files: Record<string, string> };
+
+// headscale, the mesh's control server, fetched on Linux only by the host running it
+export function headscalePin(arch = process.arch): Pin {
+  const a = arch === "arm64" ? "arm64" : "amd64";
+  return {
+    name: "headscale",
+    ver: Headscale,
+    url: `https://github.com/juanfont/headscale/releases/download/v${Headscale}/headscale_${Headscale}_linux_${a}`,
+    sha256:
+      a === "arm64"
+        ? "4357b38ac63c1e425f190819fd2ee078f13e01a6d7559b15811154e2475df5e4"
+        : "e827fc9b12d958bc95b081c4401dd63f8e0471d025b45b508535a920532150a8",
+    files: { headscale: "" },
+  };
+}
 
 // the pins for this OS and arch; tailscale only where phosphorus runs its own
 export function pins(platform = process.platform, arch = process.arch, ownTailscale = true): Pin[] {
@@ -119,17 +135,21 @@ async function install(p: Pin, dir: string) {
 // every pin here at its version, fetched only when it moved or a file went missing;
 // the names fetched
 export async function ensureTools(): Promise<string[]> {
+  const got: string[] = [];
+  for (const p of pins(process.platform, process.arch, !isLinux || os.ownTailscale()))
+    if (await ensurePin(p)) got.push(p.name);
+  return got;
+}
+
+// one pin here at its version; true when it was fetched
+export async function ensurePin(p: Pin): Promise<boolean> {
   const dir = os.libexec();
   mkdirSync(dir, { recursive: true, mode: 0o755 });
   const have = versions();
-  const got: string[] = [];
-  for (const p of pins(process.platform, process.arch, !isLinux || os.ownTailscale())) {
-    if (have[p.name] === p.ver && Object.keys(p.files).every((f) => fileExists(join(dir, f)))) continue;
-    say(`fetching ${p.name} ${p.ver}`);
-    await install(p, dir);
-    have[p.name] = p.ver;
-    writeFileSync(versionsFile(), JSON.stringify(have) + "\n", { mode: 0o644 });
-    got.push(p.name);
-  }
-  return got;
+  if (have[p.name] === p.ver && Object.keys(p.files).every((f) => fileExists(join(dir, f)))) return false;
+  say(`fetching ${p.name} ${p.ver}`);
+  await install(p, dir);
+  // read again, another pin may have landed meanwhile
+  writeFileSync(versionsFile(), JSON.stringify({ ...versions(), [p.name]: p.ver }) + "\n", { mode: 0o644 });
+  return true;
 }

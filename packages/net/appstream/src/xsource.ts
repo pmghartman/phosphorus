@@ -1,20 +1,14 @@
-// the X source: a Linux host's app on its own headless X server, run by the agent
-// (agent.py: the display's window manager, input through XTEST, title, cursor and
-// clipboard, and the pixels as rectangles the moment they change); video, when wanted,
-// from ffmpeg grabbing that display (encode.ts) into FLV cut into frames
+// the X source: a Linux host's app on its own headless X server, run by the agent (agent.js,
+// run by the host's phosphorus as bun); video from ffmpeg grabbing that display into FLV frames
 
-import agentPy from "./agent.py" with { type: "text" };
-import { type Caps, type Encoder, encodeCmd, missing, parseCaps, probeCmd } from "./encode.ts";
+import agentJs from "./agent.js" with { type: "text" };
+import { type Caps, type Encoder, encodeCmd, missing, parseCaps, probeCmd, shq } from "./encode.ts";
 import { FlvReader } from "./flv.ts";
 import { keycodeOf, keysymOf } from "./keys.ts";
 import type { Chan, Opened, PixelSink, Runner, Sink, Source, Video, VideoSink } from "./session.ts";
 
-const python = (src: string) => {
-  const b64 = Buffer.from(Bun.deflateSync(new TextEncoder().encode(src), { level: 9 })).toString("base64");
-  return `exec python3 -c "import base64,zlib;exec(compile(zlib.decompress(base64.b64decode('${b64}'),-15),'phosphorus-appstream','exec'))"`;
-};
-
-let agentCmd = "";
+// the agent as one ssh command line, its source the argument to bun's -e
+export const agentCmd = (bun: string) => `exec env BUN_BE_BUN=1 ${shq(bun)} -e ${shq(agentJs)}`;
 
 const capsCache = new WeakMap<Runner, Promise<Caps>>();
 export function caps(r: Runner): Promise<Caps> {
@@ -90,8 +84,7 @@ export class XSource implements Source {
     if (need) throw new Error(need);
     this.encoders = [...c.encoders];
     this.canVideo = c.ffmpeg;
-    agentCmd ||= python(agentPy);
-    const a = await this.runner.run(agentCmd);
+    const a = await this.runner.run(agentCmd(c.bun));
     this.agent = a;
     let ready = false;
     await new Promise<void>((ok, no) => {

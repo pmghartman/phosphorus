@@ -1,5 +1,5 @@
 // --- settings: one window, its sections down a rail in three groups (you: profile, appearance;
-// the mesh: hosts, agents, users; phosphorus: update, about), a section with parts showing them
+// the mesh: hosts, agents, users, network; phosphorus: update, about), a section with parts showing them
 // under it in the rail while open; drawn on a press, its borrowed views given back on leaving
 
 import { dkAppsChanged } from '../desktop/desk.ts';
@@ -11,10 +11,11 @@ import { dk, st } from '../lib/state.ts';
 import { agentsSection } from './agents.ts';
 import { appearanceSection } from './appearance.ts';
 import { HOST_SUBS, hostsSection, hostsSub } from './hosts.ts';
+import { networkSection } from './network.ts';
 import { PROFILE_SUBS, profileSection, profileSub } from './profile.ts';
 import { usersSection } from './users.ts';
 
-export type SettingsAt = 'profile' | 'appearance' | 'users' | 'agents' | 'hosts' | 'update' | 'about';
+export type SettingsAt = 'profile' | 'appearance' | 'users' | 'agents' | 'hosts' | 'network' | 'update' | 'about';
 
 // a section: drawn into the body, handing back what it borrowed when left
 interface Section {
@@ -87,6 +88,15 @@ const SECTIONS: Section[] = [
     blurb: 'who logs in, who is admin',
     admin: true,
     draw: usersSection,
+  },
+  {
+    id: 'network',
+    label: 'network',
+    glyph: () => DK_GLYPHS.lock!,
+    group: 'mesh',
+    blurb: 'control server, relay, join keys',
+    admin: true,
+    draw: networkSection,
   },
   {
     id: 'update',

@@ -213,7 +213,7 @@ async function startup(background: boolean) {
   void refresh();
   // opened by hand: the frontend (or the keys); at login: the tray alone
   const { keys, domain } = await keyState();
-  if (!keys.TS_AUTHKEY) await openKeys();
+  if (!keys.MESH_KEY && !keys.TS_AUTHKEY) await openKeys();
   else if (!background) os.openURL(frontendURL(domain));
   const req = join(app.home, "state/update-request.json");
   // the menu kept current with changes made elsewhere (the cli, the Tailscale app)
@@ -230,7 +230,7 @@ async function startup(background: boolean) {
 // the keys asked for first when there are none, else the frontend in the browser
 async function openMain() {
   const { keys, domain } = await keyState();
-  if (!keys.TS_AUTHKEY) return openKeys();
+  if (!keys.MESH_KEY && !keys.TS_AUTHKEY) return openKeys();
   os.openURL(frontendURL(domain));
 }
 

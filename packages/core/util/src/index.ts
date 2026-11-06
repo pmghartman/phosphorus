@@ -24,6 +24,7 @@ export { env, envInt } from "./env.ts";
 export * from "./hostconf.ts";
 export * from "./log.ts";
 export * from "./net.ts";
+export { hasNvidia, type NvGpu, nvidiaGpus } from "./nvml.ts";
 export * from "./proc.ts";
 
 export const FrontendPort = envInt("FRONTEND_PORT", 8090);

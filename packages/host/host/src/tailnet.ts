@@ -1,5 +1,5 @@
-// Tailscale: its status, signing in to the mesh's tailnet, the pinned
-// installer on macOS and Windows, and the mesh's keys from a peer
+// Tailscale: its status, signing in to the mesh's control server or the hosted one,
+// the pinned installer on macOS and Windows, and the mesh's keys from a peer
 import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,9 +29,29 @@ export async function vpnState(): Promise<string> {
   return typeof st?.BackendState === "string" ? st.BackendState : "";
 }
 
-// tailnetJoin Tailscale in its given state signed in to the mesh's tailnet: with
-// TS_AUTHKEY when it isn't signed in, and on a first join when an existing
-// install is signed in to a tailnet where no peer has the mesh's keys
+export const hostedControl = "https://controlplane.tailscale.com";
+
+// the prefs a bare `up` must repeat: the control server and the name, when set
+export async function tailscalePrefs(): Promise<{ control: string; hostname: string }> {
+  const r = await runCmd([os.tailscaleCLI(), "debug", "prefs"], { timeoutMs: 10_000 });
+  const p = parse(r.stdout);
+  const control = typeof p?.ControlURL === "string" ? p.ControlURL.replace(/\/+$/, "") : "";
+  return { control: control || hostedControl, hostname: typeof p?.Hostname === "string" ? p.Hostname : "" };
+}
+
+// the flags that keep those prefs on an `up` that doesn't reset them
+export const keepFlags = (p: { control: string; hostname: string }) => [
+  ...(p.control !== hostedControl ? ["--login-server=" + p.control] : []),
+  ...(p.hostname ? ["--hostname=" + p.hostname] : []),
+];
+
+// the frontend's ask, on the mesh's move: the control server to join on this start
+export const switchFile = () => at("state", "run", "control-switch");
+
+// tailnetJoin Tailscale in its given state signed in to the mesh's tailnet: onto
+// MESH_KEY's control server when new, signed out, or asked to move; else with
+// TS_AUTHKEY when it isn't signed in, and on a first join when an existing install
+// is signed in to a tailnet where no peer has the mesh's keys
 export async function tailnetJoin(state: string) {
   const env = envfile.read(envPath());
   const joined = at("state", "run", "tailnet-joined");
@@ -40,12 +60,28 @@ export async function tailnetJoin(state: string) {
     writeFileSync(joined, new Date().toISOString().replace(/\.\d+Z$/, "Z") + "\n");
   };
   const known = !!env.BASE_DOMAIN || !!env.ADMIN_PASS || fileExists(joined);
+  const mk = envfile.parseMeshKey(env.MESH_KEY);
+  const prefs = await tailscalePrefs();
+  if (mk && prefs.control !== mk.url) {
+    const asked = fileExists(switchFile());
+    if (asked || !known || (state !== "Running" && state !== "Stopped")) {
+      await joinControl(mk, state);
+      rmSync(switchFile(), { force: true });
+      mark();
+      return;
+    }
+  } else rmSync(switchFile(), { force: true });
   // turned off (by hand): back up as the same node, no re-auth
   if (state === "Stopped" && known) {
-    if ((await runCmd([os.tailscaleCLI(), "up", ...os.tailscaleUpFlags()])).ok) {
+    if ((await runCmd([os.tailscaleCLI(), "up", ...keepFlags(prefs), ...os.tailscaleUpFlags()])).ok) {
       await os.tailscaleKeepUp();
       return;
     }
+  }
+  if (mk && prefs.control === mk.url && state === "Running") {
+    await os.tailscaleKeepUp();
+    if (!known) mark();
+    return;
   }
   if (state === "Running") {
     if (known) {
@@ -61,9 +97,17 @@ export async function tailnetJoin(state: string) {
     } catch {}
     say("Tailscale is signed in to a tailnet without the mesh, switching to TS_AUTHKEY's");
   }
+  if (mk) return joinControl(mk, state).then(mark);
   const key = env.TS_AUTHKEY;
-  if (!key) throw fail("Tailscale isn't on the mesh's tailnet and there's no TS_AUTHKEY in .env to sign in with");
-  const a = ["up", "--reset", "--timeout=90s", "--authkey=" + key, ...os.tailscaleUpFlags()];
+  if (!key) throw fail("Tailscale isn't on the mesh's tailnet and there's no MESH_KEY in .env to join with");
+  const a = [
+    "up",
+    "--reset",
+    "--timeout=90s",
+    "--login-server=" + hostedControl,
+    "--authkey=" + key,
+    ...os.tailscaleUpFlags(),
+  ];
   if (state === "Running") a.push("--force-reauth");
   if (process.env.TS_HOSTNAME) a.push("--hostname=" + process.env.TS_HOSTNAME);
   say("signing Tailscale in with TS_AUTHKEY...");
@@ -77,6 +121,25 @@ export async function tailnetJoin(state: string) {
     throw fail(`couldn't sign Tailscale in (${why}); TS_AUTHKEY in .env must be reusable and unexpired`);
   }
   mark();
+}
+
+// joinControl signed in to the mesh's own control server with its join key, under
+// this host's name on the tailnet it leaves, so the mesh still knows it
+async function joinControl(mk: envfile.MeshKey, state: string) {
+  const self = parse(await tailscaleStatus())?.Self;
+  const name = process.env.TS_HOSTNAME || String(self?.DNSName ?? "").split(".")[0] || "";
+  const a = ["up", "--reset", "--timeout=90s", "--login-server=" + mk.url, "--authkey=" + mk.key];
+  if (name) a.push("--hostname=" + name);
+  a.push(...os.tailscaleUpFlags());
+  if (state === "Running" || state === "Stopped") a.push("--force-reauth");
+  say(`joining the mesh's control server ${mk.url}...`);
+  const r = await runCmd([os.tailscaleCLI(), ...a]);
+  if (!r.ok) {
+    eprint(r.output);
+    const why = r.output.trim().split("\n").pop() || r.error || `exit status ${r.code}`;
+    throw fail(`couldn't join ${mk.url} (${why}); MESH_KEY in .env must be unexpired and its server up`);
+  }
+  await os.tailscaleKeepUp();
 }
 
 // tailscaleVersion the installer setup fetches when the machine has no Tailscale

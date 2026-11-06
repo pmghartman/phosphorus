@@ -1,6 +1,7 @@
-// guests swept after their three days: tag:guest devices removed from the tailnet
-// with the Tailscale API token, by the first live host
+// guests swept after their three days on the hosted tailnet: tag:guest devices
+// removed with the Tailscale API token, by the first live host
 import { env, errText, marshal, Notes, now, obj } from "@phosphorus/util";
+import { onOwnControl } from "./control.ts";
 
 const notes = new Notes("mesh");
 const tsAPIKey = env("TS_API_KEY");
@@ -41,7 +42,8 @@ let lastGuestSweep = 0;
 
 // tag:guest devices older than their three days removed from the tailnet
 export function sweepGuests() {
-  if (!tsAPIKey || now() - lastGuestSweep < guestSweepMS) return;
+  // on the mesh's own control server its host sweeps them instead
+  if (!tsAPIKey || onOwnControl() || now() - lastGuestSweep < guestSweepMS) return;
   lastGuestSweep = now();
   void (async () => {
     try {

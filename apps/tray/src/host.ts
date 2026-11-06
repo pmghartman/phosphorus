@@ -38,7 +38,10 @@ export async function keyState(): Promise<KeyState> {
 
 export const keyStatus = async () => (await keyState()).keys;
 
-export const keysMissing = async () => !(await keyStatus()).TS_AUTHKEY;
+export const keysMissing = async () => {
+  const k = await keyStatus();
+  return !k.MESH_KEY && !k.TS_AUTHKEY;
+};
 
 // whether the service and Tailscale are up, both false when the host can't say
 export async function hostState(): Promise<{ running: boolean; vpn: boolean }> {

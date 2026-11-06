@@ -1,6 +1,6 @@
 // who is on the tailnet: tailscale's own status, read now and then; the trust
 // map behind the tailnet gate; which hosts tailscale calls offline, and since when
-import { errText, flushWrites, Notes, now, obj, run, SelfHost } from "@phosphorus/util";
+import { errText, flushWrites, Notes, noteMagicDNS, now, obj, run, SelfHost } from "@phosphorus/util";
 
 const notes = new Notes("mesh");
 
@@ -64,6 +64,7 @@ export async function discoverPeers(): Promise<Peer[] | undefined> {
   }
   selfIP = v4(self.TailscaleIPs ?? []);
   trustIPs = trust;
+  noteMagicDNS(self.DNSName ?? "");
   if (SelfHost) {
     const renamed = hostOf(self.DNSName ?? "");
     if (renamed && renamed !== SelfHost) {

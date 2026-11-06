@@ -99,7 +99,7 @@ export function lineTime(l: string): Date | undefined {
 }
 
 // hostLogs this host's logs, their last lines filtered: source phosphorus (all
-// of it), frontend, cloudflared, model or another role's tag; match,
+// of it), frontend, cloudflared, model, control or another role's tag; match,
 // level, since, until
 export async function hostLogs(p: Record<string, any>): Promise<Res> {
   let lines = Math.trunc(jsNumber(p.lines)) || 0;

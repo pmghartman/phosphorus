@@ -1,8 +1,5 @@
-// a Linux host's app, the most direct way that host has: the agent (xsource.ts) when
-// the host has python3 and Xvfb, which sends the pixels as they change and video
-// through ffmpeg when the picture keeps moving; afterglow (its release's `afterglow
-// --stdio`, run over ssh as the viewer's login) when it doesn't, video alone. Either
-// way the app runs as the viewer's login on an X server of its own
+// a Linux host's app: the agent (xsource.ts) where it has phosphorus and Xvfb, pixels and ffmpeg video;
+// afterglow (`afterglow --stdio` over ssh) where it does not, video alone; the app as the viewer's login
 
 import { AfterglowSource, type Transport } from "@phosphorus/afterglow";
 import { missing, shq } from "./encode.ts";
@@ -56,7 +53,7 @@ export class LinuxSource implements Source {
     const c = await caps(this.runner);
     const need = missing(c);
     if (need) throw new Error(need);
-    if (c.python && c.xvfb) {
+    if (c.bun && c.xvfb) {
       this.inner = new XSource(this.runner);
       return this.inner.open(s, sink);
     }

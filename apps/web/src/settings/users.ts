@@ -32,7 +32,10 @@ function invite(): HTMLElement {
       const r = await fetch('/api/join-key', { method: 'POST' });
       const got = await r.json().catch(() => ({}));
       if (!r.ok || !got.key) throw new Error(got.error || `status ${r.status}`);
-      const cmd = `tailscale up --auth-key=${got.key}`;
+      // the mesh's own control server named when it has one
+      const cmd = got.url
+        ? `tailscale up --login-server=${got.url} --auth-key=${got.key}`
+        : `tailscale up --auth-key=${got.key}`;
       const row = el('div', 'join-key-cmd');
       row.title = 'single use, 3 days';
       const copy = Object.assign(el('button', 'copy-btn'), { type: 'button', title: 'copy', ariaLabel: 'copy' });

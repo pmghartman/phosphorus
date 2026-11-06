@@ -29,6 +29,7 @@ import {
 } from "@phosphorus/util";
 import { PeerCloseWrongHost, type PeerFrame, type PeerHello, type PeerReq, type PeerState } from "@phosphorus/wire";
 import type { Conn } from "@phosphorus/wsock";
+import { controlTick } from "./control.ts";
 import {
   DiscoverIdleMS,
   discovered,
@@ -44,7 +45,8 @@ import { jsString, sweepGuests, truthy } from "./guests.ts";
 import { HostHeader, Link } from "./link.ts";
 import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
 
-export { HostHeader, hostOf, offlineMS, trusted };
+export * as control from "./control.ts";
+export { HostHeader, hostOf, lastKnown, offlineMS, trusted };
 
 const selfHost = SelfHost;
 const selfHostFile = join(RunDir, "self-host");
@@ -561,8 +563,15 @@ async function tick() {
   swap(merged, (h) => hostIPs.get(h) ?? "");
   if (curLock != null || hooks.ownLock() != null) hot = true;
   if (selfHost && live.length && live[0] === selfHost) sweepGuests();
+  if (now() - lastControl >= controlEveryMS) {
+    lastControl = now();
+    void controlTick(upHosts());
+  }
   if (hot) markHot();
 }
+
+let lastControl = 0;
+const controlEveryMS = 5000;
 
 // the loops: discovery on its own clock, the tick on the mesh's, the pushes on changes
 export function start(h: Hooks) {

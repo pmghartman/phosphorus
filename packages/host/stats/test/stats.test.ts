@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hasNvidia, nvidiaGpus } from "@phosphorus/util";
 
 const tmp = mkdtempSync(join(tmpdir(), "stats-"));
 process.env.STATE_DIR = tmp;
@@ -106,23 +107,18 @@ test("linux load, uptime, cpu model, amd clock", () => {
   expect(linux.amdClock("")).toEqual([null, null]);
 });
 
-// --- nvidia-smi ---------------------------------------------------------------
+// --- NVML ---------------------------------------------------------------------
 
-test("nvidia-smi rows", () => {
-  const g = stats.parseNvidia(data("nvidia-smi.txt"));
-  expect(g).toEqual([
-    {
-      name: "nvidia geforce rtx 3080",
-      util: 37,
-      memUsed: 2048 * (1 << 20),
-      memTotal: 10240 * (1 << 20),
-      temp: 61,
-      mhz: 1725,
-      mhzMax: 1980,
-    },
-    { name: "nvidia t400", util: 0, memUsed: 0, memTotal: 2048 * (1 << 20), temp: null, mhz: null, mhzMax: null },
-  ]);
-  expect(stats.parseNvidia("")).toEqual([]);
+// whatever gpus this machine has, none where there's no nvidia driver
+test("nvidia gpus through NVML", () => {
+  const g = nvidiaGpus();
+  expect(hasNvidia()).toBe(g.length > 0);
+  for (const x of g) {
+    expect(x.name).toBe(x.name.toLowerCase());
+    expect(x.memTotal).toBeGreaterThan(0);
+    expect(x.memUsed).toBeLessThanOrEqual(x.memTotal);
+    for (const v of [x.temp, x.mhz, x.mhzMax]) expect(v === null || v > 0).toBe(true);
+  }
 });
 
 // --- darwin: commands -------------------------------------------------------

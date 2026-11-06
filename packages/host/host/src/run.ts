@@ -1,6 +1,6 @@
 // phosphorus run, the service's main process: tailscale checked, the
-// frontend, the tunnel and the model daemon as labelled children,
-// all down with a core one
+// frontend, the tunnel, the model daemon and the control server as labelled
+// children, all down with a core one
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as envfile from "@phosphorus/envfile";
@@ -16,6 +16,7 @@ import {
   fail,
   fileExists,
   home,
+  isLinux,
   isModelHost,
   print,
   say,
@@ -196,7 +197,18 @@ export async function runMain(stop: Stop): Promise<number> {
   } catch (e) {
     say(errText(e));
   }
-  const dns = await tailnetSelf();
+  // the control server up before the join, this host's own tailscale among its clients
+  const control = isLinux
+    ? child({ role: "control", graceMs: 15_000, prefix: true, argv: [binPath("phosphorus"), "control"], env: runEnv() })
+    : undefined;
+  if (control) start(control);
+  let dns: string;
+  try {
+    dns = await tailnetSelf();
+  } catch (e) {
+    if (control) await stopChild(control);
+    throw e;
+  }
   say(`on the tailnet as ${dns}`);
   await fillMeshKeys();
   // no domain: the tailnet alone, http://<host>/
@@ -240,6 +252,7 @@ export async function runMain(stop: Stop): Promise<number> {
   try {
     start(frontend);
   } catch (e) {
+    if (control) await stopChild(control);
     throw fail(`couldn't start the frontend: ${errText(e)}`);
   }
   // the ingress answering before the tunnel hands it anything
@@ -251,6 +264,7 @@ export async function runMain(stop: Stop): Promise<number> {
       start(tunnel);
     } catch (e) {
       await stopChild(frontend);
+      if (control) await stopChild(control);
       throw fail(`couldn't start cloudflared: ${errText(e)}`);
     }
     kids.push(tunnel);
@@ -262,7 +276,7 @@ export async function runMain(stop: Stop): Promise<number> {
       say(`couldn't start ${c.role}: ${errText(e)}`);
     }
   }
-  const all = [...kids, ...extra];
+  const all = [...kids, ...extra, ...(control ? [control] : [])];
   say(`all up: ${all.map((c) => c.role).join(" ")}`);
   os.watchUpdateRequests(stop);
 

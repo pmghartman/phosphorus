@@ -230,6 +230,7 @@ test("small helpers", () => {
   expect(lastLine("a\nb\n")).toBe("b");
   expect(lastLine("", /x/)).toBe("");
   expect(keySet({ TS_AUTHKEY: "k", BASE_DOMAIN: "" })).toEqual({
+    MESH_KEY: false,
     TS_AUTHKEY: true,
     BASE_DOMAIN: false,
     TUNNEL_TOKEN: false,
@@ -277,3 +278,49 @@ test("the tools pinned per OS, fetched only when a pin moves or a file is gone",
   }
   expect(Cloudflared).toMatch(/^\d{4}\.\d+\.\d+$/);
 }, 30_000);
+
+test("headscale pinned apart from every host's tools", async () => {
+  const { headscalePin, Headscale, pins } = await import("../src/tools.ts");
+  expect(pins("linux", "x64").some((p) => p.name === "headscale")).toBe(false);
+  const p = headscalePin("arm64");
+  expect(p.url).toBe(
+    `https://github.com/juanfont/headscale/releases/download/v${Headscale}/headscale_${Headscale}_linux_arm64`,
+  );
+  expect(p.files).toEqual({ headscale: "" });
+  expect(headscalePin("x64").sha256).toMatch(/^[0-9a-f]{64}$/);
+});
+
+test("a mesh join key round-trips, anything else refused", async () => {
+  const envfile = await import("@phosphorus/envfile");
+  const k = envfile.formatMeshKey({ url: "https://hs.mulab.dev", key: "hskey-auth-abc" });
+  expect(k.startsWith("phos1.")).toBe(true);
+  expect(envfile.parseMeshKey(` "${k}"\n`)).toEqual({ url: "https://hs.mulab.dev", key: "hskey-auth-abc" });
+  expect(envfile.parseMeshKey("tskey-auth-abc")).toBeUndefined();
+  expect(envfile.parseMeshKey("phos1.notbase64json")).toBeUndefined();
+  const http = envfile.formatMeshKey({ url: "http://hs.mulab.dev", key: "k" });
+  expect(envfile.parseMeshKey(http)).toBeUndefined();
+  expect(envfile.hasJoinKey({ MESH_KEY: k })).toBe(true);
+  expect(envfile.hasJoinKey({ TS_AUTHKEY: "t" })).toBe(true);
+  expect(envfile.hasJoinKey({ BASE_DOMAIN: "x" })).toBe(false);
+});
+
+test("headscale's config from the frontend's ask", async () => {
+  const { controlConfig, controlPolicy, readSpec } = await import("../src/control.ts");
+  const spec = { url: "https://hs.mulab.dev", baseDomain: "mesh.mulab.dev", relay: false };
+  const c = controlConfig(spec, "/d", "/s.sock");
+  expect(c.server_url).toBe("https://hs.mulab.dev");
+  expect(c.tls_letsencrypt_hostname).toBe("hs.mulab.dev");
+  expect(c.tls_letsencrypt_challenge_type).toBe("TLS-ALPN-01");
+  expect(c.derp.server.enabled).toBe(false);
+  expect(c.derp.urls).toEqual(["https://controlplane.tailscale.com/derpmap/default"]);
+  expect(c.dns.base_domain).toBe("mesh.mulab.dev");
+  expect(c.node.expiry).toBe(0);
+  expect(c.policy.path).toBe(join("/d", "policy.json"));
+  expect(controlConfig({ ...spec, relay: true }).derp.server.enabled).toBe(true);
+  expect(Object.keys(controlPolicy().tagOwners)).toEqual(["tag:host", "tag:guest"]);
+  const f = join(dir, "spec.json");
+  writeFileSync(f, JSON.stringify({ url: "http://plain", baseDomain: "x" }));
+  expect(readSpec(f)).toBeUndefined();
+  writeFileSync(f, JSON.stringify({ ...spec, relay: "yes" }));
+  expect(readSpec(f)).toEqual({ ...spec, relay: false, ipv4: undefined, ipv6: undefined });
+});

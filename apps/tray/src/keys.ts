@@ -79,12 +79,12 @@ async function saveKeys(req: Request, start: () => Promise<string>): Promise<Res
     body += `${k}=${v}\n`;
   }
   if (!body) {
-    if (await keysMissing()) return reply(400, { error: "the Tailscale auth key is needed" });
+    if (await keysMissing()) return reply(400, { error: "the mesh join key is needed" });
     return reply(200, { starting: false });
   }
   const r = await hostCmd(["keys", "--stdin"], body);
   if (!r.ok) return reply(400, { error: r.output.trim() || r.error || "keys failed" });
-  if (await keysMissing()) return reply(400, { error: "the Tailscale auth key is needed" });
+  if (await keysMissing()) return reply(400, { error: "the mesh join key is needed" });
   srv!.done = false;
   srv!.err = "";
   start().then((e) => {

@@ -34,7 +34,7 @@ Version: $VER
 Architecture: $ARCH
 Maintainer: Phosphorus <https://github.com/pmghartman/phosphorus>
 Depends: openssh-server, sudo
-Recommends: git, ripgrep, libgomp1, curl, iproute2, ca-certificates
+Recommends: git, ripgrep, libgomp1, iproute2, ca-certificates
 Installed-Size: $(du -sk --exclude=DEBIAN "$T" | cut -f1)
 Section: misc
 Priority: optional

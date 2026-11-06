@@ -3,9 +3,9 @@
 import { cpus } from "node:os";
 import { basename, join } from "node:path";
 import { snapshot } from "@phosphorus/procs";
-import { DataDir, FrontendPort, marshal, now, readJSON, run, writeJSONAtomic } from "@phosphorus/util";
+import { DataDir, FrontendPort, marshal, now, nvidiaGpus, readJSON, writeJSONAtomic } from "@phosphorus/util";
 import { type Conn, dial } from "@phosphorus/wsock";
-import { type CpuT, type Gpu, gpuMS, num, type RxTx, read, round, runes, type Sys } from "./common.ts";
+import { type CpuT, type Gpu, gpuMS, type RxTx, read, round, runes, type Sys } from "./common.ts";
 import { darwin } from "./darwin.ts";
 import { linux } from "./linux.ts";
 import { win32 } from "./win32.ts";
@@ -184,52 +184,16 @@ function trendNow(): Trend | undefined {
 
 // --- gpus ------------------------------------------------------------------------
 
-const nvsmi = ["nvidia-smi"];
-let nvsmiAt = 0;
+// nvidia's from NVML in process, at most every gpuMS
 let nvidia: Gpu[] = [];
-let gpuBusy = false;
 let gpuAt = 0;
 
-// nvidia-smi's csv rows; a field it can't read ([N/A]) left null, never a false 0
-export function parseNvidia(out: string): Gpu[] {
-  const z = (s: string) => (Number.isNaN(num(s)) ? 0 : num(s));
-  const opt = (s: string) => (!Number.isNaN(num(s)) && num(s) !== 0 ? num(s) : null);
-  const list: Gpu[] = [];
-  for (const l of out.split("\n")) {
-    if (l === "") continue;
-    const p = l.split(",");
-    while (p.length < 7) p.push("");
-    list.push({
-      name: p[0]!.trim().toLowerCase(),
-      util: z(p[1]!),
-      memUsed: z(p[2]!) * (1 << 20),
-      memTotal: z(p[3]!) * (1 << 20),
-      temp: opt(p[4]!),
-      mhz: opt(p[5]!),
-      mhzMax: opt(p[6]!),
-    });
-  }
-  return list;
-}
-
-function refreshNvidia() {
-  if (gpuBusy || nvsmiAt >= nvsmi.length || now() - gpuAt < gpuMS) return;
-  gpuBusy = true;
-  const bin = nvsmi[nvsmiAt]!;
-  const query = "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,clocks.sm,clocks.max.sm";
-  run([bin, query, "--format=csv,noheader,nounits"], { timeoutMs: 5000 })
-    .then((r) => {
-      // a binary that isn't there, not retried
-      if (r.error) nvsmiAt++;
-      nvidia = r.ok ? parseNvidia(r.stdout) : [];
-    })
-    .finally(() => ((gpuBusy = false), (gpuAt = now())));
-}
-
 function gpus(): Gpu[] {
-  refreshNvidia();
-  const nv = [...nvidia];
-  return nv.concat(sys.vendorGpus(nv.length > 0));
+  if (now() - gpuAt >= gpuMS) {
+    nvidia = nvidiaGpus();
+    gpuAt = now();
+  }
+  return [...nvidia].concat(sys.vendorGpus(nvidia.length > 0));
 }
 
 // --- processes -----------------------------------------------------------------

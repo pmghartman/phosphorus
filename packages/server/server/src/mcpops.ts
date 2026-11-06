@@ -88,7 +88,8 @@ async function localOp(op: string, p: Record<string, any>): Promise<Res> {
 
 const started = now();
 
-// localHealth this host's tunnel as cloudflared's /ready says, *.<domain> through it, and its frontend
+// localHealth this host's tunnel as cloudflared's /ready says, *.<domain> through it,
+// its control server, and its frontend
 async function localHealth(): Promise<Record<string, any>> {
   let tunnel: Record<string, any> = { state: "off", why: "no TUNNEL_TOKEN, tailnet only" };
   if (process.env.TUNNEL_TOKEN) {
@@ -101,11 +102,23 @@ async function localHealth(): Promise<Record<string, any>> {
       if (res.status !== 200 || n === 0) tunnel = { state: "down", connections: n, why: "no edge connection ready" };
     } catch {}
   }
+  // the control server this host's tailscale is on, and headscale here when this is its host
+  const c = peers.control.control();
+  const control: Record<string, any> = { on: peers.control.onControl() };
+  if (c?.host === selfHost) {
+    try {
+      const res = await fetch(c.url + "/health", { signal: AbortSignal.timeout(3000) });
+      control.serving = res.ok ? "up" : `down: ${c.url}/health said ${res.status}`;
+    } catch (e) {
+      control.serving = `down: ${c.url} not answering: ${e instanceof Error ? e.message : e}`;
+    }
+  }
   // *.<domain> through the tunnel: what puts a blank-mode service on a subdomain
   return {
     host: selfHost,
     version: Version(),
     tunnel,
+    control,
     wildcard: wildcard(),
     uptimeSec: Math.trunc((now() - started) / 1000),
   };

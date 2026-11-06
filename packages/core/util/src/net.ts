@@ -20,6 +20,18 @@ export function noteTailnetIPs(ips: Record<string, string>) {
   knownIPs = new Map(Object.entries(ips).filter(([, ip]) => isIPv4(ip)));
 }
 
+let magic = "";
+
+// the tailnet's MagicDNS suffix, from this host's own DNS name as discovery read it
+export function noteMagicDNS(selfDNS: string) {
+  const name = selfDNS.toLowerCase().replace(/\.$/, "");
+  const i = name.indexOf(".");
+  if (i > 0) magic = name.slice(i + 1);
+}
+
+// the MagicDNS suffix, blank until discovered
+export const magicDNS = () => magic;
+
 // a host's tailnet IPv4, blank when unknown
 export async function tailnetIP(name: string): Promise<string> {
   const ip = knownIPs.get(name);

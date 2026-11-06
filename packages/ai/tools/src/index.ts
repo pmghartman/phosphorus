@@ -2,7 +2,7 @@
 // upstream's releases, gone once it stops being the model host
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { CacheDir, env, which } from "@phosphorus/util";
+import { CacheDir, env, hasNvidia } from "@phosphorus/util";
 import { untar, unzip } from "./archive.ts";
 
 export { tarGz, untar, unzip } from "./archive.ts";
@@ -16,9 +16,6 @@ const root = join(env("MODEL_DIR", join(CacheDir, "models")), "tools");
 
 // where every fetched tool lives
 export const toolsRoot = () => root;
-
-let nvidia: boolean | undefined;
-const hasNvidia = () => (nvidia ??= !!which("nvidia-smi"));
 
 // llama-server's gpu build: cuda on an nvidia gpu, vulkan for amd and intel ones,
 // metal on macOS, none with gpu off or off x64

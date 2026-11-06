@@ -17,11 +17,11 @@
 
 ---
 
-Install Phosphorus on each of your machines. They find each other over [Tailscale](https://tailscale.com) and share one web desktop, from which you install apps, open terminals and files, and manage every host.
+Install Phosphorus on each of your machines. They find each other over WireGuard, with [Tailscale](https://tailscale.com) clients coordinated by the mesh's own [headscale](https://github.com/juanfont/headscale) server, and share one web desktop, from which you install apps, open terminals and files, and manage every host.
 
 ## Get started
 
-1. Get a reusable auth key from [Tailscale](https://tailscale.com).
+1. Get a mesh join key from settings › network on a host already in the mesh.
 2. Install the [latest release](https://github.com/pmghartman/phosphorus/releases/latest) and run `phos`.
 3. Open the link it prints.
 

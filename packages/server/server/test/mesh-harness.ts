@@ -85,7 +85,7 @@ export class Mesh {
       for (const n of this.names) {
         if (n === self || this.gone.has(n)) continue;
         Peer[`node-${n}`] = {
-          DNSName: `${n}.tail1234.ts.net.`,
+          DNSName: `${n}.mesh.example.`,
           TailscaleIPs: [this.ipOf(n)],
           Online: this.online.get(n) ?? false,
           OS: "linux",
@@ -93,7 +93,7 @@ export class Mesh {
       }
       writeFileSync(
         this.statusFile(self),
-        JSON.stringify({ Self: { DNSName: `${self}.tail1234.ts.net.`, TailscaleIPs: [this.ipOf(self)] }, Peer }),
+        JSON.stringify({ Self: { DNSName: `${self}.mesh.example.`, TailscaleIPs: [this.ipOf(self)] }, Peer }),
       );
     }
   }

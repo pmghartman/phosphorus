@@ -8,8 +8,9 @@ Root-causes a broken, slow, full or silent host, service or game server from its
    - host not answering: `mesh_hosts` `health: true` (answering? still on the tailnet?), then from another host `terminal_run` `tailscale ping -c 3 <host>`
    - service: `services` `host` `name`, `host_config` (its entry in `services`), `host_logs` `match: <name>` `since: 2h`
    - game (the Games app installed): `games`, `game_log`
-   - tailscale or cloudflared missing or failing to start: each host fetches its pinned copies into `state/cache/tools` on every start and update; `host_logs` `match: fetch` `since: 2h` shows a `couldn't fetch` line, fixed by `host_power` `restart` once the host reaches GitHub and pkgs.tailscale.com
+   - tailscale, cloudflared or headscale missing or failing to start: each host fetches its pinned copies into `state/cache/tools` on every start and update; `host_logs` `match: fetch` `since: 2h` shows a `couldn't fetch` line, fixed by `host_power` `restart` once the host reaches GitHub and pkgs.tailscale.com
    - tunnel or public URL: `mesh_hosts` `health: true` tunnel and wildcard state, `host_logs` `source: cloudflared` `since: 2h`; a subdomain 404 or 1016 with wildcard `missing` is fixed by the two Cloudflare entries its `why` names
+   - control server (the mesh's own headscale, in settings › network): `mesh_hosts` `health: true` `control` (`on` each host's control URL, `serving` on its host), `host_logs` `source: control` `since: 2h` on the control host; a host left on the old server after a switch moves on its next start, or once two minutes pass with no peers
    - git (Forgejo): `services` with host and name `git`, `host_logs` `match: git` `since: 2h`
 3. Narrow with more `host_logs` (`match` on the first error, an earlier `since`) or a read-only `terminal_run`: `systemctl status`, `ss -ltnp`, `journalctl -u ...`, and for a full Linux disk `df -h; du -xh --max-depth=2 / 2>/dev/null | sort -h | tail -20`.
 4. Confirm a past error still matters before calling it the cause: a later success line, or the current `services` check or `mesh_hosts` health.

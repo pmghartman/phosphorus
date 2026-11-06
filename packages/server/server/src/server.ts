@@ -197,6 +197,8 @@ async function ownGuestTag() {
 }
 
 export async function mintGuestKey(): Promise<Res> {
+  // on the mesh's own control server: its key, with the server to log in to
+  if (peers.control.onOwnControl()) return peers.control.controlOp("guest-key");
   if (!tsAPIKey) return [503, { error: "TS_API_KEY unset in .env" }];
   try {
     await ownGuestTag();

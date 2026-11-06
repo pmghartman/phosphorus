@@ -3,7 +3,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { runSync } from "@phosphorus/util";
+import { hasNvidia, runSync } from "@phosphorus/util";
 import type { Subprocess } from "bun";
 import {
   at,
@@ -76,22 +76,16 @@ async function missingDeps(): Promise<string[]> {
     { bin: "ss", pkg: "iproute2" },
     { bin: "ssh", pkg: "openssh-client" },
     { bin: "setpriv", pkg: "util-linux" },
-    // app streaming: the app's own X display, its encoder, the agent and its X libraries
+    // app streaming: the app's own X display, its encoder, the agent's X libraries
     { bin: "Xvfb", pkg: "xvfb" },
     { bin: "ffmpeg", pkg: "ffmpeg" },
-    { bin: "python3", pkg: "python3" },
     { lib: "libXtst.so.6", pkg: "libxtst6" },
     { lib: "libXfixes.so.3", pkg: "libxfixes3" },
   ];
   if (isModelHost()) {
-    want.push(
-      { bin: "curl", pkg: "curl" },
-      { bin: "git", pkg: "git" },
-      { bin: "rg", pkg: "ripgrep" },
-      { lib: "libgomp.so.1", pkg: "libgomp1" },
-    );
+    want.push({ bin: "git", pkg: "git" }, { bin: "rg", pkg: "ripgrep" }, { lib: "libgomp.so.1", pkg: "libgomp1" });
     // llama-server's vulkan build, for amd and intel gpus
-    if (settings().model.gpu && !has("nvidia-smi"))
+    if (settings().model.gpu && !hasNvidia())
       want.push(
         { lib: "libvulkan.so.1", pkg: "libvulkan1" },
         { file: "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json", pkg: "mesa-vulkan-drivers" },

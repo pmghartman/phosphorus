@@ -135,7 +135,7 @@ export const agentTools = (): Tool[] => [
         source: {
           type: "string",
           description:
-            "phosphorus (all, default), run (the service's start, its tools fetched), frontend, cloudflared, model, mesh",
+            "phosphorus (all, default), run (the service's start, its tools fetched), frontend, cloudflared, model, control (headscale, on the control host), mesh",
         },
         level: {
           type: "string",

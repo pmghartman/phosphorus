@@ -1,7 +1,7 @@
 // the ingress cloudflared points at: every published service by path or
 // subdomain, the frontend itself for everything else
 
-import { envInt, isLoopbackAddr, isTailnetAddr, logf, marshal, Notes } from "@phosphorus/util";
+import { envInt, isLoopbackAddr, isTailnetAddr, logf, magicDNS, marshal, Notes } from "@phosphorus/util";
 import { type Ctx, dial, type Handler, isUpgrade, remoteIP, upgrade, type WSData, websocket } from "@phosphorus/wsock";
 import type { Server } from "bun";
 
@@ -198,7 +198,7 @@ export function reverseLocation(loc: string, prefix: string, ...hosts: string[])
   return head + prefix + rest;
 }
 
-// an address, a bare name or a tailnet one
+// an address, a bare name or a name under the tailnet's MagicDNS suffix
 export function unrebindable(host: string): boolean {
   let h = host;
   const m = /^\[([^\]]*)\](?::\d+)?$/.exec(h) ?? /^([^:]*):\d+$/.exec(h);
@@ -208,7 +208,8 @@ export function unrebindable(host: string): boolean {
     .toLowerCase()
     .replace(/\.$/, "");
   const ip = /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(":");
-  return ip || !h.includes(".") || h.endsWith(".ts.net");
+  const suffix = magicDNS();
+  return ip || !h.includes(".") || (!!suffix && h.endsWith("." + suffix));
 }
 
 const onMesh = (c: Ctx) => isLoopbackAddr(c.ip) || isTailnetAddr(c.ip);

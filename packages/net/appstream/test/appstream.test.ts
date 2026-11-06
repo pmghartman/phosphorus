@@ -76,10 +76,16 @@ describe("keys", () => {
 
 describe("encode", () => {
   test("caps", () => {
-    const c = parseCaps("have:Xvfb\nhave:ffmpeg\nhave:python3\nenc:h264_vaapi\ndri\nenc:h264_nvenc\n");
+    const c = parseCaps(
+      "have:Xvfb\nhave:ffmpeg\nbun:/usr/lib/phosphorus/bin/phosphorus\nenc:h264_vaapi\ndri\nenc:h264_nvenc\n",
+    );
     expect(c.encoders).toEqual(["vaapi", "x264"]);
+    expect(c.bun).toBe("/usr/lib/phosphorus/bin/phosphorus");
     expect(missing(c)).toBe("");
-    expect(missing(parseCaps("have:ffmpeg"))).toContain("apt install xvfb python3");
+    expect(missing(parseCaps("have:ffmpeg"))).toBe(
+      "app streaming needs xvfb and phosphorus on the host (apt install xvfb)",
+    );
+    expect(missing(parseCaps("have:Xvfb"))).toBe("app streaming needs phosphorus on the host");
   });
   test("low-latency settings", () => {
     const a = ffmpegArgs({
@@ -147,7 +153,7 @@ describe("flv", () => {
 
 const have = (c: string) => Bun.spawnSync(["sh", "-c", `command -v ${c}`]).exitCode === 0;
 // a Linux machine with the lot; a Mac's XQuartz has no root-owned socket dir for Xvfb
-const canRun = process.platform === "linux" && have("Xvfb") && have("ffmpeg") && have("python3") && have("xterm");
+const canRun = process.platform === "linux" && have("Xvfb") && have("ffmpeg") && have("bun") && have("xterm");
 
 // the whole host half on this machine: xterm on its own display, encoded, typed into
 describe.skipIf(!canRun)("live", () => {

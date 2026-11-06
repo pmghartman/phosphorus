@@ -16,6 +16,13 @@
       "license": "https://raw.githubusercontent.com/cloudflare/cloudflared/{v}/LICENSE"
     },
     {
+      "name": "headscale",
+      "spdx": "BSD-3-Clause",
+      "pin": ["packages/host/host/src/tools.ts", "Headscale\\s*=\\s*\"([^\"]+)\""],
+      "source": "https://github.com/juanfont/headscale",
+      "license": "https://raw.githubusercontent.com/juanfont/headscale/v{v}/LICENSE"
+    },
+    {
       "name": "llama.cpp",
       "spdx": "MIT",
       "pin": ["packages/ai/tools/src/index.ts", "LlamaTag\\s*=\\s*\"([^\"]+)\""],

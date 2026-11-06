@@ -22,6 +22,7 @@ import * as afterglow from "./afterglow.ts";
 import { appRoute } from "./apps.ts";
 import { appwebRoute } from "./appweb.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
+import { controlAction, controlStatus } from "./control.ts";
 import { haRoute } from "./ha.ts";
 import { hostdeskRoute } from "./hostdesk.ts";
 import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
@@ -416,6 +417,17 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!(await isTailnet(c))) return forbidden();
     return webapps.Serve(m[1]!, m[2]!);
   }
+  // settings › network: the mesh's control server, for admins
+  if (pathname === "/api/control" && (method === "GET" || method === "POST")) {
+    const s = users.Of(c);
+    if (!isBrowser(c) || !sameOrigin(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c))))
+      return forbidden();
+    if (method === "GET") {
+      const [st, b] = await controlStatus();
+      return sendJSON(st, b, { "Cache-Control": "no-store" });
+    }
+    return onJSON(c, maxJSONBody, true, controlAction);
+  }
   if (pathname === "/api/join-key" && method === "POST") {
     // admins, or this machine with no admin password
     const s = users.Of(c);
@@ -544,6 +556,12 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     });
   }
 
+  // a peer's ask of this host as the mesh's control server: keys, approvals
+  if (pathname.startsWith("/internal/control/") && method === "POST") {
+    if (!(await isTailnet(c))) return forbidden();
+    const op = pathname.slice("/internal/control/".length);
+    return onJSON(c, maxJSONBody, true, (p) => peers.control.localControlOp(op, p));
+  }
   if (pathname === "/internal/keys" && method === "GET") {
     if (!(await isTailnet(c))) return forbidden();
     const keys: Record<string, string> = {};

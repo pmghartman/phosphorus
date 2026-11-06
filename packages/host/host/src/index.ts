@@ -26,6 +26,8 @@ import { keys, overview, setup, start, status } from "./start.ts";
 import { uninstall } from "./uninstall.ts";
 import { upgrade } from "./upgrade.ts";
 
+export { controlMain } from "./control.ts";
+
 // commands the ones main takes, everything else run's children's roles
 export const commands = new Set([
   "",

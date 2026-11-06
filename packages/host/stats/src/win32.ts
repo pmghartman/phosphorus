@@ -1,6 +1,6 @@
 // Windows through one PowerShell kept open, a request a line: CIM for the cache,
 // pagefile, adapters, disk bytes and volumes; the dedicated gpus from DirectX's
-// registry adapters and the raw GPU Engine and Adapter Memory classes, nvidia's left to nvidia-smi
+// registry adapters and the raw GPU Engine and Adapter Memory classes, nvidia's left to NVML
 import { freemem, totalmem, uptime } from "node:os";
 import { now } from "@phosphorus/util";
 import type { Subprocess } from "bun";

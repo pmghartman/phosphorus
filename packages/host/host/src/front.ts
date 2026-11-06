@@ -113,7 +113,7 @@ export async function askKeys(file: string): Promise<boolean> {
     throw fail("no terminal to type the keys in: use the Phosphorus app, or phos keys --stdin with KEY=value lines");
   const have = envfile.read(file);
   println("the keys for this host, typed without echo; a blank line keeps what's set");
-  if (keysMissing()) println("joining a mesh: TS_AUTHKEY alone, the rest copied from a peer");
+  if (keysMissing()) println("joining a mesh: MESH_KEY alone, the rest copied from a peer");
   const vals: Record<string, string> = {};
   for (const k of envfile.Keys) {
     println(`\n${k.label} (${k.name}, ${have[k.name] ? "set" : "not set"}): ${k.hint}`);
@@ -122,8 +122,12 @@ export async function askKeys(file: string): Promise<boolean> {
     println();
     if (v) vals[k.name] = v;
   }
-  if (!vals.TS_AUTHKEY && !have.TS_AUTHKEY) {
-    println("TS_AUTHKEY is needed, nothing saved");
+  if (vals.MESH_KEY && !envfile.parseMeshKey(vals.MESH_KEY)) {
+    println("that MESH_KEY isn't a mesh join key, nothing saved");
+    return false;
+  }
+  if (!envfile.hasJoinKey({ ...have, ...vals })) {
+    println("MESH_KEY is needed, nothing saved");
     return false;
   }
   if (Object.keys(vals).length === 0) {
