@@ -74,8 +74,8 @@ const set: IconSet = {
     games:
       'M4.5 4.5h7a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3H10l-.75-1.25h-2.5L6 12.5H4.5a3 3 0 0 1-3-3v-2a3 3 0 0 1 3-3zM5 7.25v2.5M3.75 8.5h2.5M10.5 7.75h.01M12 9.25h.01',
     about: `${circle}M8 7.25V11M8 5.25h.01`,
-    // the service wizard: a package
-    apps: 'M8 1.75l6 3v6.5l-6 3-6-3v-6.5zM2 4.75l6 3 6-3M8 7.75v6.5',
+    // the service wizard: a plain wizard's hat, a cone on a brim
+    apps: 'M9 2.25L4 12h8.5zM2 12h12',
     mesh: 'M8 2.25a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM3.25 10.75a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12.75 10.75a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM7.25 5.1l-3.25 5.6M8.75 5.1l3.25 5.6M4.75 12.25h6.5',
     lock: 'M3.5 7.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1zM5.5 6.5V5a2.5 2.5 0 0 1 5 0v1.5',
     crown: 'M2.5 5.5l3 2.5L8 4l2.5 4 3-2.5-1 7h-9z',
