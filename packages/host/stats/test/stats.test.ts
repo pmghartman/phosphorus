@@ -2,12 +2,13 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hasNvidia, nvidiaGpus } from "@phosphorus/util";
 
 const tmp = mkdtempSync(join(tmpdir(), "stats-"));
 process.env.STATE_DIR = tmp;
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
+// util only after STATE_DIR, its data folder read on import
+const { hasNvidia, nvidiaGpus } = await import("@phosphorus/util");
 const data = (f: string) => readFileSync(join(import.meta.dir, "testdata", f), "utf8");
 const linux = await import("../src/linux.ts");
 const darwin = await import("../src/darwin.ts");
