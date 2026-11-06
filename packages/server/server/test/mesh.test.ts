@@ -1,5 +1,5 @@
 // three real hosts on loopback: links, the store converging over them, clock
-// skew, tombstones, a dropped link and a host leaving
+// skew, tombstones, a dropped link, a host stopping and a host removed
 import { afterAll, beforeAll, test as bunTest, expect } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -61,6 +61,16 @@ test("every pair links, and the devices read as phosphorus hosts", async () => {
   ]);
   expect(v.peerIPs).toEqual({ bravo: "127.0.0.3", charlie: "127.0.0.4" });
   expect(v.lock).toBeNull();
+  // each host's own record, its address and key, on every host
+  for (const [n, ip] of [
+    ["alpha", "127.0.0.2"],
+    ["bravo", "127.0.0.3"],
+    ["charlie", "127.0.0.4"],
+  ] as const)
+    await m.until(async () => {
+      const r = (await m.call("bravo", "store.read", { rel: `etc/mesh/hosts/${n}.json` })).data;
+      return r?.ip === ip && /^[A-Za-z0-9+/]{43}=$/.test(r?.key ?? "");
+    }, `${n}'s record on bravo`);
 }, 20_000);
 
 test("a write on one host is on every other within the moment, digests equal", async () => {
@@ -135,8 +145,7 @@ test("a dropped link comes back, and the writes made meanwhile arrive", async ()
 }, 30_000);
 
 test("the chat app installs on every host from its signed feed, its lines cross, and a host away catches up", async () => {
-  expect((await m.call("alpha", "app.install", { id: "chat" }))[0]).toBe(200);
-  for (const h of names)
+  expect((await m.call("alpha", "app.install", { id: "chat" }))[0]).toBe(200);  for (const h of names)
     await m.until(
       async () => (await m.call(h, "app.running")).some((a: any) => a.id === "chat" && a.version === "1.0.0"),
       `chat running on ${h}`,
@@ -185,18 +194,21 @@ test("a home file written on one host is on every other within the moment, follo
   expect((await m.call("charlie", "home.read", { rel: "shared/.trash/note.txt" })).text).toBe("from bravo, on top");
 }, 90_000);
 
-test("tailscale's offline flag alone keeps a link; a host removed is let go", async () => {
-  m.setOnline("charlie", false);
-  await m.until(async () => "charlie" in (await m.view("alpha")).offline, "alpha reads charlie offline", 10_000);
-  await Bun.sleep(1500);
-  expect((await m.view("alpha")).links.charlie).toBe(true);
-  m.setOnline("charlie", true);
-  m.remove("charlie");
-  await m.until(
-    async () => !(await m.view("alpha")).tailnet.some((d: any) => d.name === "charlie"),
-    "charlie gone from alpha",
-    15_000,
-  );
+test("a host stopped is unheard mesh wide; removed, it is let go and stays out", async () => {
+  await m.until(() => linked("alpha", "bravo", "charlie"), "alpha's links");
+  expect((await m.view("alpha")).offline).toEqual({});
+  await m.stopHost("charlie");
+  for (const n of ["alpha", "bravo"])
+    await m.until(async () => "charlie" in (await m.view(n)).offline, `${n} hears charlie gone`, 10_000);
+  expect((await m.call("alpha", "mesh.remove", { host: "charlie" })).removed).toBe(true);
+  for (const n of ["alpha", "bravo"]) {
+    await m.until(async () => !("charlie" in (await m.view(n)).links), `charlie let go by ${n}`, 15_000);
+    expect(m.logs(n)).toContain("charlie left the mesh");
+  }
+  expect((await m.view("alpha")).tailnet.some((d: any) => d.name === "charlie")).toBe(false);
+  // back with the key the mesh refused: never linked again
+  await m.startHost("charlie");
+  await Bun.sleep(3000);
   expect((await m.view("alpha")).links.charlie).toBeUndefined();
-  expect(m.logs("alpha")).toContain("charlie left the tailnet");
-}, 30_000);
+  expect((await m.call("alpha", "store.read", { rel: "etc/mesh/hosts/charlie.json" })).data.removed).toBe(true);
+}, 60_000);

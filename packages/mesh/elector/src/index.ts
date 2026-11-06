@@ -524,7 +524,7 @@ export class Elector {
         candidates(r.members)
           .filter((h) => h !== this.self && !this.claims.has(h))
           .join(", ") || "no host";
-      const why = this.vouched ? " (waiting on tailscale to call them gone)" : " (never vouched for the last master)";
+      const why = this.vouched ? " (waiting on the mesh to call them gone)" : " (never vouched for the last master)";
       this.stall(`not in sync, and ${who} out of view${why}`);
       return;
     }
@@ -537,7 +537,7 @@ export class Elector {
     if (l.force) this.logf("forced: resetting roster to %s", describe(r.members));
     else if (gone.length)
       this.logf(
-        "%s offline per tailscale for %ds, roster without it: %s",
+        "%s unheard by the mesh for %ds, roster without it: %s",
         gone.join(", "),
         Math.trunc(this.t.witnessMS / 1000),
         describe(r.members),

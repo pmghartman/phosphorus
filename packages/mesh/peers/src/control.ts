@@ -20,6 +20,7 @@ import {
   SelfHost,
   tailnetIP,
 } from "@phosphorus/util";
+import { removeHost, setDevices } from "./registry.ts";
 
 const notes = new Notes("control");
 
@@ -145,6 +146,7 @@ export async function removeDevice(c: Control, id: string) {
   const n = await deviceNode(id, true);
   if (n.name === c.host) throw new Error(`${n.name} runs the control server`);
   await deleteNode(id);
+  if (n.tags.includes("tag:host")) removeHost(n.name);
   notes.log(`removed ${n.name}`);
   return { name: n.name };
 }
@@ -202,6 +204,25 @@ export async function localControlOp(op: string, body: Record<string, unknown>):
     return [502, { error: errText(e) }];
   }
   return [404, { error: `no control op ${op}` }];
+}
+
+const mirrorEveryMS = 15_000;
+let lastMirror = 0;
+
+// headscale's devices other than hosts recorded in the store, for every host's trust
+async function mirrorDevices() {
+  if (now() - lastMirror < mirrorEveryMS) return;
+  lastMirror = now();
+  try {
+    const list = (await nodes())
+      .filter((n) => !n.tags.includes("tag:host"))
+      .map((n) => ({ name: n.name, ip: n.ips.find((a) => a.includes(".")) ?? "", guest: n.tags.includes("tag:guest") }))
+      .filter((d) => d.ip);
+    setDevices(list);
+    notes.clear("mirror");
+  } catch (e) {
+    notes.note("mirror", `couldn't record the mesh's devices, still retrying: ${errText(e)}`);
+  }
 }
 
 const guestTTLMS = 3 * 24 * 3600 * 1000;
@@ -264,7 +285,10 @@ export async function controlTick() {
     const c = control();
     const mine = c?.host === SelfHost && process.platform === "linux";
     writeSpec(mine ? { url: c.url, baseDomain: magicDomain(c.url), relay: c.relay } : undefined);
-    if (mine) await sweepGuests();
+    if (mine) {
+      await sweepGuests();
+      await mirrorDevices();
+    }
   } catch (e) {
     notes.note("tick", errText(e));
   } finally {

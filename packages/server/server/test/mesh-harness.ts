@@ -1,6 +1,5 @@
-// a mesh of real hosts for the tests: each a node.ts process on its own
-// loopback address, every package reading its own env; a fake tailscale on
-// PATH lists them to one another from a status file per host
+// a mesh of real hosts for the tests, each a node.ts process on its own loopback
+// address; a fake tailscale on PATH the transport listing them to one another
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
@@ -49,9 +48,6 @@ export class Mesh {
   hosts = new Map<string, Host>();
   port: number;
   ctlPort: number;
-  // tailscale's word on each host, as every host's status file lists it
-  online = new Map<string, boolean>();
-  gone = new Set<string>();
 
   // env: more for every host, an app feed's url and key
   constructor(
@@ -72,7 +68,6 @@ export class Mesh {
       );
       chmodSync(join(this.dir, "bin", "tailscale"), 0o755);
     }
-    for (const n of names) this.online.set(n, true);
   }
 
   ipOf = (name: string) => ipAt(this.names.indexOf(name));
@@ -83,30 +78,14 @@ export class Mesh {
     for (const self of this.names) {
       const Peer: Record<string, unknown> = {};
       for (const n of this.names) {
-        if (n === self || this.gone.has(n)) continue;
-        Peer[`node-${n}`] = {
-          DNSName: `${n}.mesh.example.`,
-          TailscaleIPs: [this.ipOf(n)],
-          Online: this.online.get(n) ?? false,
-          OS: "linux",
-        };
+        if (n === self) continue;
+        Peer[`node-${n}`] = { DNSName: `${n}.mesh.example.`, TailscaleIPs: [this.ipOf(n)] };
       }
       writeFileSync(
         this.statusFile(self),
         JSON.stringify({ Self: { DNSName: `${self}.mesh.example.`, TailscaleIPs: [this.ipOf(self)] }, Peer }),
       );
     }
-  }
-
-  // tailscale's flag for a host, as every other host reads it
-  setOnline(name: string, on: boolean) {
-    this.online.set(name, on);
-    this.writeStatus();
-  }
-  // a host off the tailnet for good
-  remove(name: string) {
-    this.gone.add(name);
-    this.writeStatus();
   }
 
   async start() {
@@ -133,7 +112,8 @@ export class Mesh {
       ...this.env,
     };
     for (const k of ["BASE_DOMAIN", "ADMIN_PASS", "TUNNEL_TOKEN"]) delete env[k];
-    const proc = Bun.spawn(["bun", join(import.meta.dir, "mesh-node.ts")], {
+    // this bun itself, never a shim whose kill leaves the host running
+    const proc = Bun.spawn([process.execPath, join(import.meta.dir, "mesh-node.ts")], {
       cwd: root,
       env,
       stdout: "pipe",
@@ -184,6 +164,13 @@ export class Mesh {
       await Bun.sleep(50);
     }
     throw new Error(`timed out waiting for ${what}`);
+  }
+
+  // one host's process ended, its state kept for a start again
+  async stopHost(name: string) {
+    const h = this.hosts.get(name);
+    h?.proc.kill();
+    await h?.proc.exited;
   }
 
   stop() {

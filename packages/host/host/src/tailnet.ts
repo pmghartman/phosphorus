@@ -1,13 +1,32 @@
-// Tailscale: its status, signing in to the mesh's control server, the pinned
-// installer on macOS and Windows, and the mesh's keys from a peer
+// Tailscale, the mesh's transport: its status, signing in under phosphorus's
+// name, the pinned installer, and the mesh's keys from a peer
 import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as envfile from "@phosphorus/envfile";
 import { FrontendPort, run as runCmd } from "@phosphorus/util";
-import { at, envPath, eprint, fail, fileExists, say, sleep } from "./base.ts";
+import { at, envPath, eprint, fail, fileExists, readTrim, say, sleep } from "./base.ts";
 import { os } from "./os.ts";
+
+// this host's name and key on the mesh, phosphorus's own
+const meshFile = (f: string) => at("state", "data", "mesh", f);
+
+// the name kept, blank before the first run
+export const keptName = () => readTrim(meshFile("name"));
+
+export function keepName(name: string) {
+  if (!name || name === keptName()) return;
+  mkdirSync(at("state", "data", "mesh"), { recursive: true, mode: 0o700 });
+  writeFileSync(meshFile("name"), name + "\n");
+}
+
+// a DNS name's first label as a host name
+export const labelOf = (dns: string) =>
+  (dns.split(".")[0] ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
 // tailscaleStatus status --json, cut off at 10s; signed out exits nonzero, its JSON still printed
 export async function tailscaleStatus(): Promise<string> {
@@ -73,11 +92,11 @@ export async function tailnetJoin(state: string) {
   mark();
 }
 
-// joinControl signed in to the mesh's control server with its join key, under
-// this host's current name, so the mesh still knows it
+// joinControl signed in with its join key under phosphorus's name, a new mesh key
+// made for it so a host removed comes back
 async function joinControl(mk: envfile.MeshKey, state: string) {
   const self = parse(await tailscaleStatus())?.Self;
-  const name = process.env.TS_HOSTNAME || String(self?.DNSName ?? "").split(".")[0] || "";
+  const name = keptName() || labelOf(process.env.TS_HOSTNAME || String(self?.DNSName ?? ""));
   const a = ["up", "--reset", "--timeout=90s", "--login-server=" + mk.url, "--authkey=" + mk.key];
   if (name) a.push("--hostname=" + name);
   a.push(...os.tailscaleUpFlags());
@@ -89,6 +108,7 @@ async function joinControl(mk: envfile.MeshKey, state: string) {
     const why = r.output.trim().split("\n").pop() || r.error || `exit status ${r.code}`;
     throw fail(`couldn't join ${mk.url} (${why}); MESH_KEY in .env must be unexpired and its server up`);
   }
+  rmSync(meshFile("key.json"), { force: true });
   await os.tailscaleKeepUp();
 }
 

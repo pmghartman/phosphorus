@@ -27,7 +27,7 @@ import {
 } from "./base.ts";
 import { nativeEnvFile, runEnv, tool, withPath } from "./native.ts";
 import { os, type Stop } from "./os.ts";
-import { meshKeyValues, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
+import { keepName, keptName, labelOf, meshKeyValues, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
 import { ensureTools } from "./tools.ts";
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
@@ -209,16 +209,15 @@ export async function runMain(stop: Stop): Promise<number> {
     if (control) await stopChild(control);
     throw e;
   }
-  say(`on the tailnet as ${dns}`);
+  // phosphorus's name for this host, the transport's first label on the first run
+  const name = keptName() || labelOf(dns);
+  keepName(name);
+  say(`on the tailnet as ${dns}, on the mesh as ${name}`);
   await fillMeshKeys();
   // no domain: the tailnet alone, http://<host>/
   if (!process.env.BASE_DOMAIN) say("no BASE_DOMAIN, served on the tailnet only");
   writeFileSync(at("state", "run", "base-domain"), (process.env.BASE_DOMAIN ?? "") + "\n", { mode: 0o644 });
-  const first = dns.split(".")[0] ?? "";
-  process.env.SELF_HOST = first
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  process.env.SELF_HOST = name;
   process.env.HOST_SSH_PORT = "22";
   const env = withPath(
     Object.fromEntries(Object.entries(process.env).filter((kv): kv is [string, string] => kv[1] !== undefined)),
