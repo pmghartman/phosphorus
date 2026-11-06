@@ -10,6 +10,8 @@ export {
   ctxOf,
   desktop,
   icon,
+  iconKeyOf,
+  icons,
   issued,
   ls,
   mkdir,

@@ -2,15 +2,21 @@
 # viewer's login over ssh. It starts Xvfb with a fresh cookie, is that display's
 # window manager (the app's main window fills the viewer's window, dialogs centred
 # over it), types and clicks what the viewer does through XTEST, and reports the
-# title, the windows, the pointer's shape and the clipboard. Pixels go out
-# another way: ffmpeg grabs this display.
+# title, the windows, the pointer's shape and the clipboard. The pixels too, as
+# the rectangles that changed (XDamage), each read off the display and deflated,
+# the moment they change: no video, no frame clock. ffmpeg grabs this display
+# instead when the viewer wants video.
 #
 # stdin and stdout are JSON, one message a line. The first line in is the start:
 #   {"argv": [...], "w", "h", "sw", "sh", "dpi", "scale", "dbus": bool}
 # then arrays: ["m",x,y] ["b",n,down] ["w",dx,dy] ["k",down,keycode,keysym]
 # ["x",text] ["r",w,h] ["raise",id] ["clip",text] ["close"] ["quit"]
-# Out: {"t":"ready"|"title"|"windows"|"cursor"|"clip"|"exit"|"log", ...}
-# Python 3.6 and its standard library, nothing else; libX11, libXtst, libXfixes.
+# ["pixels",on] ["refresh"]
+# Out: {"t":"ready"|"title"|"windows"|"cursor"|"clip"|"exit"|"log"|"size", ...}
+# and {"t":"rect","x","y","w","h","n","z","o"} followed by n bytes: the pixels,
+# 32 bits each, deflated when z
+# Python 3.6 and its standard library, nothing else; libX11, libXtst, libXfixes,
+# libXdamage for the pixels.
 
 import base64, ctypes, ctypes.util, json, os, random, re, select, shutil, signal, struct, subprocess, sys, tempfile, time, zlib
 from ctypes import POINTER, Structure, Union, byref, c_char_p, c_int, c_long, c_short, c_uint, c_ubyte, c_ulong, c_ushort, c_void_p
@@ -77,8 +83,28 @@ class XFixesSelectionNotifyEvent(Structure):
                 ("window", Window), ("subtype", c_int), ("owner", Window), ("selection", Atom),
                 ("timestamp", Time), ("selection_timestamp", Time)]
 
+class XRectangle(Structure):
+    _fields_ = [("x", c_short), ("y", c_short), ("width", c_ushort), ("height", c_ushort)]
+
+class XDamageNotifyEvent(Structure):
+    _fields_ = [("type", c_int), ("serial", c_ulong), ("send_event", c_int), ("display", Display),
+                ("drawable", Window), ("damage", c_ulong), ("level", c_int), ("more", c_int),
+                ("timestamp", Time), ("area", XRectangle), ("geometry", XRectangle)]
+
 class XEvent(Union):
     _fields_ = [("type", c_int), ("any", XAnyEvent), ("pad", c_long * 24)]
+
+class XImage(Structure):
+    pass
+
+class XImageFuncs(Structure):
+    _fields_ = [("create_image", c_void_p), ("destroy_image", ctypes.CFUNCTYPE(c_int, POINTER(XImage))),
+                ("get_pixel", c_void_p), ("put_pixel", c_void_p), ("sub_image", c_void_p), ("add_pixel", c_void_p)]
+
+XImage._fields_ = [("width", c_int), ("height", c_int), ("xoffset", c_int), ("format", c_int), ("data", c_void_p),
+                   ("byte_order", c_int), ("bitmap_unit", c_int), ("bitmap_bit_order", c_int), ("bitmap_pad", c_int),
+                   ("depth", c_int), ("bytes_per_line", c_int), ("bits_per_pixel", c_int), ("red_mask", c_ulong),
+                   ("green_mask", c_ulong), ("blue_mask", c_ulong), ("obdata", c_void_p), ("f", XImageFuncs)]
 
 class XWindowAttributes(Structure):
     _fields_ = [("x", c_int), ("y", c_int), ("width", c_int), ("height", c_int), ("border_width", c_int),
@@ -104,7 +130,7 @@ PropertyNotify, SelectionClear, SelectionRequest, SelectionNotify, ClientMessage
 SubstructureRedirect, SubstructureNotify, StructureNotify, PropertyChange = 1 << 20, 1 << 19, 1 << 17, 1 << 22
 CWX, CWY, CWWidth, CWHeight = 1, 2, 4, 8
 
-X = Xt = Xf = None
+X = Xt = Xf = Xd = None
 dpy = None
 root = 0
 proc = None
@@ -113,10 +139,12 @@ tmpdir = ""
 applog = b""
 
 def setup_libs():
-    global X, Xt, Xf
-    X, Xt, Xf = lib("X11"), lib("Xtst"), lib("Xfixes")
+    global X, Xt, Xf, Xd
+    X, Xt, Xf, Xd = lib("X11"), lib("Xtst"), lib("Xfixes"), lib("Xdamage")
     if not X:
         fail("libX11 isn't on this host")
+    X.XGetImage.restype = POINTER(XImage)
+    X.XGetImage.argtypes = [Display, Window, c_int, c_int, c_uint, c_uint, c_ulong, c_int]
     X.XOpenDisplay.restype = Display
     X.XOpenDisplay.argtypes = [c_char_p]
     X.XDefaultRootWindow.restype = Window
@@ -167,6 +195,11 @@ def setup_libs():
         Xf.XFixesGetCursorImage.restype = POINTER(XFixesCursorImage)
         Xf.XFixesGetCursorImage.argtypes = [Display]
         Xf.XFixesSelectSelectionInput.argtypes = [Display, Window, Atom, c_ulong]
+    if Xd:
+        Xd.XDamageQueryExtension.argtypes = [Display, POINTER(c_int), POINTER(c_int)]
+        Xd.XDamageCreate.restype = c_ulong
+        Xd.XDamageCreate.argtypes = [Display, Window, c_int]
+        Xd.XDamageSubtract.argtypes = [Display, c_ulong, c_ulong, c_ulong]
 
 # a window gone between the event and the call is the normal case for a WM; the
 # default handler would exit the process over it
@@ -399,6 +432,8 @@ def resize_view(w, h):
     vw, vh = max(64, min(w, sw)), max(64, min(h, sh))
     for x in wins:
         place(x)
+    if pixels_on:
+        refresh()
 
 def close_main():
     w = wins[-1] if wins else 0
@@ -571,6 +606,125 @@ def png(w, h, raw):
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) +
             chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
+# --- the pixels: the rectangles that changed, read off the display as they change -----
+
+pixels_on = False
+damage = 0
+damage_base = -1
+dirty = []          # damaged since the last flush: x, y, w, h on the display
+dirty_at = 0.0
+last_flush = 0.0
+# changes gathered this long before they're read: one read for a burst of drawing
+GATHER = 0.005
+# and read no more often than this: a flood of change stays a stream of rectangles
+FLUSH_GAP = 0.008
+MAX_RECTS = 8
+said_depth = False
+
+def write_all(b):
+    mv = memoryview(b)
+    while mv:
+        try:
+            n = os.write(1, mv)
+        except OSError:
+            shutdown(0)
+        mv = mv[n:]
+
+# rectangles merged where they touch (within pad), the lot's bounding box when still
+# more than limit: few reads, little sent twice
+def merge_rects(rs, limit=MAX_RECTS, pad=2):
+    bs = [(x, y, x + w, y + h) for x, y, w, h in rs if w > 0 and h > 0]
+    changed = True
+    while changed and len(bs) > 1:
+        changed = False
+        done = []
+        while bs:
+            a = bs.pop()
+            i = 0
+            while i < len(bs):
+                b = bs[i]
+                if a[0] - pad < b[2] and b[0] - pad < a[2] and a[1] - pad < b[3] and b[1] - pad < a[3]:
+                    a = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+                    bs.pop(i)
+                    changed = True
+                else:
+                    i += 1
+            done.append(a)
+        bs = done
+    if len(bs) > limit:
+        bs = [(min(b[0] for b in bs), min(b[1] for b in bs), max(b[2] for b in bs), max(b[3] for b in bs))]
+    return [(x0, y0, x1 - x0, y1 - y0) for x0, y0, x1, y1 in bs]
+
+# one rectangle of the view, read and sent: its header a JSON line, its pixels after
+def send_rect(x, y, w, h):
+    global said_depth
+    x0, y0, x1, y1 = max(0, x), max(0, y), min(vw, x + w), min(vh, y + h)
+    if x1 <= x0 or y1 <= y0:
+        return
+    img = X.XGetImage(dpy, root, x0, y0, x1 - x0, y1 - y0, 0xFFFFFFFF, 2)
+    if not img:
+        return
+    i = img.contents
+    try:
+        if i.bits_per_pixel != 32:
+            if not said_depth:
+                said_depth = True
+                out(t="log", s="the display isn't 32 bits a pixel; no pixels sent")
+            return
+        bpl, rw, rh = i.bytes_per_line, i.width, i.height
+        raw = ctypes.string_at(i.data, bpl * rh)
+        if bpl != rw * 4:
+            raw = b"".join(raw[r * bpl:r * bpl + rw * 4] for r in range(rh))
+        order = i.byte_order
+    finally:
+        i.f.destroy_image(img)
+    z = zlib.compress(raw, 1)
+    head = json.dumps({"t": "rect", "x": x0, "y": y0, "w": rw, "h": rh, "n": len(z), "z": 1, "o": order},
+                      separators=(",", ":")).encode() + b"\n"
+    write_all(head + z)
+
+def flush_rects():
+    global dirty, dirty_at, last_flush
+    rs = merge_rects(dirty)
+    dirty = []
+    dirty_at = 0.0
+    last_flush = time.time()
+    if damage:
+        Xd.XDamageSubtract(dpy, damage, 0, 0)
+    if pixels_on:
+        for r in rs:
+            send_rect(*r)
+
+# the whole view again: a viewer that comes or fell behind, a resize
+def refresh():
+    global dirty, dirty_at
+    if not pixels_on:
+        return
+    dirty = []
+    dirty_at = 0.0
+    if damage:
+        Xd.XDamageSubtract(dpy, damage, 0, 0)
+    out(t="size", w=vw, h=vh)
+    send_rect(0, 0, vw, vh)
+
+def set_pixels(on):
+    global pixels_on, damage, damage_base, dirty
+    on = bool(on) and bool(Xd)
+    if on and not damage:
+        a, b = c_int(), c_int()
+        if Xd.XDamageQueryExtension(dpy, byref(a), byref(b)):
+            damage_base = a.value
+            # raw rectangles: each change as drawn, merged here
+            damage = Xd.XDamageCreate(dpy, root, 0)
+        else:
+            on = False
+    pixels_on = on
+    dirty = []
+    if on:
+        refresh()
+    elif damage:
+        Xd.XDamageSubtract(dpy, damage, 0, 0)
+
 # --- the clipboard -------------------------------------------------------------------
 
 clipwin = 0
@@ -646,6 +800,10 @@ def on_line(line):
             report()
     elif k == "clip":
         own_clipboard(str(m[1]))
+    elif k == "pixels":
+        set_pixels(m[1] if len(m) > 1 else True)
+    elif k == "refresh":
+        refresh()
     elif k == "close":
         close_main()
     elif k == "quit":
@@ -653,6 +811,7 @@ def on_line(line):
     X.XFlush(dpy)
 
 def on_x():
+    global dirty_at
     e = XEvent()
     while X.XPending(dpy):
         X.XNextEvent(dpy, byref(e))
@@ -689,6 +848,11 @@ def on_x():
             cursor_changed()
         elif fixes_base >= 0 and t == fixes_base:
             host_copied(e)
+        elif damage_base >= 0 and t == damage_base:
+            d = ctypes.cast(byref(e), POINTER(XDamageNotifyEvent)).contents
+            if pixels_on:
+                dirty.append((d.area.x, d.area.y, d.area.width, d.area.height))
+                dirty_at = dirty_at or time.time()
     X.XFlush(dpy)
 
 # --- the app ---------------------------------------------------------------------------
@@ -748,7 +912,7 @@ def main():
     resize_view(int(cfg.get("w", 1280)), int(cfg.get("h", 720)))
     X.XSync(dpy, 0)
     launch(argv, ":%d" % n, float(cfg.get("scale", 1)), bool(cfg.get("dbus", True)))
-    out(t="ready", display=":%d" % n, auth=auth, w=vw, h=vh, xtest=bool(Xt))
+    out(t="ready", display=":%d" % n, auth=auth, w=vw, h=vh, xtest=bool(Xt), pixels=bool(Xd))
     xfd = X.XConnectionNumber(dpy)
     afd = proc.stdout.fileno()
     seen_window = False
@@ -760,7 +924,10 @@ def main():
         buf = b""
     while True:
         fds = [0, xfd] + ([afd] if afd >= 0 else [])
-        r, _, _ = select.select(fds, [], [], 0.25)
+        wait = 0.25
+        if dirty:
+            wait = max(0.0, min(GATHER - (time.time() - dirty_at), FLUSH_GAP - (time.time() - last_flush)))
+        r, _, _ = select.select(fds, [], [], wait)
         if 0 in r:
             d = os.read(0, 65536)
             if not d:
@@ -777,6 +944,10 @@ def main():
             else:
                 afd = -1
         on_x()
+        if dirty:
+            now = time.time()
+            if now - dirty_at >= GATHER and now - last_flush >= FLUSH_GAP:
+                flush_rects()
         if wins:
             seen_window, gone_at = True, 0.0
         if proc.poll() is not None and not wins:

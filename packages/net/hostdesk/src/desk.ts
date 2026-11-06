@@ -24,6 +24,8 @@ type Ctx = {
 };
 
 const win = (s: Session) => s.os === "windows";
+// a desk reads in a second or two; longer is a probe that stopped answering
+const deskMs = 30_000;
 
 export function ctxOf(s: Session, psTerm = false): Ctx {
   s.extra.ctx ??= { icons: new Set<string>(), psTerm, pending: new Map() } satisfies Ctx;
@@ -49,10 +51,10 @@ export async function desktop(s: Session): Promise<Desk> {
   const c = ctxOf(s);
   let d: Desk;
   if (win(s)) {
-    const o = json(await s.call("desktop"));
+    const o = json(await s.call("desktop", "", deskMs));
     d = winDesk(o, c.psTerm);
   } else {
-    const [dt, ap] = await Promise.all([s.call("desktop"), s.call("apps", "", 120_000)]);
+    const [dt, ap] = await Promise.all([s.call("desktop", "", deskMs), s.call("apps", "", 120_000)]);
     const recs = records(dt);
     const de = /\nde=(\w+)/.exec(`\n${recs.find((r) => r.kind === "env")?.body ?? ""}`)?.[1] ?? "plain";
     const apps = parseApps(records(ap), de, buildDesk(recs, []).icontheme ?? "hicolor");
@@ -186,6 +188,39 @@ export async function prefetch(s: Session, host: string, items: Item[], slow = f
   );
 }
 
+export const iconKeyOf = (it: Item) => `${it.icon ?? ""}\n${it.iv ?? ""}`;
+
+// the items' icons in one answer: the cached ones at once, the rest read from the host
+// for up to budget ms; what's still on its way listed as missing for the page to ask again
+export async function icons(
+  s: Session,
+  host: string,
+  items: Item[],
+  budget: number,
+  slow = false,
+): Promise<{ got: Map<string, Blob>; missing: string[] }> {
+  const c = ctxOf(s);
+  const got = new Map<string, Blob>();
+  const want: Item[] = [];
+  const take = (it: Item) => {
+    const k = iconKeyOf(it);
+    if (got.has(k)) return true;
+    const hit = cacheGet(host, iconKey(it.icon!, it.iv ?? ""));
+    if (hit) got.set(k, unpack(hit));
+    return !!hit;
+  };
+  for (const it of items) if (it.icon && c.icons.has(it.icon) && !take(it)) want.push(it);
+  if (want.length) {
+    // the reads started here or earlier, waited on together within the budget
+    void prefetch(s, host, want, slow).catch(() => {});
+    const reads = want.map((it) => c.pending.get(iconKey(it.icon!, it.iv ?? ""))).filter((p) => !!p);
+    await Promise.race([Promise.allSettled(reads), new Promise((r) => setTimeout(r, budget))]);
+    for (const it of want) take(it);
+  }
+  const missing = [...new Set(items.filter((it) => it.icon && !got.has(iconKeyOf(it))).map(iconKeyOf))];
+  return { got, missing };
+}
+
 // a blob kept as one file: its type, a newline, its bytes
 const pack = (b: Blob) => Buffer.concat([Buffer.from(`${b.type}\n`), b.bytes]);
 function unpack(b: Uint8Array): Blob {
@@ -200,10 +235,29 @@ export async function wallpaper(s: Session, host: string): Promise<Blob | undefi
   const key = `wall\0${w.path}\0${w.iv}`;
   const hit = cacheGet(host, key);
   if (hit && w.iv) return unpack(hit);
-  const b = await readAll(s, w.path, wallMax);
-  const blob = { type: sniff(b, w.path), bytes: b };
+  const blob = (await scaledWall(s, w.path)) ?? (await rawWall(s, w.path));
   if (w.iv || !win(s)) cachePut(host, key, pack(blob));
   return blob;
+}
+
+async function rawWall(s: Session, path: string): Promise<Blob> {
+  const b = await readAll(s, path, wallMax);
+  return { type: sniff(b, path), bytes: b };
+}
+
+// the picture no wider than a screen, as a jpeg a tenth the size, scaled on the host by
+// whatever it has for it (System.Drawing, imagemagick, ffmpeg, vips); nothing when it has none
+async function scaledWall(s: Session, path: string): Promise<Blob | undefined> {
+  try {
+    const t = await s.call("wall", path, 60_000, true);
+    const b64 = win(s) ? String(json(t)?.jpg ?? "") : t.trim();
+    if (!b64) return;
+    const bytes = Buffer.from(b64, "base64");
+    if (bytes.length < 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return;
+    return { type: "image/jpeg", bytes };
+  } catch {
+    return;
+  }
 }
 
 // --- sftp ---------------------------------------------------------------------------

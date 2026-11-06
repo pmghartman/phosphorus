@@ -2,7 +2,7 @@
 // runner (ssh's) as `afterglow --stdio` when it has one, here an afterglow of our own
 // speaking the link on the channel. The app launched by its argv, frames to the viewer
 // with their header in place, its title, the viewer's clipboard sent to the host, a
-// polite close; the agent and ffmpeg when the host has no afterglow, or it won't start
+// polite close; the agent, its pixels and ffmpeg where the host has python3
 
 import { describe, expect, test } from "bun:test";
 import { In, LinkReader, linkMessage, Out } from "@phosphorus/afterglow";
@@ -22,11 +22,12 @@ import {
 const settle = () => new Promise((r) => setTimeout(r, 30));
 
 const features = "afterglow 0.3 stdio argv notes clipboard raise close cursor";
+// afterglow's turn comes on a host with no python3 for the agent
 const probe = (afterglow: boolean) =>
   [
     "have:Xvfb",
     "have:ffmpeg",
-    "have:python3",
+    ...(afterglow ? [] : ["have:python3"]),
     "have:dbus-run-session",
     ...(afterglow ? [`afterglow:/var/lib/phosphorus/afterglow/afterglow ${features}`] : []),
   ].join("\n");
@@ -167,7 +168,7 @@ describe("a Linux host's app", () => {
     expect(app.alive).toBe(false);
   });
 
-  test("no afterglow on the host: the agent and ffmpeg", async () => {
+  test("python3 on the host: the agent, its pixels and ffmpeg", async () => {
     const { r, ran } = runner(false);
     const src = new LinuxSource(r);
     const opening = src.open({ ...start, dpi: 96 }, { meta() {}, say() {}, exit() {} });
@@ -179,19 +180,14 @@ describe("a Linux host's app", () => {
     void opening.catch(() => {});
   });
 
-  test("an afterglow that won't start: the agent instead, and a note why", async () => {
+  test("an afterglow that won't start on a host with no python3: the open fails, saying so", async () => {
     const dead = new StdioAfterglow();
     // it never says ready and its channel closes
     dead.chan.write = () => queueMicrotask(() => dead.chan.close());
     const { r, ran } = runner(true, dead);
     const src = new LinuxSource(r);
-    const says: Record<string, unknown>[] = [];
-    const opening = src.open({ ...start, dpi: 96 }, { meta() {}, say: (m) => void says.push(m), exit() {} });
-    await new Promise((res) => setTimeout(res, 200));
-    expect(src.via).toBe("agent");
-    expect(says[0]?.s).toContain("afterglow didn't start here");
-    expect(ran.some((c) => c.includes("python3"))).toBe(true);
-    src.quit();
-    void opening.catch(() => {});
+    await expect(src.open({ ...start, dpi: 96 }, { meta() {}, say() {}, exit() {} })).rejects.toThrow();
+    expect(src.via).toBe("afterglow");
+    expect(ran.some((c) => c.includes("python3"))).toBe(false);
   });
 });

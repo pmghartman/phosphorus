@@ -1,13 +1,12 @@
-// a Linux host's app, streamed the best way that host has: afterglow (its release's
-// `afterglow --stdio`, run over ssh as the viewer's login) when the host has one, the
-// agent and ffmpeg (xsource.ts) when it doesn't. afterglow reads only what the app
-// drew, straight out of its X server's memory, and encodes it in-process: a key typed
-// shows in a few milliseconds where ffmpeg's grab, mux and pipe took tens. Either way
-// the app runs as the viewer's login on an X server of its own
+// a Linux host's app, the most direct way that host has: the agent (xsource.ts) when
+// the host has python3 and Xvfb, which sends the pixels as they change and video
+// through ffmpeg when the picture keeps moving; afterglow (its release's `afterglow
+// --stdio`, run over ssh as the viewer's login) when it doesn't, video alone. Either
+// way the app runs as the viewer's login on an X server of its own
 
 import { AfterglowSource, type Transport } from "@phosphorus/afterglow";
 import { missing, shq } from "./encode.ts";
-import type { Chan, Opened, Runner, Sink, Source, Video, VideoSink } from "./session.ts";
+import type { Chan, Opened, PixelSink, Runner, Sink, Source, Video, VideoSink } from "./session.ts";
 import { caps, XSource } from "./xsource.ts";
 
 // an ssh channel as afterglow's transport
@@ -28,7 +27,7 @@ export class LinuxSource implements Source {
 
   constructor(private runner: Runner) {}
 
-  // which one streams, once open: afterglow's or the agent's
+  // which one streams, once open: the agent's or afterglow's
   get via(): "afterglow" | "agent" | "" {
     return this.inner instanceof AfterglowSource ? "afterglow" : this.inner ? "agent" : "";
   }
@@ -45,34 +44,33 @@ export class LinuxSource implements Source {
     return this.inner?.restartGapMs;
   }
 
+  get canVideo() {
+    return this.inner?.canVideo !== false;
+  }
+
+  get hasPixels() {
+    return !!this.inner?.pixels && this.inner.hasPixels !== false;
+  }
+
   async open(s: Opened, sink: Sink): Promise<void> {
     const c = await caps(this.runner);
-    if (c.afterglow) {
-      const need = missing(c);
-      if (need) throw new Error(need);
-      const path = c.afterglow;
-      const src = new AfterglowSource({
-        transport: async () => chanTransport(await this.runner.run(afterglowCmd(path))),
-        target: "",
-        argv: s.argv,
-        dbus: c.dbus,
-        virtualDisplay: true,
-        fps: s.fps,
-      });
-      this.inner = src;
-      try {
-        return await src.open(s, sink);
-      } catch (e) {
-        const why = e instanceof Error ? e.message : String(e);
-        // the app's own failure is the app's, whoever starts it
-        if (why.startsWith("the app didn't start")) throw e;
-        src.quit();
-        sink.say({ t: "note", s: `afterglow didn't start here (${why}); streaming with ffmpeg` });
-      }
+    const need = missing(c);
+    if (need) throw new Error(need);
+    if (c.python && c.xvfb) {
+      this.inner = new XSource(this.runner);
+      return this.inner.open(s, sink);
     }
-    const x = new XSource(this.runner);
-    this.inner = x;
-    return x.open(s, sink);
+    const path = c.afterglow;
+    const src = new AfterglowSource({
+      transport: async () => chanTransport(await this.runner.run(afterglowCmd(path))),
+      target: "",
+      argv: s.argv,
+      dbus: c.dbus,
+      virtualDisplay: true,
+      fps: s.fps,
+    });
+    this.inner = src;
+    return src.open(s, sink);
   }
 
   video(v: Video, sink: VideoSink) {
@@ -85,6 +83,18 @@ export class LinuxSource implements Source {
 
   keyframe() {
     this.inner?.keyframe();
+  }
+
+  pixels(sink: PixelSink) {
+    this.inner?.pixels?.(sink);
+  }
+
+  stopPixels() {
+    this.inner?.stopPixels?.();
+  }
+
+  refresh() {
+    this.inner?.refresh?.();
   }
 
   input(m: unknown[], w: number, h: number) {

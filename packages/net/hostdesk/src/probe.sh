@@ -197,10 +197,26 @@ do_ls() {
 
 do_roots() { df -kP 2>/dev/null; }
 
+# the wallpaper no wider than a screen as a jpeg, by whichever converter the host has;
+# nothing when it has none, the picture then read as it is
+do_wall() {
+  [ -f "$1" ] || { fail "not found: $1"; return; }
+  o=$(mktemp 2>/dev/null || echo "/tmp/phos-wall-$$")
+  j="$o.jpg"
+  if command -v magick >/dev/null 2>&1; then magick "$1[0]" -auto-orient -resize '2560x2560>' -quality 85 "$j"
+  elif command -v convert >/dev/null 2>&1; then convert "$1[0]" -auto-orient -resize '2560x2560>' -quality 85 "$j"
+  elif command -v vipsthumbnail >/dev/null 2>&1; then vipsthumbnail "$1" --size '2560x2560>' -o "$j[Q=85]"
+  elif command -v ffmpeg >/dev/null 2>&1; then ffmpeg -v quiet -y -i "$1" -frames:v 1 -vf "scale='min(2560,iw)':'min(2560,ih)':force_original_aspect_ratio=decrease" -q:v 3 "$j"
+  fi 2>/dev/null
+  [ -s "$j" ] && b64 <"$j"
+  rm -f "$o" "$j"
+  return 0
+}
+
 while IFS='	' read -r id cmd arg; do
   a=$(printf '%s' "$arg" | base64 -d 2>/dev/null)
   case $cmd in
-  desktop | apps | icon | delete | open | ls | roots) ;;
+  desktop | apps | icon | wall | delete | open | ls | roots) ;;
   *)
     printf '%s\terr\t%s\n' "$id" "$(printf 'no such request: %s' "$cmd" | b64)"
     continue

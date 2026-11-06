@@ -167,10 +167,23 @@ export class Session {
       const t = setTimeout(() => {
         l.waiting.delete(id);
         no(new Error(`${this.target.host} took too long to answer ${cmd}`));
+        this.wedged(l);
       }, ms);
       l.waiting.set(id, { ok, no, t });
       l.chan.write(request(id, cmd, arg));
     });
+  }
+
+  // a probe that stopped answering: the slow lane dropped, the fast lane's whole session
+  // closed, so the next ask opens a fresh one instead of waiting on it again
+  private wedged(l: Lane) {
+    if (l === this.fast) return this.close();
+    if (l !== this.slow) return;
+    this.slow = undefined;
+    l.fail(new Error(`${this.target.host} stopped answering the slow probe`));
+    try {
+      l.chan.close();
+    } catch {}
   }
 
   // a command of its own on the connection, its stdin and stdout raw: an app stream's

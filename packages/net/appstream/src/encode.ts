@@ -67,12 +67,10 @@ export function parseCaps(out: string): Caps {
   };
 }
 
-// what the host lacks, said as what to install, "" when nothing: afterglow needs Xvfb
-// alone, the agent and ffmpeg the rest
+// what the host lacks, said as what to install, "" when nothing: the agent needs Xvfb
+// and python3 (ffmpeg only for video), afterglow Xvfb alone
 export function missing(c: Caps): string {
-  const need = c.afterglow
-    ? [!c.xvfb && "xvfb"].filter(Boolean)
-    : [!c.xvfb && "xvfb", !c.ffmpeg && "ffmpeg", !c.python && "python3"].filter(Boolean);
+  const need = [!c.xvfb && "xvfb", !c.python && !c.afterglow && "python3"].filter(Boolean);
   return need.length ? `app streaming needs ${need.join(", ")} on the host (apt install ${need.join(" ")})` : "";
 }
 

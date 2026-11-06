@@ -1,9 +1,13 @@
-// one streamed app as its viewer sees it: the frames relayed as they arrive, never
-// queued (over TCP a backlog is pure latency, so a viewer whose socket is behind
-// skips frames until a fresh keyframe, at a lower rate), input handed on. Where the
-// app runs and how its frames are made is its source's: an X display and ffmpeg on
-// a Linux host (xsource.ts), or a Windows host's afterglow
-// (@phosphorus/afterglow, whose source keeps the same Source contract)
+// one streamed app as its viewer sees it. Two ways its picture travels: as pixels, the
+// rectangles that changed read off the app's display the moment they change (no video,
+// no frame clock: a keystroke's echo is one small rectangle, a few milliseconds end to
+// end), or as video, where a source encodes frames. Pixels when the source has them and
+// the picture is mostly still; video when it keeps moving (a game, a film) and back when
+// it settles; the viewer may hold either. Either way nothing is queued: a viewer whose
+// socket is behind skips to a fresh picture (a keyframe, or the whole view again).
+// Where the app runs and how its picture is made is its source's: an X display with the
+// agent (xsource.ts) on a Linux host, or a Windows host's afterglow (@phosphorus/afterglow,
+// whose source keeps the same Source contract, video only)
 
 import { LinuxSource } from "./linuxsource.ts";
 
@@ -32,8 +36,15 @@ export interface Viewer {
 // message types to the viewer, its first byte
 export const MsgConfig = 1;
 export const MsgFrame = 2;
-// the header in front of every binary message
+// pixels: the view's size, then rectangles of it
+export const MsgSize = 3;
+export const MsgRect = 4;
+// the header in front of every binary message; a rectangle's is longer
 export const HeadLen = 8;
+export const RectHead = 16;
+// a rectangle's flags
+export const RectDeflated = 1;
+export const RectMSBFirst = 2;
 
 export type Start = {
   argv: string[];
@@ -63,6 +74,13 @@ export interface VideoSink {
   ended(got: boolean): void;
 }
 
+// the pixels as they change: the view's size, then each rectangle, 32 bits a pixel,
+// deflated or raw, in the display's byte order
+export interface PixelSink {
+  size(w: number, h: number): void;
+  rect(x: number, y: number, w: number, h: number, data: Uint8Array, deflated: boolean, msbFirst: boolean): void;
+}
+
 // what a source tells the session besides frames
 export interface Sink {
   // title, windows, cursor: kept and replayed to a viewer that comes later
@@ -80,11 +98,19 @@ export interface Source {
   readonly label: string;
   // the least time between two fresh videos: what one costs the host to start
   readonly restartGapMs?: number;
+  // whether video can be made at all (false: a host with no encoder), true when unsaid
+  readonly canVideo?: boolean;
+  // whether pixels come, known once open; true when unsaid and pixels() exists
+  readonly hasPixels?: boolean;
   open(s: Opened, sink: Sink): Promise<void>;
   // a fresh video at this size and rate, replacing any running; its first frame a keyframe
   video(v: Video, sink: VideoSink): void;
   stopVideo(): void;
   keyframe(): void;
+  // the pixels as they change, until stopped; refresh: the whole view again
+  pixels?(sink: PixelSink): void;
+  stopPixels?(): void;
+  refresh?(): void;
   // one input message from the viewer, already checked as an array; w, h the video's size
   input(m: unknown[], w: number, h: number): void;
   // the viewer's window resized: the app's to match (the video restarts after)
@@ -94,6 +120,9 @@ export interface Source {
   // everything ended
   quit(): void;
 }
+
+export type Mode = "pixels" | "video";
+export type Want = Mode | "auto";
 
 const maxW = 3840;
 const maxH = 2160;
@@ -111,10 +140,34 @@ const resizeQuietMs = 120;
 // a source that makes keyframes on request: asked at most this often
 const keyGapMs = 50;
 
+// the pixel path's measures, one object so tests can shorten them
+export const pixelTuning = {
+  // bytes behind past which rectangles are skipped until the whole view comes again
+  behindBytes: 2 << 20,
+  // the view asked for again once the viewer has drained to this
+  drainedBytes: 256 << 10,
+  // pixels changing faster than this (raw bytes a second), this long: video
+  toVideoRawBps: 48e6,
+  toVideoAfterMs: 1500,
+  // video thinner than this (kilobits a second), this long: pixels
+  toPixelsKbps: 300,
+  toPixelsAfterMs: 3000,
+  tickMs: 500,
+};
+
 const clamp = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
 const even = (n: number) => n & ~1;
 
-export type Stats = { frames: number; bytes: number; skipped: number; restarts: number; kbps: number; enc: string };
+export type Stats = {
+  frames: number;
+  rects: number;
+  bytes: number;
+  skipped: number;
+  restarts: number;
+  kbps: number;
+  enc: string;
+  mode: Mode;
+};
 
 const isRunner = (x: Source | Runner): x is Runner => typeof (x as Runner).run === "function";
 
@@ -126,6 +179,9 @@ export class AppSession {
   private needKey = true;
   private opened = false;
   private videoOn = false;
+  private pixelsOn = false;
+  // the viewer fell behind: rectangles skipped until the whole view comes again
+  private needFull = false;
   private w = 0;
   private h = 0;
   private sw = 0;
@@ -138,12 +194,22 @@ export class AppSession {
   private cleanSince = Date.now();
   private resizeT?: ReturnType<typeof setTimeout>;
   private restartT?: ReturnType<typeof setTimeout>;
+  private refreshT?: ReturnType<typeof setTimeout>;
+  private tickT?: ReturnType<typeof setInterval>;
   private lastMeta: Record<string, Record<string, unknown>> = {};
   private ended = false;
+  // what the viewer asked for, and what runs
+  private want: Want = "auto";
+  mode: Mode = "video";
+  // what moved since the last tick: raw pixel bytes, encoded video bytes
+  private rawAcc = 0;
+  private encAcc = 0;
+  private busySince = 0;
+  private quietSince = 0;
   readonly created = Date.now();
   title = "";
   lastSeen = Date.now();
-  stats: Stats = { frames: 0, bytes: 0, skipped: 0, restarts: 0, kbps: startKbps, enc: "" };
+  stats: Stats = { frames: 0, rects: 0, bytes: 0, skipped: 0, restarts: 0, kbps: startKbps, enc: "", mode: "video" };
   onEnd?: (why: string) => void;
 
   constructor(
@@ -161,6 +227,14 @@ export class AppSession {
 
   get size() {
     return { w: this.w, h: this.h };
+  }
+
+  get canPixels() {
+    return !!this.source.pixels && this.source.hasPixels !== false;
+  }
+
+  get canVideo() {
+    return this.source.canVideo !== false;
   }
 
   async open(): Promise<void> {
@@ -186,7 +260,15 @@ export class AppSession {
     );
     this.stats.enc = this.source.label;
     this.opened = true;
-    this.restart("start");
+    this.mode = this.canPixels && (this.want !== "video" || !this.canVideo) ? "pixels" : "video";
+    this.stats.mode = this.mode;
+    this.show("start");
+  }
+
+  // the picture started the way the mode says
+  private show(why: string) {
+    if (this.mode === "pixels") this.startPixels();
+    else this.restart(why);
   }
 
   // a viewer takes over: the one before told why and let go
@@ -197,10 +279,25 @@ export class AppSession {
     }
     this.viewer = v;
     this.lastSeen = Date.now();
-    v.json({ t: "ready", id: this.id, w: this.w, h: this.h, enc: this.source.label, title: this.title });
+    v.json({
+      t: "ready",
+      id: this.id,
+      w: this.w,
+      h: this.h,
+      enc: this.source.label,
+      title: this.title,
+      mode: this.mode,
+      want: this.want,
+      pixels: this.canPixels,
+      video: this.canVideo,
+    });
     for (const m of Object.values(this.lastMeta)) v.json(m);
     this.needKey = true;
-    if (this.videoOn && this.source.keyframes) this.askKey();
+    if (!this.opened) return;
+    if (this.mode === "pixels") {
+      if (this.pixelsOn) this.refresh();
+      else this.startPixels();
+    } else if (this.videoOn && this.source.keyframes) this.askKey();
     else this.restart("viewer");
   }
 
@@ -208,8 +305,9 @@ export class AppSession {
     if (this.viewer !== v) return;
     this.viewer = undefined;
     this.lastSeen = Date.now();
-    // nobody to send to: the video stopped until someone comes back
+    // nobody to send to: nothing made until someone comes back
     this.stopVideo();
+    this.stopPixels();
   }
 
   get watched() {
@@ -223,17 +321,31 @@ export class AppSession {
     switch (m[0]) {
       case "r":
         return this.resize(Math.round(Number(m[1]) || 0), Math.round(Number(m[2]) || 0));
+      case "mode": {
+        // pixels, video, or auto: the session's own choice between them
+        const w = m[1] === "pixels" || m[1] === "video" ? m[1] : "auto";
+        if (w === this.want) return;
+        this.want = w;
+        this.busySince = this.quietSince = 0;
+        if (w === "pixels" && this.canPixels) return this.switchTo("pixels", "asked");
+        if (w === "video" && this.canVideo) return this.switchTo("video", "asked");
+        return this.viewer?.json({ t: "mode", mode: this.mode, want: this.want });
+      }
       case "full":
         // full-colour chroma for sharp text, from the next keyframe
         if (!!m[1] === this.start.full) return;
         this.start.full = !!m[1];
         this.needKey = true;
-        return this.restart("full");
+        if (this.mode === "video") this.restart("full");
+        return;
       case "key":
-        // the decoder lost its place: a fresh keyframe
+        // the decoder lost its place: a fresh keyframe; or the whole view again
         this.needKey = true;
+        if (this.mode === "pixels") return this.refresh();
         if (this.source.keyframes && this.videoOn) return this.askKey(true);
         return this.restart("decoder");
+      case "refresh":
+        return this.refresh();
       case "p":
         return this.viewer?.json({ t: "pong", n: m[1], q: this.viewer.queued() });
       case "slow":
@@ -241,7 +353,8 @@ export class AppSession {
         this.needKey = true;
         this.kbps = Math.max(minKbps, Math.round(this.kbps * 0.6));
         this.cleanSince = Date.now();
-        return this.restart("slow");
+        if (this.mode === "video") this.restart("slow");
+        return;
       case "close":
         return this.source.close();
       case "let-go":
@@ -267,11 +380,149 @@ export class AppSession {
     this.h = nh;
     this.source.resize(nw, nh);
     clearTimeout(this.resizeT);
-    this.resizeT = setTimeout(() => this.restart("resize"), resizeQuietMs);
+    // pixels: the source sends the view at its new size itself
+    if (this.mode === "video") this.resizeT = setTimeout(() => this.restart("resize"), resizeQuietMs);
   }
+
+  // --- pixels -----------------------------------------------------------------------
+
+  private startPixels() {
+    if (this.ended || !this.viewer || !this.opened || this.pixelsOn || !this.source.pixels) return;
+    this.pixelsOn = true;
+    this.needFull = false;
+    const gen = ++this.gen;
+    const live = () => gen === this.gen && !this.ended && this.pixelsOn;
+    this.source.pixels({
+      size: (w, h) => live() && this.sendSize(gen, w, h),
+      rect: (x, y, w, h, data, deflated, msb) => live() && this.rect(gen, x, y, w, h, data, deflated, msb),
+    });
+    this.tick(true);
+  }
+
+  private stopPixels() {
+    if (!this.pixelsOn) return;
+    this.pixelsOn = false;
+    this.gen++;
+    clearTimeout(this.refreshT);
+    this.source.stopPixels?.();
+  }
+
+  // the whole view again, from the source
+  private refresh() {
+    if (this.mode !== "pixels" || !this.pixelsOn) return;
+    this.source.refresh?.();
+  }
+
+  private sendSize(gen: number, w: number, h: number) {
+    const v = this.viewer;
+    if (!v) return;
+    const b = new Uint8Array(HeadLen);
+    const d = new DataView(b.buffer);
+    b[0] = MsgSize;
+    d.setUint16(2, gen & 0xffff, true);
+    d.setUint16(4, w, true);
+    d.setUint16(6, h, true);
+    v.binary(b);
+  }
+
+  private rect(
+    gen: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    data: Uint8Array,
+    deflated: boolean,
+    msb: boolean,
+  ) {
+    const v = this.viewer;
+    if (!v) return;
+    this.lastSeen = Date.now();
+    this.rawAcc += w * h * 4;
+    const whole = x === 0 && y === 0 && w >= this.w && h >= this.h;
+    if (this.needFull && !whole) {
+      this.stats.skipped++;
+      return;
+    }
+    const t = pixelTuning;
+    if (v.queued() > t.behindBytes) {
+      // behind: this and the ones after skipped, the whole view asked for once drained
+      this.stats.skipped++;
+      this.needFull = true;
+      this.refreshWhenDrained();
+      return;
+    }
+    if (whole) this.needFull = false;
+    const b = new Uint8Array(RectHead + data.length);
+    const d = new DataView(b.buffer);
+    b[0] = MsgRect;
+    b[1] = (deflated ? RectDeflated : 0) | (msb ? RectMSBFirst : 0);
+    d.setUint16(2, gen & 0xffff, true);
+    d.setUint32(4, ++this.seq, true);
+    d.setUint16(8, x, true);
+    d.setUint16(10, y, true);
+    d.setUint16(12, w, true);
+    d.setUint16(14, h, true);
+    b.set(data, RectHead);
+    v.binary(b);
+    this.stats.rects++;
+    this.stats.bytes += data.length;
+  }
+
+  private refreshWhenDrained() {
+    clearTimeout(this.refreshT);
+    this.refreshT = setTimeout(() => {
+      if (!this.needFull || !this.viewer || !this.pixelsOn) return;
+      if (this.viewer.queued() > pixelTuning.drainedBytes) return this.refreshWhenDrained();
+      this.refresh();
+    }, 100);
+  }
+
+  // --- the choice between pixels and video, by what moves -------------------------------
+
+  private tick(on: boolean) {
+    clearInterval(this.tickT);
+    this.tickT = undefined;
+    this.rawAcc = this.encAcc = 0;
+    this.busySince = this.quietSince = 0;
+    if (!on) return;
+    this.tickT = setInterval(() => this.judge(), pixelTuning.tickMs);
+  }
+
+  private judge() {
+    const t = pixelTuning;
+    const now = Date.now();
+    const raw = (this.rawAcc * 1000) / t.tickMs;
+    const kbps = (this.encAcc * 8) / t.tickMs;
+    this.rawAcc = this.encAcc = 0;
+    if (this.want !== "auto" || !this.viewer) return;
+    if (this.mode === "pixels") {
+      if (raw > t.toVideoRawBps && this.canVideo) {
+        this.busySince ||= now;
+        if (now - this.busySince >= t.toVideoAfterMs) this.switchTo("video", "moving");
+      } else this.busySince = 0;
+    } else if (kbps < t.toPixelsKbps && this.canPixels) {
+      this.quietSince ||= now;
+      if (now - this.quietSince >= t.toPixelsAfterMs) this.switchTo("pixels", "still");
+    } else this.quietSince = 0;
+  }
+
+  private switchTo(mode: Mode, why: string) {
+    if (mode === this.mode || this.ended) return;
+    if (mode === "video") this.stopPixels();
+    else this.stopVideo();
+    this.mode = mode;
+    this.stats.mode = mode;
+    this.busySince = this.quietSince = 0;
+    this.viewer?.json({ t: "mode", mode, want: this.want, why });
+    this.show(why);
+  }
+
+  // --- video ------------------------------------------------------------------------
 
   private stopVideo() {
     clearTimeout(this.restartT);
+    if (!this.videoOn) return;
     this.gen++;
     this.videoOn = false;
     this.source.stopVideo();
@@ -280,7 +531,7 @@ export class AppSession {
   // a fresh video at the viewer's size: its first frame a keyframe. Kept to one a
   // second; one asked sooner runs when the second is up
   private restart(why: string) {
-    if (this.ended || !this.viewer || !this.opened) return;
+    if (this.ended || !this.viewer || !this.opened || this.mode !== "video") return;
     const wait = this.lastRestart + (this.source.restartGapMs ?? restartGapMs) - Date.now();
     clearTimeout(this.restartT);
     if (wait > 0 && this.videoOn) {
@@ -289,13 +540,14 @@ export class AppSession {
     }
     this.lastRestart = Date.now();
     this.stopVideo();
-    const gen = this.gen;
+    const gen = ++this.gen;
     this.videoOn = true;
     this.stats.kbps = this.kbps;
     this.stats.restarts++;
     this.needKey = true;
     let got = false;
     const live = () => gen === this.gen && !this.ended;
+    this.tick(true);
     this.source.video(
       {
         w: this.w,
@@ -377,6 +629,7 @@ export class AppSession {
     v.binary(b);
     this.stats.frames++;
     this.stats.bytes += n;
+    this.encAcc += n;
   }
 
   // the app asked to close politely; quit kills it
@@ -384,7 +637,10 @@ export class AppSession {
     if (this.ended) return;
     this.ended = true;
     clearTimeout(this.resizeT);
+    clearTimeout(this.refreshT);
+    this.tick(false);
     this.stopVideo();
+    this.stopPixels();
     this.source.quit();
     this.viewer?.json({ t: "ended", why });
     this.viewer?.close(1000);

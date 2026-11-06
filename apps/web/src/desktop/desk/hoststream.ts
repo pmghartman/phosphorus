@@ -1,8 +1,10 @@
-// a host's window app streamed onto its desktop: the app runs on the host on its own
-// display, its frames come over one socket to a worker that decodes each the moment it
-// lands (WebCodecs, no jitter buffer) and draws it to the canvas off the main thread;
-// pointer and keys go back over the same socket. The pointer itself is drawn here, in
-// the host's shape, so it never lags
+// a host's window app on its desktop: the app runs on the host on its own display and
+// its picture comes over one socket to a worker that draws it to the canvas off the main
+// thread. As pixels: the rectangles that changed, inflated and painted the moment they
+// land, no frame clock, which is how a desktop app's typing and clicks stay instant. Or
+// as video while the picture keeps moving, each frame decoded as it lands (WebCodecs, no
+// jitter buffer). Pointer and keys go back over the same socket. The pointer itself is
+// drawn here, in the host's shape, so it never lags
 
 import { el } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
@@ -22,8 +24,12 @@ function streamWorker() {
   const sentAt = new Map<number, number>();
   let decodeMs = 0;
   let frames = 0;
+  let rects = 0;
   let bytes = 0;
   let dropped = 0;
+  // rectangles painted in the order they came, each inflated first
+  let paintQ: Promise<void> = Promise.resolve();
+  let paintGen = 0;
   // a measuring page's: each frame's size and when it was drawn, on one clock with the page's
   let debug = false;
   const sizes = new Map<number, number>();
@@ -66,10 +72,63 @@ function streamWorker() {
     dec.configure({ codec, description: avcc, optimizeForLatency: true, hardwareAcceleration: 'no-preference' });
     post({ t: 'size', w, h, codec });
   };
+  const inflate = async (data: Uint8Array) => {
+    const r = new Response(new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate')));
+    return new Uint8Array(await r.arrayBuffer());
+  };
+  // 32-bit pixels in the display's order (BGRx little-endian, or xRGB big) to RGBA on the canvas
+  const paint = (raw: Uint8Array, x: number, y: number, w: number, h: number, msb: boolean) => {
+    if (!ctx || raw.length < w * h * 4) return;
+    const img = ctx.createImageData(w, h);
+    const src = new Uint32Array(raw.buffer, raw.byteOffset, w * h);
+    const dst = new Uint32Array(img.data.buffer);
+    if (msb) for (let i = 0; i < src.length; i++) dst[i] = ((src[i]! & 0xffffff00) >>> 8) | 0xff000000;
+    else
+      for (let i = 0; i < src.length; i++)
+        dst[i] = ((src[i]! & 0xff) << 16) | (src[i]! & 0xff00) | ((src[i]! >> 16) & 0xff) | 0xff000000;
+    ctx.putImageData(img, x, y);
+  };
   const onBin = (buf: ArrayBuffer) => {
     const b = new Uint8Array(buf);
     const d = new DataView(buf);
     const g2 = d.getUint16(2, true);
+    if (b[0] === 3) {
+      // pixels: the view's size; a size of its own generation, the rectangles after it painted in turn
+      const w = d.getUint16(4, true);
+      const h = d.getUint16(6, true);
+      const my = ++paintGen;
+      paintQ = paintQ.then(() => {
+        if (my !== paintGen || !canvas) return;
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+      });
+      post({ t: 'size', w, h, codec: 'pixels' });
+      return;
+    }
+    if (b[0] === 4) {
+      const flags = b[1]!;
+      const x = d.getUint16(8, true);
+      const y = d.getUint16(10, true);
+      const w = d.getUint16(12, true);
+      const h = d.getUint16(14, true);
+      const data = b.slice(16);
+      bytes += data.length;
+      rects++;
+      const my = paintGen;
+      paintQ = paintQ
+        .then(async () => {
+          const raw = flags & 1 ? await inflate(data) : data;
+          if (my === paintGen) paint(raw, x, y, w, h, !!(flags & 2));
+        })
+        .catch(() => {});
+      return;
+    }
+    if (typeof VideoDecoder === 'undefined') {
+      post({ t: 'novideo' });
+      return;
+    }
     if (b[0] === 1) {
       gen = g2;
       waitKey = true;
@@ -132,11 +191,12 @@ function streamWorker() {
         post({
           t: 'stats',
           fps: Math.round(frames / sec),
+          rects: Math.round(rects / sec),
           kbps: Math.round((bytes * 8) / sec / 1000),
           decode: Math.round(decodeMs * 10) / 10,
           dropped,
         });
-        frames = bytes = 0;
+        frames = rects = bytes = 0;
         try {
           if (s.readyState === 1) s.send(JSON.stringify(['p', now]));
         } catch {}
@@ -262,8 +322,8 @@ export type Attach = { pid: number; started: number; name: string; icon?: string
 // host attached to, in a phosphorus window of its own: moved, resized, snapped and minimized
 // as any service's, the app sized to it
 export function streamWin(host: string, it: Item | { id: string; name: string } | Attach) {
-  if (typeof VideoDecoder === 'undefined' || typeof OffscreenCanvas === 'undefined')
-    return dkSay('this browser has no WebCodecs: app streaming needs Chrome, Edge, Firefox 130 or Safari 26');
+  if (typeof OffscreenCanvas === 'undefined' || typeof DecompressionStream === 'undefined')
+    return dkSay('this browser is too old for app windows: it needs Chrome, Edge, Firefox 130 or Safari 26');
   if (!dk.desk) return;
   const byId = 'id' in it && !('kind' in it) ? it.id : '';
   const path = 'path' in it ? (it.path ?? '') : '';
@@ -297,6 +357,17 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
   head.insertBefore(pick, btns);
   const infoBtn = btn('stream stats', 'i');
   const sharpBtn = btn('sharp text: full colour, more cpu', 'Aa');
+  // pixels, video or the session's own choice between them, by what moves
+  const modeBtn = btn('how the picture comes: auto, pixels or video', 'auto');
+  modeBtn.classList.add('hd-mode');
+  let want = 'auto';
+  let mode = '';
+  const canVideo = typeof VideoDecoder !== 'undefined';
+  const showMode = () => {
+    modeBtn.firstChild!.textContent = want === 'auto' ? `auto${mode ? `: ${mode}` : ''}` : want;
+    modeBtn.classList.toggle('on', want !== 'auto');
+    sharpBtn.hidden = mode === 'pixels' || !canVideo;
+  };
 
   const stage = el('div', 'hd-stage');
   stage.tabIndex = -1;
@@ -322,6 +393,7 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
   let tries = 0;
   let rtt = 0;
   let sharp = false;
+  let codec = '';
   const send = (m: unknown[]) => worker.postMessage({ t: 'send', s: JSON.stringify(m) });
 
   const size = () => {
@@ -355,7 +427,7 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
     worker.postMessage(first ? { t: 'open', url, canvas: off, debug } : { t: 'open', url, debug }, first ? [off] : []);
   };
   void fullOK.then((ok) => {
-    sharpBtn.hidden = !ok;
+    sharpBtn.hidden = !ok || mode === 'pixels';
   });
 
   // the stream stopped with its window, however it goes
@@ -381,6 +453,12 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
         tries = 0;
         say.hidden = true;
         if (m.title) named(m.title);
+        mode = m.mode || '';
+        want = m.want || 'auto';
+        modeBtn.hidden = !(m.pixels && m.video && canVideo);
+        showMode();
+        // a browser with no video decoder holds the session to pixels
+        if (!canVideo && m.pixels && want !== 'pixels') send(['mode', 'pixels']);
         // keyed by its id now, so taking it up again finds this window
         if (w.key !== winKey(host, id)) {
           dk.wins.delete(w.key);
@@ -391,6 +469,15 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
       case 'size':
         streamW = m.w;
         streamH = m.h;
+        codec = m.codec || '';
+        break;
+      case 'mode':
+        mode = m.mode;
+        want = m.want || want;
+        showMode();
+        break;
+      case 'novideo':
+        send(['mode', 'pixels']);
         break;
       case 'title':
         named(m.s || it.name);
@@ -422,7 +509,10 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
         rtt = m.rtt;
         break;
       case 'stats':
-        stats.textContent = `${streamW}×${streamH} · ${m.fps} fps · ${(m.kbps / 1000).toFixed(1)} Mb/s · decode ${m.decode} ms · rtt ${rtt} ms${m.dropped ? ` · skipped ${m.dropped}` : ''}`;
+        stats.textContent =
+          mode === 'pixels'
+            ? `${streamW}×${streamH} · pixels · ${m.rects} rects/s · ${(m.kbps / 1000).toFixed(2)} Mb/s · rtt ${rtt} ms`
+            : `${streamW}×${streamH} · ${codec} · ${m.fps} fps · ${(m.kbps / 1000).toFixed(1)} Mb/s · decode ${m.decode} ms · rtt ${rtt} ms${m.dropped ? ` · skipped ${m.dropped}` : ''}`;
         break;
       case 'taken':
         ended = true;
@@ -587,12 +677,17 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
     sharpBtn.classList.toggle('on', sharp);
     send(['full', sharp ? 1 : 0]);
   });
+  modeBtn.addEventListener('click', () => {
+    want = want === 'auto' ? 'pixels' : want === 'pixels' ? 'video' : 'auto';
+    showMode();
+    send(['mode', want]);
+  });
   pick.addEventListener('change', () => {
     send(['raise', Number(pick.value)]);
     ime.focus({ preventScroll: true });
   });
   // the window's own buttons hand the keyboard back to the app
-  for (const b of [sharpBtn, infoBtn]) b.addEventListener('click', () => ime.focus({ preventScroll: true }));
+  for (const b of [sharpBtn, infoBtn, modeBtn]) b.addEventListener('click', () => ime.focus({ preventScroll: true }));
   w.onFocus = () => setTimeout(() => ime.focus({ preventScroll: true }), 0);
   body.addEventListener('pointerdown', (e) => {
     if (!(e.target as Element).closest('select')) setTimeout(() => ime.focus({ preventScroll: true }), 0);

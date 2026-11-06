@@ -286,6 +286,29 @@ function Do-icons($a) {
   , $r
 }
 
+# the wallpaper no wider than a screen, as a jpeg: a 4k or raw picture a tenth the size
+function Do-wall($a) {
+  Add-Type -AssemblyName System.Drawing
+  $img = [Drawing.Image]::FromFile($a)
+  try {
+    $k = [Math]::Min(1, 2560 / [Math]::Max($img.Width, $img.Height))
+    $w = [Math]::Max(1, [int][Math]::Round($img.Width * $k))
+    $h = [Math]::Max(1, [int][Math]::Round($img.Height * $k))
+    $bmp = New-Object Drawing.Bitmap $w, $h
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.InterpolationMode = 'HighQualityBicubic'
+    $g.DrawImage($img, 0, 0, $w, $h)
+    $g.Dispose()
+    $enc = [Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
+    $ep = New-Object Drawing.Imaging.EncoderParameters 1
+    $ep.Param[0] = New-Object Drawing.Imaging.EncoderParameter ([Drawing.Imaging.Encoder]::Quality), 85L
+    $m = New-Object IO.MemoryStream
+    $bmp.Save($m, $enc, $ep)
+    $bmp.Dispose()
+    @{ jpg = [Convert]::ToBase64String($m.ToArray()) }
+  } finally { $img.Dispose() }
+}
+
 # fixed drives only: a network or removable one never waited on
 function Bins {
   foreach ($d in [IO.DriveInfo]::GetDrives()) {
@@ -349,7 +372,7 @@ function Do-roots($a) {
   , $r
 }
 
-$cmds = 'desktop', 'apps', 'icon', 'icons', 'stat', 'delete', 'open', 'ls', 'roots'
+$cmds = 'desktop', 'apps', 'icon', 'icons', 'wall', 'stat', 'delete', 'open', 'ls', 'roots'
 $out = [Console]::Out
 while ($true) {
   $l = [Console]::In.ReadLine()

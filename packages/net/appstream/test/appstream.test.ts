@@ -9,6 +9,8 @@ import {
   localRunner,
   MsgConfig,
   MsgFrame,
+  MsgRect,
+  MsgSize,
   missing,
   parseCaps,
   parseExec,
@@ -144,7 +146,8 @@ describe("flv", () => {
 });
 
 const have = (c: string) => Bun.spawnSync(["sh", "-c", `command -v ${c}`]).exitCode === 0;
-const canRun = have("Xvfb") && have("ffmpeg") && have("python3") && have("xterm");
+// a Linux machine with the lot; a Mac's XQuartz has no root-owned socket dir for Xvfb
+const canRun = process.platform === "linux" && have("Xvfb") && have("ffmpeg") && have("python3") && have("xterm");
 
 // the whole host half on this machine: xterm on its own display, encoded, typed into
 describe.skipIf(!canRun)("live", () => {
@@ -177,6 +180,15 @@ describe.skipIf(!canRun)("live", () => {
       while (!f() && Date.now() < t) await Bun.sleep(20);
       return f();
     };
+    // pixels first: the view's size, then the whole view as one rectangle
+    expect(await until(() => bins.some((b) => b[0] === MsgSize))).toBe(true);
+    const size = bins.find((b) => b[0] === MsgSize)!;
+    expect(new DataView(size.buffer).getUint16(4, true)).toBe(640);
+    expect(
+      await until(() => bins.some((b) => b[0] === MsgRect && new DataView(b.buffer).getUint16(12, true) === 640)),
+    ).toBe(true);
+    // video when asked for
+    s.input(["mode", "video"]);
     expect(await until(() => bins.some((b) => b[0] === MsgFrame && b[1] === 1))).toBe(true);
     const cfg = bins.find((b) => b[0] === MsgConfig)!;
     expect(new DataView(cfg.buffer).getUint16(4, true)).toBe(640);

@@ -1,10 +1,10 @@
-// app streaming: one GUI app on a host as a window in the browser, through afterglow
-// (github.com/pmghartman/afterglow, @phosphorus/afterglow), phosphorus's streaming host
-// installed with each release. A Linux host runs it over ssh as the viewer's login
-// (`afterglow --stdio`, linuxsource.ts), or, where afterglow isn't installed, runs the
-// app on its own headless X server (agent.py) for ffmpeg to encode; a Windows host's
-// phosphorus drives its afterglow over one loopback link. Either way the frames go to
-// the viewer's VideoDecoder over the socket as they come
+// app streaming: one GUI app on a host as a window in the browser. A Linux host runs
+// the app on its own headless X server (agent.py, over ssh as the viewer's login) and
+// sends the pixels as the rectangles that change, no video, ffmpeg encoding video only
+// while the picture keeps moving; where it has no python3, afterglow
+// (github.com/pmghartman/afterglow, @phosphorus/afterglow) streams it as video. A
+// Windows host's phosphorus drives its afterglow over one loopback link, video too.
+// Either way it goes to the viewer over the socket as it comes
 
 export { ffmpegArgs, missing, parseCaps, shq } from "./encode.ts";
 export { parseExec } from "./exec.ts";
@@ -18,9 +18,17 @@ export {
   AppSession,
   type Chan,
   HeadLen,
+  type Mode,
   MsgConfig,
   MsgFrame,
+  MsgRect,
+  MsgSize,
   type Opened,
+  type PixelSink,
+  pixelTuning,
+  RectDeflated,
+  RectHead,
+  RectMSBFirst,
   type Runner,
   type Sink,
   type Source,
@@ -29,4 +37,4 @@ export {
   type VideoSink,
   type Viewer,
 } from "./session.ts";
-export { caps, XSource } from "./xsource.ts";
+export { AgentReader, caps, XSource } from "./xsource.ts";

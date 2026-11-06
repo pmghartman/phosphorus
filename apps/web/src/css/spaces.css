@@ -78,6 +78,13 @@
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent);
 }
+/* the mode button carries a word or two, whatever the look's button width */
+:root .dk-desk .dk-btns .hd-sbtn.hd-mode {
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
 .hd-app-wins {
   max-width: 180px;
   height: 1.5rem;
