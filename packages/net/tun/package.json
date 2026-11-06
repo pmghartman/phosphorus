@@ -1,0 +1,8 @@
+{
+  "name": "@phosphorus/tun",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

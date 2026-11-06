@@ -243,7 +243,8 @@ test("the tools pinned per OS, fetched only when a pin moves or a file is gone",
   expect(names(pins("linux", "x64"))).toEqual(["tailscale", "tailscaled"]);
   expect(names(pins("linux", "arm64", false))).toEqual([]);
   expect(names(pins("darwin", "arm64"))).toEqual([]);
-  expect(names(pins("win32", "x64"))).toEqual([]);
+  expect(names(pins("win32", "x64"))).toEqual(["wintun.dll"]);
+  expect(pins("win32", "arm64")[0]!.files).toEqual({ "wintun.dll": "wintun/bin/arm64/wintun.dll" });
   expect(pins("linux", "arm64")[0]!.url).toContain(`tailscale_${Tailscale}_arm64.tgz`);
 
   // the pin's file here at its version: nothing fetched
@@ -281,6 +282,68 @@ test("headscale pinned apart from every host's tools", async () => {
   );
   expect(p.files).toEqual({ headscale: "" });
   expect(headscalePin("x64").sha256).toMatch(/^[0-9a-f]{64}$/);
+});
+
+// a zip of stored entries, enough for the .zip branch
+function storedZip(files: [string, Uint8Array][]): Uint8Array {
+  const locals: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let at = 0;
+  for (const [name, data] of files) {
+    const n = Buffer.from(name);
+    const crc = Bun.hash.crc32(data);
+    const l = Buffer.alloc(30);
+    l.writeUInt32LE(0x04034b50, 0);
+    l.writeUInt32LE(crc, 14);
+    l.writeUInt32LE(data.length, 18);
+    l.writeUInt32LE(data.length, 22);
+    l.writeUInt16LE(n.length, 26);
+    const c = Buffer.alloc(46);
+    c.writeUInt32LE(0x02014b50, 0);
+    c.writeUInt32LE(crc, 16);
+    c.writeUInt32LE(data.length, 20);
+    c.writeUInt32LE(data.length, 24);
+    c.writeUInt16LE(n.length, 28);
+    c.writeUInt32LE(at, 42);
+    locals.push(l, n, data);
+    central.push(c, n);
+    at += 30 + n.length + data.length;
+  }
+  const dir = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(dir.length, 12);
+  end.writeUInt32LE(at, 16);
+  return Buffer.concat([...locals, dir, end]);
+}
+
+test("a zip pin's member taken out of it", async () => {
+  const { ensurePin } = await import("../src/tools.ts");
+  const { os } = await import("../src/os.ts");
+  const dll = Buffer.from("not really a dll");
+  const zip = storedZip([
+    ["wintun/LICENSE.txt", Buffer.from("license")],
+    ["wintun/bin/amd64/wintun.dll", dll],
+  ]);
+  const sha256 = new Bun.CryptoHasher("sha256").update(zip).digest("hex");
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(new Uint8Array(zip))) as unknown as typeof fetch;
+  try {
+    const pin = {
+      name: "ziptest",
+      ver: "1",
+      url: "https://example.invalid/ziptest.zip",
+      sha256,
+      files: { "ziptest.dll": "wintun/bin/amd64/wintun.dll" },
+    };
+    expect(await ensurePin(pin)).toBe(true);
+    expect(readFileSync(join(os.libexec(), "ziptest.dll"), "utf8")).toBe("not really a dll");
+    expect(await ensurePin(pin)).toBe(false);
+  } finally {
+    globalThis.fetch = real;
+  }
 });
 
 test("a mesh join key round-trips, anything else refused", async () => {
