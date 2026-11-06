@@ -26,6 +26,7 @@ import {
   home,
   inDpkg,
   isLinux,
+  isMac,
   isModelHost,
   isWindows,
   lockEnv,
@@ -249,7 +250,7 @@ export async function rebuild() {
 // what root runs from root's alone: a login owning state/ or bin/ could swap
 // native.env or the binary under the service
 export function tidy() {
-  if (isLinux && process.getuid?.() === 0)
+  if ((isLinux || isMac) && process.getuid?.() === 0)
     for (const d of [home, at("state"), at("bin"), at("sys")]) {
       try {
         const st = lstatSync(d);

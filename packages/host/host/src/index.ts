@@ -8,6 +8,7 @@ import {
   home,
   homeDir,
   isLinux,
+  isMac,
   isWindows,
   print,
   println,
@@ -45,6 +46,7 @@ export const commands = new Set([
   "status",
   "version",
   "afterglow",
+  "daemon",
   "help",
   "-h",
   "--help",
@@ -95,8 +97,8 @@ export async function main(cmd: string, args: string[]): Promise<number> {
   const f = parse(args);
   if (f.home) setHome(f.home);
   if (!home) setHome(homeDir());
-  // Linux: root's /var/lib/phosphorus, its .env root's alone
-  if (isLinux && process.geteuid?.() !== 0 && !["help", "-h", "--help", "version"].includes(cmd))
+  // Linux and macOS: root's home, its .env root's alone
+  if ((isLinux || isMac) && process.geteuid?.() !== 0 && !["help", "-h", "--help", "version"].includes(cmd))
     return os.asRoot([cmd, ...args]);
   setTag(cmd);
   try {
@@ -143,6 +145,10 @@ export async function main(cmd: string, args: string[]): Promise<number> {
         break;
       case "version":
         println(version());
+        break;
+      // macOS: the app's one admin step, the user agent's home moved and the daemon set up
+      case "daemon":
+        await (await import("./mac/migrate.ts")).daemonSetup(f);
         break;
       // after an afterglow update: the newest copy taken up (Windows' service; Linux runs it per stream)
       case "afterglow":

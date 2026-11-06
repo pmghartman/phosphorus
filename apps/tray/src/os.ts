@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { newer } from "@phosphorus/appfeed";
 import { errText, run } from "@phosphorus/util";
 import { wstr } from "./tray.ts";
 
@@ -60,8 +61,14 @@ function homeDir(): string {
   if (process.env.PHOSPHORUS_HOME) return process.env.PHOSPHORUS_HOME;
   // not %LOCALAPPDATA%\Phosphorus: the app's own install dir, wiped by its uninstaller
   if (!darwin) return join(process.env.USERPROFILE ?? "", "phosphorus");
-  return join(process.env.HOME ?? "", "Library/Phosphorus");
+  // root's, the daemon's: the tray reads it and asks the daemon for the rest
+  return "/Library/Phosphorus";
 }
+
+const userHome = process.env.HOME ?? "";
+// the tray's own files on macOS, the home being root's: its lock, then its logs
+export const trayDir = darwin ? join(userHome, "Library/Application Support/Phosphorus") : join(homeDir(), "state");
+export const logDir = darwin ? join(userHome, "Library/Logs/Phosphorus") : join(homeDir(), "state", "log");
 
 const exe = exeDir();
 // this binary, symlinks resolved: the host's commands are its own
@@ -94,8 +101,21 @@ const sq = (s: string) => "'" + s.replaceAll("'", `'\\''`) + "'";
 // an AppleScript string literal
 const asq = (s: string) => '"' + s.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"';
 
-// one host command, its ok
-const hostOK = async (...args: string[]) => (await run([app.host, ...args, "--home", app.home])).ok;
+// what the daemon's admin step still has to do for this user, "" when nothing:
+// the daemon, the old user agent and home, this user as its owner, a newer release
+export function daemonTodo(): string {
+  if (!existsSync("/Library/LaunchDaemons/dev.phosphorus.host.plist")) return "the daemon";
+  if (
+    existsSync(join(userHome, "Library/LaunchAgents/dev.phosphorus.host.plist")) ||
+    existsSync(join(userHome, "Library/Phosphorus"))
+  )
+    return "moving the home";
+  if (read(join(app.home, ".phosphorus-tray-uid")) !== String(process.getuid?.())) return "this user";
+  const want = read(join(app.payload, "VERSION")),
+    have = read(join(app.home, ".phosphorus-installed"));
+  if (want && (!have || newer(want, have))) return "installing " + want;
+  return "";
+}
 
 export type OS = {
   // where this app runs from, for a service updating it with no one signed in
@@ -109,8 +129,8 @@ export type OS = {
   openURL(u: string): void;
   // the admin-only steps behind the system's own prompt, once
   adminSetup(): Promise<void>;
-  // one host command as root behind the system's prompt
-  asAdmin(...args: string[]): Promise<void>;
+  // one host command as root behind the system's prompt, its ok
+  asAdmin(...args: string[]): Promise<boolean>;
   // the login item: this app at login, its tray alone
   setAutostart(on: boolean): void;
   // the app removed once this process is gone
@@ -125,11 +145,11 @@ let lock: number | bigint | undefined;
 const mac: OS = {
   noteAppDir() {},
   singleInstance() {
-    mkdirSync(join(app.home, "state"), { recursive: true });
+    mkdirSync(trayDir, { recursive: true });
     const { flock } = libc();
     let fd: number;
     try {
-      fd = openSync(join(app.home, "state/tray.lock"), "a+");
+      fd = openSync(join(trayDir, "tray.lock"), "a+");
     } catch {
       return true;
     }
@@ -146,13 +166,26 @@ const mac: OS = {
   openURL(u) {
     detach(["/usr/bin/open", u]);
   },
+  // adminSetup one prompt, only when there's something to do: the user agent's
+  // home moved to root's, the release installed, the daemon up for this user
   async adminSetup() {
-    if (await hostOK("setup", "--check")) return;
-    await mac.asAdmin("setup");
+    if (!daemonTodo()) return;
+    const ok = await mac.asAdmin(
+      "daemon",
+      "--uid",
+      String(process.getuid?.()),
+      "--user-home",
+      sq(userHome),
+      "--payload",
+      sq(app.payload),
+    );
+    if (!ok) throw new Error("phosphorus's admin setup didn't finish");
   },
   async asAdmin(...args) {
     const sh = [sq(app.host), ...args, "--home", sq(app.home)].join(" ");
-    await run(["/usr/bin/osascript", "-e", "do shell script " + asq(sh) + " with administrator privileges"]);
+    const r = await run(["/usr/bin/osascript", "-e", "do shell script " + asq(sh) + " with administrator privileges"]);
+    if (!r.ok) console.error("phosphorus: admin step:", r.output.trim());
+    return r.ok;
   },
   setAutostart(on) {
     const p = join(process.env.HOME ?? "", "Library/LaunchAgents/Phosphorus.plist");
@@ -261,7 +294,7 @@ const windows: OS = {
   },
   // raised by the host binary itself
   async adminSetup() {},
-  async asAdmin() {},
+  asAdmin: async () => true,
   setAutostart(on) {
     const key = String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`;
     if (!on) return void run(["reg", "delete", key, "/v", "Phosphorus", "/f"]);

@@ -8,7 +8,7 @@ process.env.PHOSPHORUS_HOME = dir;
 const { commands, main, parse, usageText, version } = await import("@phosphorus/host");
 const base = await import("../src/base.ts");
 const { durText, lastLine, setHome, splitLines, sshInclude } = base;
-const { plistText, xmlEsc } = await import("../src/darwin.ts");
+const { plistPath, plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
 const { absTo, bakeEnv, envFileText, readEnvFile, signature, splitComma, withPath } = await import("../src/native.ts");
 const { packaged, same, syncPayload } = await import("../src/install.ts");
@@ -68,11 +68,11 @@ test("version reads the home's VERSION, else dev", () => {
   expect(version()).toBe("1.2.3");
 });
 
-test("launchd plist as Go rendered it, xml escaped", () => {
+test("the LaunchDaemon's plist: root's run of the home, xml escaped", () => {
   const p = plistText(
-    "/Users/a&b/Library/Phosphorus/bin/phosphorus",
-    "/Users/a&b/Library/Phosphorus",
-    "/Users/a&b/Library/Phosphorus/state/phosphorus.log",
+    "/Library/Phos&phorus/bin/phosphorus",
+    "/Library/Phos&phorus",
+    "/Library/Phos&phorus/state/log/phosphorus.log",
   );
   expect(p).toBe(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -80,21 +80,24 @@ test("launchd plist as Go rendered it, xml escaped", () => {
 <dict>
 	<key>Label</key><string>dev.phosphorus.host</string>
 	<key>ProgramArguments</key>
-	<array><string>/Users/a&amp;b/Library/Phosphorus/bin/phosphorus</string><string>run</string><string>--home</string><string>/Users/a&amp;b/Library/Phosphorus</string></array>
+	<array><string>/Library/Phos&amp;phorus/bin/phosphorus</string><string>run</string><string>--home</string><string>/Library/Phos&amp;phorus</string></array>
 	<key>EnvironmentVariables</key>
-	<dict><key>PHOSPHORUS_HOME</key><string>/Users/a&amp;b/Library/Phosphorus</string></dict>
-	<key>WorkingDirectory</key><string>/Users/a&amp;b/Library/Phosphorus</string>
+	<dict><key>PHOSPHORUS_HOME</key><string>/Library/Phos&amp;phorus</string></dict>
+	<key>WorkingDirectory</key><string>/Library/Phos&amp;phorus</string>
+	<key>UserName</key><string>root</string>
+	<key>GroupName</key><string>wheel</string>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
 	<key>ThrottleInterval</key><integer>5</integer>
 	<key>ExitTimeOut</key><integer>150</integer>
-	<key>ProcessType</key><string>Interactive</string>
-	<key>StandardOutPath</key><string>/Users/a&amp;b/Library/Phosphorus/state/phosphorus.log</string>
-	<key>StandardErrorPath</key><string>/Users/a&amp;b/Library/Phosphorus/state/phosphorus.log</string>
+	<key>StandardOutPath</key><string>/Library/Phos&amp;phorus/state/log/phosphorus.log</string>
+	<key>StandardErrorPath</key><string>/Library/Phos&amp;phorus/state/log/phosphorus.log</string>
 </dict>
 </plist>
 `);
   expect(xmlEsc("<a&b>")).toBe("&lt;a&amp;b&gt;");
+  // the system domain's, root's file
+  expect(plistPath).toBe("/Library/LaunchDaemons/dev.phosphorus.host.plist");
 });
 
 test("escapeArg as syscall.EscapeArg, psq as a PowerShell literal", () => {

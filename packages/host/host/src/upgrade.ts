@@ -1,9 +1,22 @@
 // one update request: on Linux the update agent, phosphorus-update.service on
 // state/update-request.json, apt to the feed's newest, else this release
 // re-applied; on Windows the one the service hands on with its id, the app's
-// own update run without the app (upgradeApp)
+// own update run without the app (upgradeApp); on macOS the bundle the daemon staged
 import { renameSync, rmSync, writeFileSync } from "node:fs";
-import { at, capture, fail, fileExists, home, isWindows, lastLine, output, readTrim, say, selfArgv } from "./base.ts";
+import {
+  at,
+  capture,
+  fail,
+  fileExists,
+  home,
+  isMac,
+  isWindows,
+  lastLine,
+  output,
+  readTrim,
+  say,
+  selfArgv,
+} from "./base.ts";
 import { os, type Reporter } from "./os.ts";
 
 const aptList = "/etc/apt/sources.list.d/phosphorus.list";
@@ -34,7 +47,7 @@ export async function upgrade(id: string) {
   }
   const report = agentReport(id);
   report("running", false, "", "");
-  if (isWindows) return os.upgradeApp(report);
+  if (isWindows || isMac) return os.upgradeApp(report);
   if (!fileExists(aptList)) {
     report("failed", false, "", "no update feed (" + aptList + " missing), reinstall from the latest release");
     throw fail("no update feed");

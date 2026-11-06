@@ -173,6 +173,7 @@
         "@phosphorus/afterglow": "workspace:*",
         "@phosphorus/appfeed": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
+        "@phosphorus/minisign": "workspace:*",
         "@phosphorus/procs": "workspace:*",
         "@phosphorus/tools": "workspace:*",
         "@phosphorus/util": "workspace:*",

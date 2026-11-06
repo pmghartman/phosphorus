@@ -3,8 +3,7 @@
 // install, start and stop, feed updates, the frontend opened in the default
 // browser. The menu's logic is here once, the OS's icon and menu behind Tray
 // (mac.ts, tray-win32.ts), the rest of the OS behind os.ts
-import { readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Feed, type Release } from "@phosphorus/appfeed";
 import { errText, readJSON, sleep } from "@phosphorus/util";
 import iconIco from "../assets/icon.ico" with { type: "file" };
@@ -12,6 +11,7 @@ import iconIco from "../assets/icon.ico" with { type: "file" };
 // its updates are signed with; unset (a dev build) there's no feed
 import trayPng from "../assets/tray.png" with { type: "file" };
 import {
+  daemonUpdate,
   frontendURL,
   hostCmd,
   hostRun,
@@ -20,8 +20,12 @@ import {
   keyState,
   keysMissing,
   lastError,
+  logHint,
   payloadVersion,
+  reapply,
   report,
+  service,
+  takeRequest,
   updateAgentFile,
 } from "./host.ts";
 import { keysURL } from "./keys.ts";
@@ -112,14 +116,19 @@ async function hostAction(action: "start" | "stop", thenOpen: boolean) {
       await openKeys();
       return;
     }
-    await os.adminSetup();
+    try {
+      await os.adminSetup();
+    } catch (e) {
+      busy = false;
+      return os.alert(errText(e));
+    }
   }
   setTip(action === "start" ? "Phosphorus starting…" : "Phosphorus stopping…");
   await refresh();
-  const r = await hostRun(action, action);
+  const r = await service(action);
   busy = false;
   await refresh();
-  if (!r.ok) await os.alert(lastError(r.output) || "failed, see state/log/ in the Phosphorus folder");
+  if (!r.ok) await os.alert(lastError(r.output) || `failed, ${logHint}`);
   else if (thenOpen) await openMain();
   else await os.notify(action === "start" ? "Phosphorus is running." : "Phosphorus stopped.");
 }
@@ -127,22 +136,25 @@ async function hostAction(action: "start" | "stop", thenOpen: boolean) {
 // the feed's release when newer than this app, undefined when not or with no feed (a dev build)
 const feedCheck = () => feed.check(appVersion || payloadVersion());
 
-// the release downloaded, its signature checked, then handed to this OS's installer
-async function installRelease(r: Release) {
-  await os.installDownloaded(await feed.fetch(r));
+// the release downloaded, its signature checked, then handed to this OS's installer;
+// on macOS the root daemon's own check and install of it first
+async function installRelease(r: Release, id: string) {
+  const file = await feed.fetch(r);
+  if (darwin) await daemonUpdate(id, file, r.signature);
+  await os.installDownloaded(file);
 }
 
 // an update request: the feed's newer app installed and relaunched (finished on the
 // next launch), else this release reinstalled over itself, config kept
 async function handleUpdate(id: string, ask: boolean) {
   if (busy) {
-    report(id, "failed", false, "", "busy starting, stopping or installing; try again once it's done");
+    await report(id, "failed", false, "", "busy starting, stopping or installing; try again once it's done");
     if (ask) await os.notify("Phosphorus is busy starting, stopping or installing; try again once it's done.");
     return;
   }
   busy = true;
   try {
-    report(id, "running", false, "", "");
+    await report(id, "running", false, "", "");
     setTip("Phosphorus checking for updates…");
     let rel: Release | undefined;
     try {
@@ -159,16 +171,16 @@ async function handleUpdate(id: string, ask: boolean) {
           "Later",
         ))
       ) {
-        report(id, "failed", false, "", "update declined");
+        await report(id, "failed", false, "", "update declined");
         return;
       }
       setTip(`Phosphorus downloading ${rel.version}…`);
       // running with the release named: the next launch finishes it
-      report(id, "running", false, rel.version, "");
+      await report(id, "running", false, rel.version, "");
       try {
-        await installRelease(rel);
+        await installRelease(rel, id);
       } catch (e) {
-        report(id, "failed", false, "", errText(e));
+        await report(id, "failed", false, "", errText(e));
         if (ask) await os.alert("update failed: " + errText(e));
         return;
       }
@@ -177,11 +189,11 @@ async function handleUpdate(id: string, ask: boolean) {
       process.exit(0);
     }
     setTip("Phosphorus applying this release…");
-    const r = await hostRun("install", "install", "--update", "--payload", app.payload);
+    const r = await reapply();
     const v = payloadVersion();
     const current = r.output.includes("already up to date");
-    if (!r.ok) return void report(id, "failed", false, "", lastError(r.output) || "install failed");
-    report(id, "ok", current, v, "");
+    if (!r.ok) return void (await report(id, "failed", false, "", lastError(r.output) || "install failed"));
+    await report(id, "ok", current, v, "");
     if (ask) await os.notify(current ? `Phosphorus ${v} is up to date.` : `Phosphorus ${v} re-applied.`);
   } finally {
     busy = false;
@@ -190,12 +202,22 @@ async function handleUpdate(id: string, ask: boolean) {
 }
 
 // launch: a new release unpacked into home, a pending update's verdict written,
-// the keys asked for when there are none, then the update requests watched
+// the keys asked for when there are none, then the update requests watched; on
+// macOS the daemon's admin step instead, when it has anything to do
 async function startup(background: boolean) {
   os.noteAppDir();
   const installed = installedVersion(),
     ver = payloadVersion();
-  if (installed !== ver && !busy) {
+  if (darwin && !busy) {
+    busy = true;
+    setTip("Phosphorus setting up…");
+    try {
+      await os.adminSetup();
+    } catch (e) {
+      await os.alert(errText(e));
+    }
+    busy = false;
+  } else if (installed !== ver && !busy) {
     busy = true;
     setTip(`Phosphorus installing ${ver}…`);
     const args = ["install", "--payload", app.payload];
@@ -204,8 +226,8 @@ async function startup(background: boolean) {
     // an update this launch finishes: running, with the release it was for
     const p = readJSON<{ id?: string; state?: string; version?: string }>(updateAgentFile);
     if (p?.state === "running" && p.version && p.id) {
-      if (r.ok) report(p.id, "ok", false, ver, "");
-      else report(p.id, "failed", false, "", lastError(r.output));
+      if (r.ok) await report(p.id, "ok", false, ver, "");
+      else await report(p.id, "failed", false, "", lastError(r.output));
     }
     busy = false;
   }
@@ -215,15 +237,13 @@ async function startup(background: boolean) {
   const { keys, domain } = await keyState();
   if (!keys.MESH_KEY) await openKeys();
   else if (!background) os.openURL(frontendURL(domain));
-  const req = join(app.home, "state/update-request.json");
   // the menu kept current with changes made elsewhere (the cli, the Tailscale app)
   for (let tick = 1; ; tick++) {
     await sleep(2000);
     if (tick % 10 === 0 && !busy) await refresh();
-    const r = readJSON<{ id?: string }>(req);
-    if (!r) continue;
-    rmSync(req, { force: true });
-    await handleUpdate(r.id ?? "", false);
+    const id = await takeRequest();
+    if (id === undefined) continue;
+    await handleUpdate(id, false);
   }
 }
 
@@ -252,9 +272,11 @@ async function startForKeys(): Promise<string> {
   try {
     await os.adminSetup();
     setTip("Phosphorus starting…");
-    const r = await hostRun("start", "start");
+    const r = await service("start");
     if (r.ok) return "";
-    return lastError(r.output) || "see state/log/ in the Phosphorus folder";
+    return lastError(r.output) || logHint;
+  } catch (e) {
+    return errText(e);
   } finally {
     busy = false;
     await refresh();
@@ -274,13 +296,13 @@ async function uninstall() {
     return;
   }
   setTip("Phosphorus uninstalling…");
-  await os.asAdmin("uninstall", "--admin");
-  // not hostRun: its log would put the home back
-  const r = await hostCmd(["uninstall"]);
-  if (!r.ok) {
+  // macOS: root's home and daemon, all of it behind the one prompt
+  const ok = darwin
+    ? await os.asAdmin("uninstall")
+    : (await os.asAdmin("uninstall", "--admin")) && (await uninstallHome());
+  if (!ok) {
     busy = false;
     await refresh();
-    await os.alert(lastError(r.output) || "uninstall failed");
     return;
   }
   os.setAutostart(false);
@@ -289,16 +311,24 @@ async function uninstall() {
   process.exit(0);
 }
 
+// the home's uninstall as this user, its failure shown; not hostRun: its log
+// would put the home back
+async function uninstallHome(): Promise<boolean> {
+  const r = await hostCmd(["uninstall"]);
+  if (!r.ok) await os.alert(lastError(r.output) || "uninstall failed");
+  return r.ok;
+}
+
 // phosphorus stopped first, then the app gone
 async function quit() {
   if (busy) return;
   busy = true;
   setTip("Phosphorus stopping…");
-  const r = await hostRun("stop", "stop");
+  const r = await service("stop");
   if (!r.ok) {
     busy = false;
     await refresh();
-    await os.alert(lastError(r.output) || "couldn't stop phosphorus, see state/log/ in the Phosphorus folder");
+    await os.alert(lastError(r.output) || `couldn't stop phosphorus, ${logHint}`);
     return;
   }
   tray.quit();

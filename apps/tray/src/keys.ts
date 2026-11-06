@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { type Tokens, tokens } from "@phosphorus/theme";
 import keysHtml from "../assets/keys.html" with { type: "file" };
-import { frontendURL, hostCmd, keyState, keyStatus, keysMissing } from "./host.ts";
+import { frontendURL, keyState, keyStatus, keysMissing, setKeys } from "./host.ts";
 
 // the form in the theme library's colors, the mesh's own, light or dark as the system is
 function keysTheme(): string {
@@ -82,7 +82,7 @@ async function saveKeys(req: Request, start: () => Promise<string>): Promise<Res
     if (await keysMissing()) return reply(400, { error: "the mesh join key is needed" });
     return reply(200, { starting: false });
   }
-  const r = await hostCmd(["keys", "--stdin"], body);
+  const r = await setKeys(body);
   if (!r.ok) return reply(400, { error: r.output.trim() || r.error || "keys failed" });
   if (await keysMissing()) return reply(400, { error: "the mesh join key is needed" });
   srv!.done = false;

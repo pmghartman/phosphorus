@@ -1,11 +1,29 @@
-// macOS: a LaunchAgent of the account the app runs as, the Tailscale app's
-// own node and no distro packages
+// macOS: a LaunchDaemon run as root, the console user's tray over its socket,
+// the Tailscale app's own node and no distro packages
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chownSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { at, binPath, fail, fileExists, home, isMac, logTo, openLog, output, quiet, run } from "./base.ts";
-import type { OS } from "./os.ts";
+import {
+  at,
+  binPath,
+  ExitCode,
+  errText,
+  fail,
+  fileExists,
+  home,
+  isMac,
+  keysMissing,
+  logTo,
+  openLog,
+  output,
+  quiet,
+  readTrim,
+  run,
+  say,
+  sleep,
+} from "./base.ts";
+import { newStop, type OS, type Stop } from "./os.ts";
 import { installTailscale, tailscaleLogin } from "./tailnet.ts";
 import {
   asRoot,
@@ -13,7 +31,6 @@ import {
   isAdmin,
   lockRebuild,
   needSetup,
-  serve,
   setupOS,
   spawnDetached,
   terminate,
@@ -28,17 +45,31 @@ if (isMac) {
   process.env.TAILSCALE_BE_CLI = "1";
 }
 
-const label = "dev.phosphorus.host";
+export const label = "dev.phosphorus.host";
+export const plistPath = "/Library/LaunchDaemons/" + label + ".plist";
+const target = "system/" + label;
 
 const libexec = () => at("state", "cache", "tools");
 const tool = (name: string) => join(libexec(), name);
 const logHint = () => at("state", "log", "phosphorus.log");
-const plistPath = () => join(process.env.HOME ?? "", "Library", "LaunchAgents", label + ".plist");
-const domain = () => "gui/" + process.getuid!();
+
+// the console user the daemon answers, recorded by the app's admin step
+export const ownerFile = () => at(".phosphorus-tray-uid");
+export function ownerUid(): number | undefined {
+  const n = Number(readTrim(ownerFile()));
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+// stop and start with the daemon kept: held asks run to stop its children,
+// holding is run's word that none are up
+export const heldFile = () => at("state", "run", "held");
+export const holdingFile = () => at("state", "run", "holding");
+// nativeEnvFile's path, native.ts importing this file through os.ts
+const bakedEnv = () => at("state", "run", "native.env");
 
 export const xmlEsc = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-// the LaunchAgent: run --home, kept alive, its output to the log
+// the LaunchDaemon: run --home as root, kept alive, its output to the log
 export const plistText = (bin: string, home: string, log: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -49,11 +80,12 @@ export const plistText = (bin: string, home: string, log: string) => `<?xml vers
 	<key>EnvironmentVariables</key>
 	<dict><key>PHOSPHORUS_HOME</key><string>${xmlEsc(home)}</string></dict>
 	<key>WorkingDirectory</key><string>${xmlEsc(home)}</string>
+	<key>UserName</key><string>root</string>
+	<key>GroupName</key><string>wheel</string>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
 	<key>ThrottleInterval</key><integer>5</integer>
 	<key>ExitTimeOut</key><integer>150</integer>
-	<key>ProcessType</key><string>Interactive</string>
 	<key>StandardOutPath</key><string>${xmlEsc(log)}</string>
 	<key>StandardErrorPath</key><string>${xmlEsc(log)}</string>
 </dict>
@@ -61,13 +93,83 @@ export const plistText = (bin: string, home: string, log: string) => `<?xml vers
 `;
 
 const pidRe = /^\s*pid = (\d+)/m;
-const svcPrint = () => output("launchctl", "print", domain() + "/" + label);
-const svcActive = async () => pidRe.test(await svcPrint());
+const svcPrint = () => output("launchctl", "print", target);
+const loaded = () => quiet("launchctl", "print", target);
+const daemonUp = async () => pidRe.test(await svcPrint());
+// up: the daemon's pid, its children neither held nor down
+const svcActive = async () => (await daemonUp()) && !fileExists(heldFile()) && !fileExists(holdingFile());
 
+// svcStart the hold lifted, the daemon (re)started on the binary and env now there
 async function svcStart() {
-  await quiet("launchctl", "enable", domain() + "/" + label);
-  await quiet("launchctl", "bootstrap", domain(), plistPath());
-  if (!(await run("launchctl", "kickstart", domain() + "/" + label))) throw fail("launchctl kickstart failed");
+  rmSync(heldFile(), { force: true });
+  await quiet("launchctl", "enable", target);
+  if (!(await loaded())) {
+    if (!(await run("launchctl", "bootstrap", "system", plistPath))) throw fail("launchctl bootstrap failed");
+    return;
+  }
+  if (!(await run("launchctl", "kickstart", "-k", target))) throw fail("launchctl kickstart failed");
+}
+
+// argv as the console user in their own session: what root can't open for them
+export function asOwner(argv: string[]): string[] {
+  const uid = ownerUid();
+  if (process.geteuid?.() !== 0 || !uid) return argv;
+  return ["launchctl", "asuser", String(uid), "sudo", "-u", "#" + uid, ...argv];
+}
+
+// serve run's rounds until TERM, the socket up throughout: a round held, waited
+// on for keys and the baked env, or tried again slower after a failure
+export async function serve(main: (stop: Stop) => Promise<number>): Promise<number> {
+  const stop = newStop();
+  for (const sig of ["SIGTERM", "SIGINT"] as const) process.once(sig, () => stop.fire());
+  darwin.logToFile();
+  let up = false;
+  const { daemonDeps, serveControl } = await import("./mac/ctl.ts");
+  const close = serveControl(daemonDeps(() => up));
+  const ready = () => !fileExists(heldFile()) && fileExists(bakedEnv()) && !keysMissing();
+  const idle = (on: boolean) => {
+    try {
+      if (on) writeFileSync(holdingFile(), "", { mode: 0o644 });
+      else rmSync(holdingFile(), { force: true });
+    } catch {}
+  };
+  mkdirSync(at("state", "run"), { recursive: true });
+  let backoff = 0;
+  while (!stop.on) {
+    if (!ready()) {
+      idle(true);
+      await Promise.race([sleep(1000), stop.p]);
+      continue;
+    }
+    idle(false);
+    const round = newStop();
+    const watch = setInterval(() => {
+      if (fileExists(heldFile())) round.fire();
+    }, 1000);
+    void stop.p.then(() => round.fire());
+    up = true;
+    let code = 1;
+    try {
+      code = await main(round);
+    } catch (e) {
+      if (!(e instanceof ExitCode)) say(`ERROR: ${errText(e)}`);
+    }
+    up = false;
+    clearInterval(watch);
+    if (stop.on) break;
+    if (round.on) {
+      say("held: its services stopped until phos start");
+      backoff = 0;
+      continue;
+    }
+    // a crash loop slowed, as launchd would have
+    backoff = Math.min(Math.max(backoff * 2, 5000), 60_000);
+    say(`run ended (${code}), again in ${backoff / 1000}s`);
+    await Promise.race([sleep(backoff), stop.p]);
+  }
+  idle(true);
+  close();
+  return 0;
 }
 
 // --- tailscale: the Tailscale app's own node ---------------------------------------------
@@ -79,15 +181,15 @@ const appCLI = [
 ];
 const appTailscale = () => appCLI.find(fileExists) ?? "";
 
-// tailscaleLaunch the app, in the background: its daemon lives in it; Homebrew's
-// tailscaled root's to start
+// tailscaleLaunch the app, in the background and the console user's session: its
+// daemon lives in it; Homebrew's tailscaled root's to start
 async function tailscaleLaunch() {
   if (!fileExists(appCLI[0]!)) return;
   // GUI env: not the CLI env this process carries
   const env = { ...process.env };
   delete env.TAILSCALE_BE_CLI;
   try {
-    await Bun.spawn(["open", "-a", "/Applications/Tailscale.app"], {
+    await Bun.spawn(asOwner(["open", "-a", "/Applications/Tailscale.app"]), {
       env,
       stdin: "ignore",
       stdout: "ignore",
@@ -100,6 +202,8 @@ const tailscaleHint = () =>
   fileExists(appCLI[0]!)
     ? "open the Tailscale app and allow its VPN configuration"
     : "start Homebrew's tailscaled with sudo brew services start tailscale";
+
+let logOpen = false;
 
 export const darwin: OS = {
   sshdName: "Remote Login (ssh)",
@@ -121,44 +225,53 @@ export const darwin: OS = {
   libexec,
   ownTailscale: () => false,
   logHint,
+  // svcInstall the daemon's plist, root's and read by all; a loaded one booted
+  // out to take a changed plist
   async svcInstall() {
+    if (process.geteuid?.() !== 0) throw fail("the daemon is root's: sudo phos start, or the Phosphorus app");
     const plist = plistText(binPath("phosphorus"), home, logHint());
     let have = "";
     try {
-      have = readFileSync(plistPath(), "utf8");
+      have = readFileSync(plistPath, "utf8");
     } catch {}
     if (have === plist) return;
-    mkdirSync(join(plistPath(), ".."), { recursive: true });
     try {
-      writeFileSync(plistPath(), plist, { mode: 0o644 });
+      writeFileSync(plistPath, plist, { mode: 0o644 });
+      chownSync(plistPath, 0, 0);
     } catch (e) {
-      throw fail(`couldn't write ${plistPath()}: ${e instanceof Error ? e.message : e}`);
+      throw fail(`couldn't write ${plistPath}: ${errText(e)}`);
     }
-    // a loaded job keeps its old plist until booted out
-    if (await svcActive()) await quiet("launchctl", "bootout", domain() + "/" + label);
+    if (await loaded()) await quiet("launchctl", "bootout", target);
   },
   svcActive,
   svcSince: async () => pidRe.exec(await svcPrint())?.[1] ?? "",
   svcStart,
-  // svcStop TERM to run, which stops its children in order; kept off through logins
+  // svcStop run's children stopped in order, the daemon and its socket kept; held through reboots
   async svcStop() {
-    await quiet("launchctl", "disable", domain() + "/" + label);
-    await quiet("launchctl", "bootout", domain() + "/" + label);
+    mkdirSync(at("state", "run"), { recursive: true });
+    writeFileSync(heldFile(), "", { mode: 0o644 });
+    if (!(await daemonUp())) return;
+    for (const end = Date.now() + 150_000; Date.now() < end; await sleep(500))
+      if (fileExists(holdingFile()) || !(await daemonUp())) return;
+    throw fail("phosphorus didn't stop its services in time");
   },
   async svcRestart(noBlock) {
-    await quiet("launchctl", "enable", domain() + "/" + label);
     if (!(await svcActive())) return svcStart();
     if (noBlock) {
-      Bun.spawn(["launchctl", "kickstart", "-k", domain() + "/" + label], {
+      Bun.spawn(["launchctl", "kickstart", "-k", target], {
         stdin: "ignore",
         stdout: "ignore",
         stderr: "ignore",
       }).unref();
       return;
     }
-    if (!(await run("launchctl", "kickstart", "-k", domain() + "/" + label))) throw fail("launchctl kickstart failed");
+    if (!(await run("launchctl", "kickstart", "-k", target))) throw fail("launchctl kickstart failed");
   },
-  svcRemove: () => rmSync(plistPath(), { force: true }),
+  // svcRemove the daemon booted out, its plist gone
+  svcRemove() {
+    Bun.spawnSync(["launchctl", "bootout", target], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+    rmSync(plistPath, { force: true });
+  },
   tailscaleDirs: () => [],
   // tailscaleCLI by its own path: through a link the app's binary misses its bundle
   tailscaleCLI: () => appTailscale() || tool("tailscale"),
@@ -197,10 +310,14 @@ export const darwin: OS = {
     p.kill("SIGKILL");
   },
   // logToFile state/log/phosphorus.log for run and its children, the last one kept
-  // as .1 once past 20MB
+  // as .1 once past 20MB; once for the daemon's life, not every round
   logToFile() {
+    if (logOpen) return;
     const fd = openLog();
     if (fd !== undefined) logTo(fd);
+    logOpen = fd !== undefined;
   },
   serve,
+  // upgradeApp the bundle the daemon checked and staged, installed by its own binary
+  upgradeApp: async (report) => (await import("./mac/update.ts")).upgradeApp(report),
 };

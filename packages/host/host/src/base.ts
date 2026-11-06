@@ -41,7 +41,8 @@ export function homeDir(): string {
   if (h) return h;
   // not %LOCALAPPDATA%\Phosphorus: the app's own install dir, wiped by its uninstaller
   if (isWindows) return join(process.env.USERPROFILE ?? "", "phosphorus");
-  if (isMac) return join(process.env.HOME ?? "", "Library", "Phosphorus");
+  // root's, as Linux's: the daemon's alone, the tray reaching it over its socket
+  if (isMac) return "/Library/Phosphorus";
   return "/var/lib/phosphorus";
 }
 
