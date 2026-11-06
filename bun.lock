@@ -38,7 +38,6 @@
       "name": "@phosphorus/web",
       "dependencies": {
         "@phosphorus/appweb": "workspace:*",
-        "@phosphorus/theme": "workspace:*",
         "@phosphorus/wire": "workspace:*",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-webgl": "0.19.0",
