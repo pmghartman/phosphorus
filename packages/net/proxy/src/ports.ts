@@ -69,7 +69,7 @@ function tcp(spec: PortSpec, hostname?: string): Open {
   return { spec, close: () => l.stop(true) };
 }
 
-type Flow = { sock: udp.Socket<"uint8array">; at: number };
+type Flow = { sock: udp.ConnectedSocket<"uint8array">; at: number };
 
 async function udpOpen(spec: PortSpec, hostname?: string): Promise<Open> {
   const flows = new Map<string, Flow>();
@@ -125,7 +125,11 @@ async function udpOpen(spec: PortSpec, hostname?: string): Promise<Open> {
 
 // the given ports opened, ones no longer asked for closed, a changed one reopened;
 // hostname for tests, all interfaces otherwise
-export async function forwardPorts(specs: PortSpec[], prev?: Forwarded & { opens?: Map<string, Open> }, hostname?: string) {
+export async function forwardPorts(
+  specs: PortSpec[],
+  prev?: Forwarded & { opens?: Map<string, Open> },
+  hostname?: string,
+) {
   const opens = prev?.opens ?? new Map<string, Open>();
   const errs = new Map<string, string>();
   const want = new Map(specs.map((s) => [keyOf(s), s]));

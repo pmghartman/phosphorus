@@ -219,8 +219,8 @@ runtime from llama.cpp's releases, under the NVIDIA CUDA EULA
 (https://docs.nvidia.com/cuda/eula/). phosphorus ships no model; a model's
 weights come under its own license.
 
-Cloudflare and Tailscale are trademarks of their respective owners;
-phosphorus is not affiliated with or endorsed by either.
+Tailscale is a trademark of its owner; phosphorus is not affiliated with or
+endorsed by it. Certificates come from Let's Encrypt (https://letsencrypt.org).
 `;
 for (const g of groups) {
   out += `\n\n== ${g} ==\n\n`;

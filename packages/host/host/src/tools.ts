@@ -1,5 +1,5 @@
-// the tools run beside phosphorus, pinned and checked: tailscale on Linux, cloudflared
-// everywhere, headscale on the control host; fetched into state/cache/tools when a pin moves
+// the tools run beside phosphorus, pinned and checked: tailscale on Linux, headscale
+// on the control host; fetched into state/cache/tools when a pin moves
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,10 +9,7 @@ import { replace } from "./install.ts";
 import { os } from "./os.ts";
 
 export const Tailscale = "1.104.1";
-export const Cloudflared = "2026.10.4";
 export const Headscale = "0.29.7";
-
-const cf = `https://github.com/cloudflare/cloudflared/releases/download/${Cloudflared}`;
 
 // one pinned download: its files, out of a .tgz when members names them
 export type Pin = { name: string; ver: string; url: string; sha256: string; files: Record<string, string> };
@@ -32,49 +29,22 @@ export function headscalePin(arch = process.arch): Pin {
   };
 }
 
-// the pins for this OS and arch; tailscale only where phosphorus runs its own
+// the pins for this OS and arch: tailscale on Linux where phosphorus runs its own,
+// nothing elsewhere (the Tailscale app's own node is used)
 export function pins(platform = process.platform, arch = process.arch, ownTailscale = true): Pin[] {
   const a = arch === "arm64" ? "arm64" : "amd64";
   const out: Pin[] = [];
-  if (platform === "linux") {
-    if (ownTailscale) {
-      const d = `tailscale_${Tailscale}_${a}`;
-      out.push({
-        name: "tailscale",
-        ver: Tailscale,
-        url: `https://pkgs.tailscale.com/stable/${d}.tgz`,
-        sha256:
-          a === "arm64"
-            ? "f60294374967f3dfd8cf57bbbd474d6cfce32d123e3a8ddeab82a87940daa806"
-            : "108d1d96ecf410d305571e173516f27038f870919a9b89c914a167c6d33a4528",
-        files: { tailscale: `${d}/tailscale`, tailscaled: `${d}/tailscaled` },
-      });
-    }
+  if (platform === "linux" && ownTailscale) {
+    const d = `tailscale_${Tailscale}_${a}`;
     out.push({
-      name: "cloudflared",
-      ver: Cloudflared,
-      url: `${cf}/cloudflared-linux-${a}`,
+      name: "tailscale",
+      ver: Tailscale,
+      url: `https://pkgs.tailscale.com/stable/${d}.tgz`,
       sha256:
         a === "arm64"
-          ? "2b7203b4fb0ba28a0c1e12f8855ce2c25f76d266a8d5edafac5540b6812acff6"
-          : "ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42",
-      files: { cloudflared: "" },
-    });
-  } else if (platform === "darwin") {
-    out.push({
-      name: "cloudflared",
-      ver: Cloudflared,
-      url: `${cf}/cloudflared-darwin-arm64.tgz`,
-      sha256: "68b6bc4080ac1330234db2a9002d07f98b000537a1bd531a687b660d4160fa7f",
-      files: { cloudflared: "cloudflared" },
-    });
-  } else if (platform === "win32") {
-    out.push({
-      name: "cloudflared",
-      ver: Cloudflared,
-      url: `${cf}/cloudflared-windows-amd64.exe`,
-      sha256: "411b16d40c8d872243efeb52c550053d00af0a8a97fbb32e730fb8aba429eaa8",
-      files: { "cloudflared.exe": "" },
+          ? "f60294374967f3dfd8cf57bbbd474d6cfce32d123e3a8ddeab82a87940daa806"
+          : "108d1d96ecf410d305571e173516f27038f870919a9b89c914a167c6d33a4528",
+      files: { tailscale: `${d}/tailscale`, tailscaled: `${d}/tailscaled` },
     });
   }
   return out;

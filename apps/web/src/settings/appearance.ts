@@ -93,7 +93,7 @@ export function appearanceSection(pane: HTMLElement): () => void {
       modes.append(b);
     }
     const acct = st.acct;
-    const can = !!acct && !acct.boot;
+    const can = !!acct;
     const wall = acts(
       el('span', 'dk-ap-state', acct?.wallpaper ? 'a picture of yours' : 'plain'),
       btn('change…', dkWallPick),

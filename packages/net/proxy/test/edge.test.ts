@@ -1,18 +1,43 @@
 import { expect, test } from "bun:test";
-import { forwardPorts, sniOf, split } from "@phosphorus/proxy";
-import { splitClient } from "../src/edge.ts";
+
+// the package read once per test run: the same domain proxy.test.ts sets
+process.env.BASE_DOMAIN = "mulab.dev";
+const { forwardPorts, sniOf, split } = await import("@phosphorus/proxy");
+const { splitClient } = await import("../src/edge.ts");
 
 // a ClientHello naming server, as a browser's first bytes
 function hello(server: string | undefined): Uint8Array {
   const name = new TextEncoder().encode(server ?? "");
-  const sni = server === undefined ? [] : [0, 0, (name.length + 5) >> 8, (name.length + 5) & 0xff, (name.length + 3) >> 8, (name.length + 3) & 0xff, 0, name.length >> 8, name.length & 0xff, ...name];
+  const sni =
+    server === undefined
+      ? []
+      : [
+          0,
+          0,
+          (name.length + 5) >> 8,
+          (name.length + 5) & 0xff,
+          (name.length + 3) >> 8,
+          (name.length + 3) & 0xff,
+          0,
+          name.length >> 8,
+          name.length & 0xff,
+          ...name,
+        ];
   const exts = [...sni, 0, 0x17, 0, 0];
   const body = [
-    3, 3, ...new Array(32).fill(7),
+    3,
+    3,
+    ...new Array(32).fill(7),
     0,
-    0, 2, 0x13, 0x01,
-    1, 0,
-    exts.length >> 8, exts.length & 0xff, ...exts,
+    0,
+    2,
+    0x13,
+    0x01,
+    1,
+    0,
+    exts.length >> 8,
+    exts.length & 0xff,
+    ...exts,
   ];
   const hs = [1, 0, body.length >> 8, body.length & 0xff, ...body];
   return new Uint8Array([0x16, 3, 1, hs.length >> 8, hs.length & 0xff, ...hs]);
@@ -133,14 +158,13 @@ test("public ports: TCP and UDP carried to the service, a dropped spec closed", 
       },
     },
   });
-  const pick = () => {
-    const l = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
-    const p = l.port;
-    l.stop(true);
-    return p;
-  };
-  const tcpPub = pick(),
-    udpPub = pick();
+  // each protocol picks its own free port (Windows excludes ranges per protocol)
+  const l = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+  const tcpPub = l.port;
+  l.stop(true);
+  const u = await Bun.udpSocket({ hostname: "127.0.0.1", port: 0 });
+  const udpPub = u.port;
+  u.close();
   let fw = await forwardPorts(
     [
       { name: "a", proto: "tcp", pub: tcpPub, ip: "127.0.0.1", port: svc.port },
@@ -167,7 +191,11 @@ test("public ports: TCP and UDP carried to the service, a dropped spec closed", 
     });
     expect(back).toBe("U:ping");
     // the TCP port dropped: its listener gone, the UDP one kept
-    fw = await forwardPorts([{ name: "b", proto: "udp", pub: udpPub, ip: "127.0.0.1", port: udpSvc.port }], fw, "127.0.0.1");
+    fw = await forwardPorts(
+      [{ name: "b", proto: "udp", pub: udpPub, ip: "127.0.0.1", port: udpSvc.port }],
+      fw,
+      "127.0.0.1",
+    );
     expect(Object.keys(fw.status())).toEqual([`udp:${udpPub}`]);
     const closed = await through(tcpPub, new Uint8Array([1]))
       .then(() => false)

@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { answer, build, parseQuery, parseReply, query, Rcode, serve, Type, writeQuery, writeReply } from "@phosphorus/dns";
+import {
+  answer,
+  build,
+  parseQuery,
+  parseReply,
+  query,
+  Rcode,
+  serve,
+  Type,
+  writeQuery,
+  writeReply,
+} from "@phosphorus/dns";
 
 const spec = {
   domain: "Example.com.",

@@ -76,7 +76,7 @@ export async function fmSide(fm: Fm) {
       return row;
     };
     const out: HTMLElement[] = [];
-    if (st.acct && !st.acct.boot) {
+    if (st.acct) {
       const home = place(homeLoc(), 'home', 'your home, the same on every host', ' fm-home');
       // Home is one place on every host: here whichever host shows it
       home.classList.toggle('here', isHome(fm.loc));
@@ -95,10 +95,10 @@ export async function fmSide(fm: Fm) {
   fm.renderSide = render;
   render();
   await fmHosts(fm);
-  // no place yet: the home, else the boot admin's first share
+  // no place yet: the home, else the first share
   if (!fm.loc) {
     const first = [...fm.shares.values()].find((i) => i?.shares?.length);
-    if (st.acct && !st.acct.boot) fmGo(fm, homeLoc(), '');
+    if (st.acct) fmGo(fm, homeLoc(), '');
     else if (first) fmGo(fm, first.shares![0]!, '');
   }
 }

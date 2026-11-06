@@ -539,3 +539,25 @@
     display: none;
   }
 }
+
+/* settings › network: the domain's edge hosts, one line each, and the picks */
+.net-edges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.net-edge {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.net-edge .dk-ap-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.net-seen.bad {
+  color: var(--offmesh);
+}

@@ -86,7 +86,7 @@ export async function appwebSocket(
   if (!m) return false;
   if (!(await isLocalOrPeer(c)) || !sameOrigin(c)) return refuse(403);
   const u = await users.Soon(c);
-  if (!u || u.boot) return refuse(401);
+  if (!u) return refuse(401);
   const w: Who = { s: u, host: m[1]! };
   if (!known(w.host)) return refuse(404);
   const base = `${originOf(c)}${prefix}`;

@@ -9,13 +9,6 @@
       "license": "https://raw.githubusercontent.com/tailscale/tailscale/v{v}/LICENSE"
     },
     {
-      "name": "cloudflared",
-      "spdx": "Apache-2.0",
-      "pin": ["packages/host/host/src/tools.ts", "Cloudflared\\s*=\\s*\"([^\"]+)\""],
-      "source": "https://github.com/cloudflare/cloudflared",
-      "license": "https://raw.githubusercontent.com/cloudflare/cloudflared/{v}/LICENSE"
-    },
-    {
       "name": "headscale",
       "spdx": "BSD-3-Clause",
       "pin": ["packages/host/host/src/tools.ts", "Headscale\\s*=\\s*\"([^\"]+)\""],

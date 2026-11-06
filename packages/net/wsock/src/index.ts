@@ -1,8 +1,9 @@
 // one websocket, accepted or dialled, with a heartbeat and Node ws's close codes;
 // and the request context every handler is given: the socket's address, whether
 // the ingress handed it over, the server to upgrade on
-import type { Server, ServerWebSocket } from "bun";
+
 import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/util";
+import type { Server, ServerWebSocket } from "bun";
 
 // a socket not answering pings dropped
 export const HeartbeatMs = 3000;

@@ -376,7 +376,12 @@ function readRR(b: Uint8Array, p: number): [RR | undefined, number] {
       break;
     case Type.CAA: {
       const tl = b[s + 1]!;
-      data = { type, flags: b[s]!, tag: utf8.decode(b.subarray(s + 2, s + 2 + tl)), value: utf8.decode(b.subarray(s + 2 + tl, e)) };
+      data = {
+        type,
+        flags: b[s]!,
+        tag: utf8.decode(b.subarray(s + 2, s + 2 + tl)),
+        value: utf8.decode(b.subarray(s + 2 + tl, e)),
+      };
       break;
     }
   }

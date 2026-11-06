@@ -10,7 +10,6 @@ import type { FmView, Loc, PickedItem } from '../features/home/home.ts';
 export interface Account {
   user: string;
   admin: boolean;
-  boot: boolean;
   wallpaper: number;
   vault: Vault;
   vaultOK: boolean;

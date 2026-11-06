@@ -66,12 +66,13 @@ function mockCA() {
   const orderStates = new Map<string, { authz: string[]; status: string; finalized: boolean }>();
   let served: Record<string, string[]> = {};
   let badNonceOnce = true;
+  let port = 0;
   const srv = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
-    async fetch(req) {
+    async fetch(req): Promise<Response> {
       const url = new URL(req.url);
-      const base = `http://127.0.0.1:${srv.port}`;
+      const base = `http://127.0.0.1:${port}`;
       const nonce = () => {
         const n = Math.random().toString(36).slice(2);
         nonces.add(n);
@@ -142,7 +143,9 @@ function mockCA() {
       if (url.pathname.startsWith("/chal/")) {
         const c = challenges.get(req.url)!;
         const want = Buffer.from(
-          createHash("sha256").update(`${c.token}.${thumbprint(accounts.get(c.kid)!)}`).digest(),
+          createHash("sha256")
+            .update(`${c.token}.${thumbprint(accounts.get(c.kid)!)}`)
+            .digest(),
         ).toString("base64url");
         const name = `_acme-challenge.${c.ident.replace(/^\*\./, "")}`;
         const got = served[name] ?? [];
@@ -170,10 +173,13 @@ function mockCA() {
         });
       }
       if (url.pathname === "/cert")
-        return new Response(pem, { headers: { "Content-Type": "application/pem-certificate-chain", "Replay-Nonce": nonce() } });
+        return new Response(pem, {
+          headers: { "Content-Type": "application/pem-certificate-chain", "Replay-Nonce": nonce() },
+        });
       return json(404, { type: "urn:ietf:params:acme:error:malformed", detail: url.pathname });
     },
   });
+  port = srv.port ?? 0;
   return {
     url: `http://127.0.0.1:${srv.port}/dir`,
     serve: (txt: Record<string, string[]>) => void (served = txt),

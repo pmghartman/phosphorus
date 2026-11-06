@@ -1,7 +1,7 @@
 // the mesh's zone: the domain and every name under it at the edge hosts,
 // names of its own beside them, and the answer to a question about it
 
-import { type Query, type Reply, type RR, Rcode, Type, canon } from "./wire.ts";
+import { canon, type Query, Rcode, type Reply, type RR, Type } from "./wire.ts";
 
 export type Srv = { name: string; service: string; proto: "tcp" | "udp"; port: number; target: string };
 
@@ -100,7 +100,15 @@ function lookup(z: Zone, name: string, type: number): { rrs: RR[]; exists: boole
 
 // the reply to q, aa for the zone's names, REFUSED outside it
 export function answer(z: Zone | undefined, q: Query): Reply {
-  const base: Reply = { id: q.id, rd: q.rd, aa: false, rcode: Rcode.NOERROR, answer: [], authority: [], additional: [] };
+  const base: Reply = {
+    id: q.id,
+    rd: q.rd,
+    aa: false,
+    rcode: Rcode.NOERROR,
+    answer: [],
+    authority: [],
+    additional: [],
+  };
   if (q.edns !== undefined) base.edns = true;
   if (q.bad) return { ...base, rcode: Rcode.FORMERR };
   if (q.opcode !== 0) return { ...base, question: q.question, rcode: Rcode.NOTIMP };

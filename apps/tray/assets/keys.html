@@ -26,15 +26,11 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .6; cursor: default; }
   body { max-width: 520px; margin: 0 auto; }
-  details { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
-  summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; list-style-position: inside; }
-  summary .count { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 6px; }
-  details > p { margin: 2px 0 14px; color: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
 <h1>Keys</h1>
-<p class="lead" id="lead">Saved values are never shown. Paste a new one to replace it, leave a field blank to keep what's set.</p>
+<p class="lead" id="lead">The saved key is never shown. Paste a new one to replace it, or leave the field blank to keep what's set.</p>
 <form id="f" autocomplete="off"></form>
 <div class="foot">
   <span class="err" id="err"></span>
@@ -42,13 +38,7 @@
   <button type="submit" form="f" class="primary" id="save">Save</button>
 </div>
 <script>
-  const MAIN = ['MESH_KEY', 'Mesh join key', 'From settings, network on a mesh host. The only key a host joining an existing mesh needs.'];
-  // the first host's, copied from a peer by every other
-  const SETUP = [
-    ['BASE_DOMAIN', 'Domain', 'Optional, for access off the tailnet. Copied from a peer when blank.'],
-    ['TUNNEL_TOKEN', 'Cloudflare tunnel token', 'Optional, with the domain: route <domain> and *.<domain> to http://localhost:80 on it, and every service gets its own subdomain. Copied from a peer when blank.'],
-    ['ADMIN_PASS', 'Admin password', "The setup admin's login and the gate on a mesh update. Copied from a peer when blank."],
-  ];
+  const MAIN = ['MESH_KEY', 'Mesh join key', 'From settings, network on a mesh host. The only key a host needs; everything else is set up on the desktop.'];
   // the tray's own server, on this machine only, behind this page's random path
   const call = async (path, body) => {
     const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
@@ -93,20 +83,9 @@
 
   call('status').then((set) => {
     if (!set.MESH_KEY) {
-      document.getElementById('lead').textContent = 'First start. Only the mesh join key is needed.';
+      document.getElementById('lead').textContent = 'First start. Only the mesh join key is needed; the desktop walks you through the rest.';
     }
-    const more = document.createElement('details');
-    const sum = document.createElement('summary');
-    const n = SETUP.filter((k) => set[k[0]]).length;
-    sum.append('First setup');
-    const count = document.createElement('span');
-    count.className = 'count';
-    count.textContent = `${n} of ${SETUP.length} set`;
-    sum.append(count);
-    const note = document.createElement('p');
-    note.textContent = 'All optional. Joining hosts copy the rest from a peer.';
-    more.append(sum, note, ...SETUP.map((k) => field(k, !!set[k[0]])));
-    form.replaceChildren(field(MAIN, !!set.MESH_KEY), more);
+    form.replaceChildren(field(MAIN, !!set.MESH_KEY));
     form.querySelector('input').focus();
   });
 

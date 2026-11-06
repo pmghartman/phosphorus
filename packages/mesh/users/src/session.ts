@@ -3,27 +3,12 @@
 import * as store from "@phosphorus/store";
 import { isLoopbackAddr, isTailnetAddr, marshal, now, obj, sleep } from "@phosphorus/util";
 import { cleanToken } from "./anthropic.ts";
-import {
-  B64URL,
-  type Box,
-  b64url,
-  boxOf,
-  derive,
-  hashOK,
-  hex,
-  Open,
-  randHex,
-  Seal,
-  sameSecret,
-  unhex,
-} from "./crypto.ts";
+import { B64URL, type Box, b64url, boxOf, derive, hashOK, hex, Open, randHex, Seal, unhex } from "./crypto.ts";
 import { resealMCP } from "./mcpkeys.ts";
 import {
   admin,
-  adminPass,
   anyAdmin,
   baseDomain,
-  bootSessionMS,
   Cookie,
   hasAdmin,
   live,
@@ -56,7 +41,7 @@ import {
 } from "./secrets.ts";
 
 // Session a logged in browser
-export type Session = { user: string; admin: boolean; boot: boolean; key?: Uint8Array; token: string; e: number };
+export type Session = { user: string; admin: boolean; key?: Uint8Array; token: string; e: number };
 
 export const cookieRe = /(?:^|[;,]\s*)phosphorus-user=([A-Za-z0-9_-]+)/g;
 
@@ -81,7 +66,7 @@ export function issue(c: Req, payload: Record<string, unknown>, ms: number): str
 // ClearCookie the session cookie gone
 export const ClearCookie = (c: Req) => [Cookie + "=; Max-Age=0" + attrs(c)];
 
-// IPOf the browser's address as cloudflared or a peer's ingress saw it, else the socket's
+// IPOf the browser's address as a peer's edge saw it, else the socket's
 export function IPOf(c: Req): string {
   const sock = c.ip;
   if (!isLoopbackAddr(sock) && !isTailnetAddr(sock)) return sock;
@@ -134,35 +119,26 @@ export const unexpired = (o: Record<string, any> | undefined) => !!o && typeof o
 export function sessionOf(token: string): Session | undefined {
   const s = openToken(token);
   if (!unexpired(s)) return;
-  if (truthy(s!.b)) {
-    // a boot cookie refused once any admin exists, this host's sys pulled
-    // first by Soon; before that pull, by what's on disk
-    if (hasAdmin()) return;
-    if (!pulled) void pull();
-    return { user: admin, admin: true, boot: true, token, e: s!.e };
-  }
   const u = typeof s!.u === "string" ? s!.u : "";
   const lu = live(u);
   if (!lu || lu.pwAt !== (typeof s!.p === "string" ? s!.p : "")) return;
-  return { user: u, admin: lu.admin, boot: false, key: unhex(s!.k), token, e: s!.e };
+  return { user: u, admin: lu.admin, key: unhex(s!.k), token, e: s!.e };
 }
 
-// Of the first valid cookie's session, a user's before a boot one
+// Of the first valid cookie's session
 export function Of(c: Req): Session | undefined {
   if (store.read(secretRel) === undefined) return;
-  let boot: Session | undefined;
   for (const t of cookiesOf(c)) {
     const s = sessionOf(t);
-    if (s && !s.boot) return s;
-    boot ??= s;
+    if (s) return s;
   }
-  return boot;
+  return;
 }
 
 // Soon a login this host can't read yet: the mesh's sys pulled first
 export async function Soon(c: Req): Promise<Session | undefined> {
   const s = Of(c);
-  if ((s && (!s.boot || pulled)) || !cookiesOf(c).length) return s;
+  if (s || !cookiesOf(c).length) return s;
   await pull();
   return Of(c);
 }
@@ -210,7 +186,7 @@ export function openVault(s: Session): Vault | undefined {
 }
 
 export async function vaultOf(s: Session | undefined): Promise<[Vault | undefined, boolean]> {
-  if (!s || s.boot) return [undefined, true];
+  if (!s) return [undefined, true];
   let v = openVault(s);
   if (!v) {
     await pull();
@@ -224,18 +200,13 @@ export async function Me(s: Session): Promise<Record<string, any>> {
   const [v, vaultOK] = await vaultOf(s);
   const vault = v ?? { hosts: {}, pages: {} };
   let prefs: unknown = {};
-  let prefsAt = 0,
-    wall = 0;
-  if (!s.boot) {
-    const p = store.read(prefsFile(s.user));
-    if (p !== undefined) prefs = p;
-    prefsAt = store.stamp(prefsFile(s.user));
-    if (store.read(wallFile(s.user)) !== undefined) wall = store.stamp(wallFile(s.user));
-  }
+  const p = store.read(prefsFile(s.user));
+  if (p !== undefined) prefs = p;
+  const prefsAt = store.stamp(prefsFile(s.user));
+  const wall = store.read(wallFile(s.user)) !== undefined ? store.stamp(wallFile(s.user)) : 0;
   return {
     user: s.user,
     admin: s.admin,
-    boot: s.boot,
     vault: pageVault(vault),
     vaultOK,
     prefs,
@@ -246,7 +217,7 @@ export async function Me(s: Session): Promise<Record<string, any>> {
 
 // Wallpaper the user's desktop picture: its type and bytes, none for ["", undefined]
 export function Wallpaper(s: Session | undefined): [string, Uint8Array | undefined] {
-  if (!s || s.boot) return ["", undefined];
+  if (!s) return ["", undefined];
   const w = obj(store.read(wallFile(s.user)));
   if (!w || typeof w.type !== "string" || !wallTypes.includes(w.type)) return ["", undefined];
   return [w.type, Buffer.from(typeof w.data === "string" ? w.data : "", "base64")];
@@ -261,7 +232,7 @@ export const errR = (status: number, msg: string): R => ({ status, body: { error
 
 // SetWallpaper a data: url, "" dropping it
 export function SetWallpaper(s: Session | undefined, p: Record<string, any>): R {
-  if (!s || s.boot) return errR(403, "the setup admin keeps no settings");
+  if (!s) return errR(403, "log in first");
   const u = str(p.data);
   if (u === "") {
     store.remove(wallFile(s.user));
@@ -276,7 +247,7 @@ export function SetWallpaper(s: Session | undefined, p: Record<string, any>): R 
 
 // SetPrefs each a string as the page's localStorage held it
 export function SetPrefs(s: Session | undefined, p: Record<string, any>): R {
-  if (!s || s.boot) return errR(403, "the setup admin keeps no settings");
+  if (!s) return errR(403, "log in first");
   const prefs: Record<string, any> = obj(store.read(prefsFile(s.user))) ?? {};
   const inp = obj(p.prefs);
   for (const k of prefKeys) {
@@ -292,7 +263,7 @@ export function SetPrefs(s: Session | undefined, p: Record<string, any>): R {
 
 export const runes = (s: string) => [...s].length;
 
-// Login a user, or the setup admin while there's no admin user
+// Login a user
 export const Login = async (p: Record<string, any>, c: Req): Promise<R> => (await SignIn(p, c))[0];
 
 // SignIn Login's answer and, on success, the session it made
@@ -308,12 +279,6 @@ export async function SignIn(p: Record<string, any>, c: Req): Promise<[R, Sessio
     await sleep(400);
     return [errR(401, "wrong user or password"), undefined];
   };
-  if (name === admin) {
-    if (await anyAdmin()) return [errR(403, "the setup admin is off once an admin user exists"), undefined];
-    if (adminPass === "" || !sameSecret(pass, adminPass)) return fail();
-    const s: Session = { user: admin, admin: true, boot: true, token: "", e: 0 };
-    return [{ status: 200, body: await Me(s), cookie: [issue(c, { b: 1 }, bootSessionMS)] }, s];
-  }
   if (runes(pass) > maxPass) return fail();
   let u = live(name);
   if (!u || !hashOK(await derive(pass, u.salt), u.hash)) {
@@ -325,8 +290,22 @@ export async function SignIn(p: Record<string, any>, c: Req): Promise<[R, Sessio
   const out = await derive(pass, u.salt);
   if (!hashOK(out, u.hash)) return fail();
   const key = out.subarray(32);
-  const s: Session = { user: name, admin: u.admin, boot: false, key, token: "", e: 0 };
+  const s: Session = { user: name, admin: u.admin, key, token: "", e: 0 };
   return [{ status: 200, body: await Me(s), cookie: [issue(c, { u: name, p: u.pwAt, k: hex(key) }, sessionMS)] }, s];
+}
+
+// Setup the first admin, made by whoever reaches a fresh mesh first and signed in at once;
+// refused once any admin exists
+export async function Setup(p: Record<string, any>, c: Req): Promise<R> {
+  if (await anyAdmin()) return errR(403, "an admin exists already, log in");
+  const name = str(p.user).trim().toLowerCase();
+  const pass = str(p.pass);
+  if (!nameRe.test(name) || reserved.includes(name))
+    return errR(400, "name: letters, digits, . _ -, up to 32, never " + reserved.join(", "));
+  const n = runes(pass);
+  if (n < 4 || n > maxPass) return errR(400, "password: 4 to 256 characters");
+  await setPass(name, pass, { hosts: {}, pages: {} }, true);
+  return Login({ user: name, pass }, c);
 }
 
 export async function setPass(name: string, pass: string, vault: unknown, adminFlag?: boolean): Promise<Uint8Array> {
@@ -393,7 +372,7 @@ export const notSynced = () => errR(503, "this host hasn't your saved logins yet
 
 // SetVault the page's saved logins, sealed
 export async function SetVault(s: Session | undefined, p: Record<string, any>): Promise<R> {
-  if (!s || s.boot) return errR(403, "the setup admin keeps no logins");
+  if (!s) return errR(403, "log in first");
   // an unsynced host's empty vault never sealed over the mesh's
   const old = await vaultOrPull(s);
   if (!old) return notSynced();
@@ -411,7 +390,7 @@ export async function SetVault(s: Session | undefined, p: Record<string, any>): 
 
 // ChangePass the vault resealed under the new password
 export async function ChangePass(s: Session | undefined, p: Record<string, any>, c: Req): Promise<R> {
-  if (!s || s.boot) return errR(403, "the setup admin's password is ADMIN_PASS in .env");
+  if (!s) return errR(403, "log in first");
   const pass = str(p.pass);
   const n = runes(pass);
   if (n < 4 || n > maxPass) return errR(400, "password: 4 to 256 characters");

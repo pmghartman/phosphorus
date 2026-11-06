@@ -1,8 +1,8 @@
 // the edge host's 443: TLS split by server name, the control server's bytes
 // to headscale, everything else to the ingress's own TLS server on loopback
 
-import type { Socket, TCPSocketListener } from "bun";
 import { logf } from "@phosphorus/util";
+import type { Socket, TCPSocketListener } from "bun";
 
 // the client behind each loopback connection the splitter made, by its source port
 const clients = new Map<number, string>();
@@ -71,7 +71,7 @@ export function split(port: number, hostname?: string): Split {
   let control = { name: "", port: 0 };
   const target = (sni: string) => (sni && sni === control.name && control.port ? control.port : ingress);
   const listener: TCPSocketListener<Side> = Bun.listen<Side>({
-    hostname,
+    hostname: hostname ?? "0.0.0.0",
     port,
     socket: {
       open(s) {
@@ -162,4 +162,3 @@ function connect(down: Socket<Side>, head: Uint8Array, port: number) {
     down.end();
   });
 }
-

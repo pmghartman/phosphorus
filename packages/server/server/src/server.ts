@@ -3,7 +3,7 @@
 import * as catalog from "@phosphorus/catalog";
 import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
-import { own as ownServices, unpublished, wildcard } from "@phosphorus/services";
+import { own as ownServices, unpublished } from "@phosphorus/services";
 import * as stacks from "@phosphorus/stacks";
 import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
@@ -11,7 +11,8 @@ import * as update from "@phosphorus/update";
 import { markHot, marshal, publicIPv4 } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import * as afterglow from "./afterglow.ts";
-import { adminPass, baseDomain, getPlatform, selfHost, selfInfo, Version } from "./config.ts";
+import { baseDomain, getPlatform, selfHost, selfInfo, Version } from "./config.ts";
+import { edgeInfo } from "./edge.ts";
 import { ownHA } from "./ha.ts";
 import type { Res } from "./http.ts";
 import { decode, obj } from "./js.ts";
@@ -36,7 +37,7 @@ export function publishHost() {
     files: filesInfo(),
     apps: webapps.installed(),
     found: unpublished(),
-    wildcard: wildcard(),
+    edge: edgeInfo(),
     stacks: stacks.statuses(),
     docker: stacks.dockerInfo(),
     afterglow: afterglow.status(),
@@ -135,11 +136,10 @@ export function ownState(): peers.Own {
 
 // --- the update chain ------------------------------------------------------------
 
-export function chainAction(action: string, password: string, admin: boolean, only: string[] = []): Res {
+export function chainAction(action: string, admin: boolean, only: string[] = []): Res {
   switch (action) {
     case "start": {
-      if (!admin && (adminPass === "" || password !== adminPass))
-        return [401, { error: "admins only, or the admin password" }];
+      if (!admin) return [401, { error: "admins only" }];
       // the hosts serving a stack with standbys updated last, each handing it over
       const ha = Object.values(stacks.views()).flatMap((v) => (v.standbys.length ? [v.active] : []));
       const started = update.start(ha, only);

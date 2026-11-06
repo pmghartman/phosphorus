@@ -2,13 +2,23 @@
 // itself for everything else; on an edge host over TLS behind the 443 splitter
 
 import { envInt, isLoopbackAddr, isTailnetAddr, logf, magicDNS, marshal, Notes } from "@phosphorus/util";
-import { type Ctx, dial, type Handler, isHTTPS, isUpgrade, remoteIP, upgrade, type WSData, websocket } from "@phosphorus/wsock";
-import { splitClient } from "./edge.ts";
+import {
+  type Ctx,
+  dial,
+  type Handler,
+  isHTTPS,
+  isUpgrade,
+  remoteIP,
+  upgrade,
+  type WSData,
+  websocket,
+} from "@phosphorus/wsock";
 import type { Server } from "bun";
+import { splitClient } from "./edge.ts";
 
-export { favicon, faviconWhy, type Icon } from "./favicon.ts";
 export { type Split, sniOf, split } from "./edge.ts";
-export { type Forwarded, type PortSpec, forwardPorts } from "./ports.ts";
+export { favicon, faviconWhy, type Icon } from "./favicon.ts";
+export { type Forwarded, forwardPorts, type PortSpec } from "./ports.ts";
 
 export const baseDomain = process.env.BASE_DOMAIN ?? "";
 const selfHost = process.env.SELF_HOST ?? "";
@@ -429,7 +439,7 @@ async function forwardSocket(rt: Route, c: Ctx, p: string): Promise<Response | u
 // the login's checks, users.pass and users.issuers
 export type Gate = { pass: (c: Ctx) => boolean; issuers: (c: Ctx) => string[] };
 
-const openAPI = /^\/api\/(me|login|logout|users|run)(\/|$)/;
+const openAPI = /^\/api\/(me|login|logout|setup|users|run)(\/|$)/;
 
 // public routes left to the service's own login
 const gated = (h: Hit) => (h.route ? !h.route.git && !h.route.public : !!h.frontend);

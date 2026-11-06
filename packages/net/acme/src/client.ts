@@ -76,7 +76,10 @@ export class Client {
   private async nonce(): Promise<string> {
     const n = this.nonces.pop();
     if (n) return n;
-    const r = await this.fetcher((await this.directory()).newNonce, { method: "HEAD", signal: AbortSignal.timeout(20_000) });
+    const r = await this.fetcher((await this.directory()).newNonce, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(20_000),
+    });
     const got = r.headers.get("replay-nonce");
     if (!got) throw new AcmeError(r.status, "nonce", "no nonce from the CA");
     return got;

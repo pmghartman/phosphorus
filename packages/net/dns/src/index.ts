@@ -3,17 +3,17 @@
 export { type Ask, query } from "./client.ts";
 export { type Served, serve } from "./server.ts";
 export {
+  canon,
   type Parsed,
+  parseQuery,
+  parseReply,
   type Query,
+  Rcode,
   type RData,
   type Reply,
   type RR,
-  canon,
-  parseQuery,
-  parseReply,
-  Rcode,
   Type,
   writeQuery,
   writeReply,
 } from "./wire.ts";
-export { type Srv, type Zone, type ZoneSpec, answer, build } from "./zone.ts";
+export { answer, build, type Srv, type Zone, type ZoneSpec } from "./zone.ts";

@@ -28,8 +28,8 @@ export { hasNvidia, type NvGpu, nvidiaGpus } from "./nvml.ts";
 export * from "./proc.ts";
 
 export const FrontendPort = envInt("FRONTEND_PORT", 8090);
-// cloudflared's metrics and /ready, on loopback
-export const TunnelMetrics = env("TUNNEL_METRICS", "127.0.0.1:20241");
+// the frontend's exit asking run to start it again with the mesh's new domain
+export const RestartExit = 75;
 export const SelfHost = process.env.SELF_HOST ?? "";
 // the install, phosphorus run's PHOSPHORUS_HOME
 export const RepoDir = env("PHOSPHORUS_REPO_DIR", env("PHOSPHORUS_HOME", "/var/lib/phosphorus"));

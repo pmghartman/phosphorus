@@ -1,5 +1,6 @@
 // questions asked of one server: UDP first, TCP when the answer was cut
 
+import type { udp } from "bun";
 import { type Parsed, parseReply, writeQuery } from "./wire.ts";
 
 export type Ask = { server: string; port?: number; name: string; type: number; rd?: boolean; timeoutMs?: number };
@@ -17,8 +18,11 @@ async function udp(a: Ask, id: number): Promise<Parsed> {
       s?.close();
       f();
     };
-    let s: Awaited<ReturnType<typeof Bun.udpSocket<"uint8array">>> | undefined;
-    const timer = setTimeout(() => finish(() => rej(new Error(`${a.server}: no answer in ${a.timeoutMs ?? 3000}ms`))), a.timeoutMs ?? 3000);
+    let s: udp.Socket<"uint8array"> | undefined;
+    const timer = setTimeout(
+      () => finish(() => rej(new Error(`${a.server}: no answer in ${a.timeoutMs ?? 3000}ms`))),
+      a.timeoutMs ?? 3000,
+    );
     Bun.udpSocket<"uint8array">({
       binaryType: "uint8array",
       socket: {
@@ -60,7 +64,10 @@ async function tcp(a: Ask, id: number): Promise<Parsed> {
       clearTimeout(timer);
       f();
     };
-    const timer = setTimeout(() => finish(() => rej(new Error(`${a.server}: no answer in ${a.timeoutMs ?? 3000}ms`))), a.timeoutMs ?? 3000);
+    const timer = setTimeout(
+      () => finish(() => rej(new Error(`${a.server}: no answer in ${a.timeoutMs ?? 3000}ms`))),
+      a.timeoutMs ?? 3000,
+    );
     Bun.connect({
       hostname: a.server,
       port: a.port ?? 53,

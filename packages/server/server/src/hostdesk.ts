@@ -156,7 +156,7 @@ export async function hostdeskRoute(
   if (!(await isLocalOrPeer(c))) return sendJSON(403, { error: "forbidden" });
   if (q.has("hop")) return await hopRoute(c, pathname, method);
   const s = await users.Soon(c);
-  if (!s || s.boot) return sendJSON(401, { error: "log in as a user" });
+  if (!s) return sendJSON(401, { error: "log in as a user" });
   const m = deskRe.exec(pathname);
   if (!m) return sendJSON(404, { error: "not found" });
   const w: Who = { s, host: m[1]! };
@@ -696,7 +696,7 @@ export async function streamSocket(
   }
   if (!sameOrigin(c)) return refuse(403);
   const u = await users.Soon(c);
-  if (!u || u.boot) return refuse(401);
+  if (!u) return refuse(401);
   const w: Who = { s: u, host: m[1]! };
   if (!known(w.host)) return refuse(404);
   const ok = upgrade(c, (ws) => {

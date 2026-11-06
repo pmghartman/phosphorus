@@ -21,8 +21,18 @@ export const ControlSpecFile = join(RunDir, "control.json");
 export const ControlSocket = join(RunDir, "headscale.sock");
 export const HeadscaleBin = join(CacheDir, "tools", "headscale");
 
-// the control role as the frontend asks for it; relay: the embedded DERP and STUN
-export type ControlSpec = { url: string; baseDomain: string; relay: boolean; ipv4?: string; ipv6?: string };
+// the control role as the frontend asks for it; relay: the embedded DERP and STUN;
+// behind: this host is an edge too, 443 split there, headscale on loopback
+export type ControlSpec = {
+  url: string;
+  baseDomain: string;
+  relay: boolean;
+  behind: boolean;
+  ipv4?: string;
+  ipv6?: string;
+};
+// where headscale listens behind the edge's splitter
+export const ControlBehindPort = 8443;
 
 // each kind's folder there before anything writes into it; a login without the
 // rights to state/ only reads

@@ -97,7 +97,7 @@ export async function homeWho(c: Ctx): Promise<files.Who | undefined> {
     if (g && (await isTailnet(c)) && Exists(str(g.u))) return { user: str(g.u), admin: IsAdmin(str(g.u)) };
     return;
   }
-  return { user: s.boot ? "" : s.user, admin: s.admin };
+  return { user: s.user, admin: s.admin };
 }
 
 export function runGrant(sh: files.Share, rel: string, who: files.Who | undefined): Res {

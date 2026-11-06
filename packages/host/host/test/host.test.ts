@@ -229,12 +229,7 @@ test("small helpers", () => {
   expect(lastLine("a\nE: bad\nok\n", /ERROR|E:/)).toBe("E: bad");
   expect(lastLine("a\nb\n")).toBe("b");
   expect(lastLine("", /x/)).toBe("");
-  expect(keySet({ MESH_KEY: "k", BASE_DOMAIN: "" })).toEqual({
-    MESH_KEY: true,
-    BASE_DOMAIN: false,
-    TUNNEL_TOKEN: false,
-    ADMIN_PASS: false,
-  });
+  expect(keySet({ MESH_KEY: "k", BASE_DOMAIN: "" })).toEqual({ MESH_KEY: true });
   expect(durText(5000)).toBe("5s");
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);
@@ -242,39 +237,39 @@ test("small helpers", () => {
 });
 
 test("the tools pinned per OS, fetched only when a pin moves or a file is gone", async () => {
-  const { Cloudflared, ensureTools, pins, Tailscale } = await import("../src/tools.ts");
+  const { ensurePin, pins, Tailscale } = await import("../src/tools.ts");
   const { os } = await import("../src/os.ts");
   const names = (p: { files: Record<string, string> }[]) => p.flatMap((x) => Object.keys(x.files));
-  expect(names(pins("linux", "x64"))).toEqual(["tailscale", "tailscaled", "cloudflared"]);
-  expect(names(pins("linux", "arm64", false))).toEqual(["cloudflared"]);
-  expect(names(pins("darwin", "arm64"))).toEqual(["cloudflared"]);
-  expect(names(pins("win32", "x64"))).toEqual(["cloudflared.exe"]);
+  expect(names(pins("linux", "x64"))).toEqual(["tailscale", "tailscaled"]);
+  expect(names(pins("linux", "arm64", false))).toEqual([]);
+  expect(names(pins("darwin", "arm64"))).toEqual([]);
+  expect(names(pins("win32", "x64"))).toEqual([]);
   expect(pins("linux", "arm64")[0]!.url).toContain(`tailscale_${Tailscale}_arm64.tgz`);
 
-  // every pin's file here at its version: nothing fetched
+  // the pin's file here at its version: nothing fetched
   const lib = os.libexec();
   mkdirSync(lib, { recursive: true });
-  const want = pins();
-  for (const p of want) for (const f of Object.keys(p.files)) writeFileSync(join(lib, f), "x");
-  writeFileSync(join(lib, "versions.json"), JSON.stringify(Object.fromEntries(want.map((p) => [p.name, p.ver]))));
+  const pin = pins("linux", "x64")[0]!;
+  for (const f of Object.keys(pin.files)) writeFileSync(join(lib, f), "x");
+  writeFileSync(join(lib, "versions.json"), JSON.stringify({ [pin.name]: pin.ver }));
   const real = globalThis.fetch;
   let asked = 0;
   globalThis.fetch = (async () => {
     asked++;
-    return new Response("not cloudflared");
+    return new Response("not tailscale");
   }) as unknown as typeof fetch;
   try {
-    await ensureTools();
+    await ensurePin(pin);
     expect(asked).toBe(0);
     // a moved pin fetched, the wrong bytes refused
-    writeFileSync(join(lib, "versions.json"), JSON.stringify({ cloudflared: "old", tailscale: Tailscale }));
-    await expect(ensureTools()).rejects.toThrow(/checksum mismatch/);
+    writeFileSync(join(lib, "versions.json"), JSON.stringify({ tailscale: "old" }));
+    await expect(ensurePin(pin)).rejects.toThrow(/checksum mismatch/);
     expect(asked).toBeGreaterThan(0);
-    expect(JSON.parse(readFileSync(join(lib, "versions.json"), "utf8")).cloudflared).toBe("old");
+    expect(JSON.parse(readFileSync(join(lib, "versions.json"), "utf8")).tailscale).toBe("old");
   } finally {
     globalThis.fetch = real;
   }
-  expect(Cloudflared).toMatch(/^\d{4}\.\d+\.\d+$/);
+  expect(Tailscale).toMatch(/^\d+\.\d+\.\d+$/);
 }, 30_000);
 
 test("headscale pinned apart from every host's tools", async () => {
@@ -301,9 +296,12 @@ test("a mesh join key round-trips, anything else refused", async () => {
 
 test("headscale's config from the frontend's ask", async () => {
   const { controlConfig, controlPolicy, readSpec } = await import("../src/control.ts");
-  const spec = { url: "https://hs.mulab.dev", baseDomain: "mesh.mulab.dev", relay: false };
+  const spec = { url: "https://hs.mulab.dev", baseDomain: "mesh.mulab.dev", relay: false, behind: false };
   const c = controlConfig(spec, "/d", "/s.sock");
   expect(c.server_url).toBe("https://hs.mulab.dev");
+  expect(c.listen_addr).toBe(":443");
+  // an edge host too: 443 is the splitter's, headscale behind it on loopback
+  expect(controlConfig({ ...spec, behind: true }).listen_addr).toBe("127.0.0.1:8443");
   expect(c.tls_letsencrypt_hostname).toBe("hs.mulab.dev");
   expect(c.tls_letsencrypt_challenge_type).toBe("TLS-ALPN-01");
   expect(c.derp.server.enabled).toBe(false);
@@ -317,5 +315,5 @@ test("headscale's config from the frontend's ask", async () => {
   writeFileSync(f, JSON.stringify({ url: "http://plain", baseDomain: "x" }));
   expect(readSpec(f)).toBeUndefined();
   writeFileSync(f, JSON.stringify({ ...spec, relay: "yes" }));
-  expect(readSpec(f)).toEqual({ ...spec, relay: false, ipv4: undefined, ipv6: undefined });
+  expect(readSpec(f)).toEqual({ ...spec, relay: false, behind: false, ipv4: undefined, ipv6: undefined });
 });

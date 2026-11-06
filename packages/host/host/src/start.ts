@@ -1,4 +1,4 @@
-// bring-up, the one-time admin setup, phos alone, status and the keys
+// bring-up, the one-time admin setup, phos alone, status and the join key
 import * as envfile from "@phosphorus/envfile";
 import {
   at,
@@ -15,7 +15,7 @@ import {
   setTag,
   spawnIO,
 } from "./base.ts";
-import { askKeys, desktopLinks, front } from "./front.ts";
+import { askKeys, desktopLinks, front, meshDomain } from "./front.ts";
 import { rebuild, waitFrontend } from "./native.ts";
 import { os } from "./os.ts";
 import { vpnState } from "./tailnet.ts";
@@ -23,7 +23,7 @@ import { vpnState } from "./tailnet.ts";
 // start bring-up, safe to re-run: checks, the one-time admin setup, then
 // the rebuild, which starts the service and waits on the frontend
 export async function start() {
-  if (keysMissing()) throw fail(`no MESH_KEY in ${envPath()}, run phosphorus to enter the keys`);
+  if (keysMissing()) throw fail(`no MESH_KEY in ${envPath()}, run phosphorus to enter the join key`);
   envfile.lock(envPath());
   await os.prepareOS(await os.svcActive());
   const todo = await os.needSetup();
@@ -74,8 +74,8 @@ async function elevate() {
   if (code !== 0) throw fail(`exit status ${code}`);
 }
 
-// overview phos alone: on a new host the keys asked for and phosphorus
-// started, then the front page with the link to the desktop
+// overview phos alone: on a new host the join key asked for and phosphorus
+// started, then the front page with the link to the desktop, where setup goes on
 export async function overview(version: string) {
   if (!(await os.svcActive()) && keysMissing()) {
     try {
@@ -88,6 +88,7 @@ export async function overview(version: string) {
     setTag("start");
     await start();
     setTag("phosphorus");
+    println("\n  open the desktop to finish: a new mesh asks for its first admin there, then its domain in settings");
   }
   await front(version);
 }
@@ -103,7 +104,7 @@ export async function status(args: string[]) {
   }
   println(`phosphorus ${running ? "running" : "stopped"}, tailscale ${vpn || "not answering"}`);
   println((await desktopLinks()).join("  "));
-  if (!running) println(keysMissing() ? "run phos to enter the keys" : "phos start brings it up");
+  if (!running) println(keysMissing() ? "run phos to enter the join key" : "phos start brings it up");
 }
 
 // keySet which keys .env holds, never their values
@@ -113,7 +114,7 @@ export function keySet(have: Record<string, string>): Record<string, boolean> {
   return set;
 }
 
-// keys replaced in .env, never shown; the app's through --state and --stdin
+// keys the join key replaced in .env, never shown; the app's through --state and --stdin
 export async function keys(opts: string[]) {
   try {
     envfile.ensure(envPath());
@@ -123,8 +124,7 @@ export async function keys(opts: string[]) {
   for (const o of opts) {
     if (o === "--state") {
       // not secret, the domain: the app's window opened on it
-      const have = envfile.read(envPath());
-      println(JSON.stringify({ keys: keySet(have), domain: have.BASE_DOMAIN ?? "" }));
+      println(JSON.stringify({ keys: keySet(envfile.read(envPath())), domain: meshDomain() }));
       return;
     }
     if (o === "--stdin") {
@@ -144,7 +144,7 @@ export async function keys(opts: string[]) {
     say("saved, phos start to bring phosphorus up");
     return;
   }
-  // .env read once at start: restarted on the new keys
-  say("saved, restarting phosphorus with them");
+  // .env read once at start: restarted on the new key
+  say("saved, restarting phosphorus with it");
   await rebuild();
 }

@@ -1,11 +1,12 @@
-// settings › network: the mesh's own control server, its relay, join keys and
-// device approvals asked of it
+// settings › network: the mesh's domain and its edge hosts, public ports, its own
+// control server, its relay, join keys and device approvals asked of it
 import * as peers from "@phosphorus/peers";
+import { domainRe, domainRel, portError, removePort, setPort } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import { errText, now } from "@phosphorus/util";
+import { edgeStatus, publicHosts } from "./edge.ts";
 import type { Res } from "./http.ts";
-import { obj, str } from "./js.ts";
-import { hostsInfo } from "./server.ts";
+import { num, str } from "./js.ts";
 
 const ctl = peers.control;
 
@@ -29,15 +30,6 @@ async function health(url: string): Promise<{ ok: boolean; why?: string }> {
   return h;
 }
 
-// Linux hosts with a public IPv4 of their own: the ones every device can reach
-function publicHosts(): { name: string; ip: string }[] {
-  return Object.entries(hostsInfo())
-    .map(([name, i]) => ({ name, platform: str(obj(i)?.platform), ip: str(obj(i)?.publicIPv4) }))
-    .filter((h) => h.platform === "linux" && h.ip)
-    .map(({ name, ip }) => ({ name, ip }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 let devicesAt = 0;
 let devicesLast: { devices?: peers.control.Node[]; error?: string } = {};
 
@@ -53,9 +45,10 @@ async function devices(fresh = false) {
 
 export async function controlStatus(): Promise<Res> {
   const c = ctl.control();
-  if (!c) return [200, { control: null, health: null, hosts: publicHosts() }];
+  const edge = edgeStatus();
+  if (!c) return [200, { control: null, health: null, hosts: publicHosts(), edge }];
   const [h, d] = await Promise.all([health(c.url), devices()]);
-  return [200, { control: c, health: h, hosts: [], ...d }];
+  return [200, { control: c, health: h, hosts: [], edge, ...d }];
 }
 
 // a device op, the list asked again after so the page shows it at once
@@ -65,18 +58,56 @@ async function deviceOp(op: string, body: Record<string, unknown>): Promise<Res>
   return r;
 }
 
-const nameRe = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+// the mesh's domain set, or cleared with a blank name; its edges the Linux hosts
+// with a public address that serve it
+function setDomain(p: Record<string, unknown>): Res {
+  const name = str(p.name).trim().toLowerCase().replace(/\.$/, "");
+  if (!name) {
+    store.remove(domainRel);
+    return [200, { ok: true }];
+  }
+  if (!domainRe.test(name)) return [400, { error: "the domain must be a name like example.com" }];
+  const pub = publicHosts();
+  const edges = [...new Set((Array.isArray(p.edges) ? p.edges : []).map((e) => str(e).toLowerCase()))].sort();
+  const bad = edges.find((e) => !pub.some((h) => h.host === e));
+  if (bad) return [400, { error: `${bad} isn't a Linux host with a public address` }];
+  if (!edges.length) return [400, { error: "pick at least one edge host, a Linux host with a public address" }];
+  store.write(domainRel, { name, edges }, true);
+  return [200, { ok: true }];
+}
 
-// an admin's step: the server and relay, keys, and the devices on it
+// an admin's step: the domain and its edges, a public port, the control server and
+// relay, keys, and the devices on it
 export async function controlAction(p: Record<string, unknown>): Promise<Res> {
   const c = ctl.control();
   switch (str(p.action)) {
+    case "domain":
+      return setDomain(p);
+    case "port-set": {
+      const row = {
+        host: str(p.host).toLowerCase(),
+        name: str(p.name).trim().toLowerCase(),
+        port: num(p.port),
+        proto: str(p.proto) as "tcp" | "udp",
+        pub: num(p.pub),
+        srv: str(p.srv).trim().toLowerCase(),
+      };
+      const why = portError(row);
+      if (why) return [400, { error: why }];
+      setPort(row);
+      return [200, { ok: true }];
+    }
+    case "port-remove":
+      removePort(str(p.host).toLowerCase(), str(p.name).toLowerCase());
+      return [200, { ok: true }];
     case "set": {
       if (c) return [409, { error: `the mesh runs on ${c.host}'s control server; it stays there` }];
       const host = str(p.host).toLowerCase();
-      const name = str(p.name).toLowerCase().replace(/\.$/, "");
-      if (!nameRe.test(name)) return [400, { error: "the control name must be a domain name, e.g. hs.example.com" }];
-      if (!publicHosts().some((h) => h.name === host))
+      // the name given, or control.<domain> on the mesh's own DNS
+      const base = edgeStatus().domain;
+      const name = str(p.name).toLowerCase().replace(/\.$/, "") || (base ? `control.${base}` : "");
+      if (!domainRe.test(name)) return [400, { error: "the control name must be a domain name, e.g. hs.example.com" }];
+      if (!publicHosts().some((h) => h.host === host))
         return [400, { error: `${host || "that"} isn't a Linux host with a public address` }];
       store.write(ctl.controlRel, { host, url: "https://" + name, relay: false }, true);
       return [200, { ok: true }];
@@ -96,5 +127,11 @@ export async function controlAction(p: Record<string, unknown>): Promise<Res> {
     case "remove":
       return deviceOp("remove", { id: str(p.id) });
   }
-  return [400, { error: "action must be set, relay, join-key, device-key, approve, rename or remove" }];
+  return [
+    400,
+    {
+      error:
+        "action must be domain, port-set, port-remove, set, relay, join-key, device-key, approve, rename or remove",
+    },
+  ];
 }

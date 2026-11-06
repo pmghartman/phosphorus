@@ -1,7 +1,7 @@
 // ASN.1 DER, as much as a certificate request needs: the encoder and a
 // PKCS#10 request for a P-256 key over a list of names
 
-import { type KeyObject, createPublicKey, sign } from "node:crypto";
+import { createPublicKey, type KeyObject, sign } from "node:crypto";
 
 const concat = (parts: Uint8Array[]) => {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));

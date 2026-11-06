@@ -28,7 +28,6 @@ const {
   removedPorts,
   setPublic,
   setStackRows,
-  tunnelID,
 } = await import("@phosphorus/services");
 const store = await import("@phosphorus/store");
 
@@ -206,11 +205,4 @@ test("found pages written in, a removed one left alone", async () => {
   expect(removedPorts().has(9101)).toBe(true);
   expect(adopt([jelly])).toEqual([]);
   expect(store.read("etc/services/a/jelly.json")).toBeUndefined();
-});
-
-test("tunnel id", () => {
-  const id = "6ff42ae2-765d-4adf-8112-31c55c1551ef";
-  expect(tunnelID(Buffer.from(JSON.stringify({ a: "acct", t: id, s: "secret" })).toString("base64"))).toBe(id);
-  expect(tunnelID("not a token")).toBe("");
-  expect(tunnelID("")).toBe("");
 });

@@ -1,7 +1,6 @@
 // every request on the frontend port, and the ingress's leftovers
 import { protoOK, protoWhy } from "@phosphorus/afterglow";
 import * as catalog from "@phosphorus/catalog";
-import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
 import { type Caller, handle as mcpHandle, skill } from "@phosphorus/mcp";
 import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phosphorus/model";
@@ -21,7 +20,7 @@ import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import * as afterglow from "./afterglow.ts";
 import { appRoute } from "./apps.ts";
 import { appwebRoute } from "./appweb.ts";
-import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
+import { port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
 import { controlAction, controlStatus } from "./control.ts";
 import { haRoute } from "./ha.ts";
 import { hostdeskRoute } from "./hostdesk.ts";
@@ -70,17 +69,18 @@ type UserCall = (s: users.Session | undefined, p: Record<string, any>, c: Ctx) =
 
 const userCalls: Record<string, UserCall> = {
   "GET /api/me": async (s, _p, c) => {
-    if (!s) return { status: 401, body: { error: "log in", setup: await users.Setup() } };
+    if (!s) return { status: 401, body: { error: "log in", setup: await users.NoAdmin() } };
     return { status: 200, body: await users.Me(s), cookie: users.Refresh(c, s) };
   },
   "POST /api/login": (_s, p, c) => users.Login(p, c),
+  "POST /api/setup": (_s, p, c) => users.Setup(p, c),
   "POST /api/logout": (_s, _p, c) => ({ status: 200, body: { ok: true }, cookie: users.ClearCookie(c) }),
   "POST /api/me/vault": (s, p) => users.SetVault(s, p),
   "POST /api/me/prefs": (s, p) => users.SetPrefs(s, p),
   "POST /api/me/wallpaper": (s, p) => users.SetWallpaper(s, p),
   "POST /api/me/password": (s, p, c) => users.ChangePass(s, p, c),
   "GET /api/me/mcp": async (s) => {
-    if (!s || s.boot) return { status: 403, body: { error: "log in as a user" } };
+    if (!s) return { status: 403, body: { error: "log in as a user" } };
     const out = await mcpCallsMesh(s.user);
     out.configured = users.HasMCPKey(s.user);
     return { status: 200, body: out };
@@ -143,7 +143,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   if (pathname === "/api/me/mcp-skill" && method === "POST") {
     if (!(await isLocalOrPeer(c)) || !sameOrigin(c)) return forbidden();
     const s = await users.Soon(c);
-    if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
+    if (!s) return sendJSON(403, { error: "log in as a user" });
     let b: Uint8Array;
     try {
       b = await skill(users.MCPBase(c));
@@ -325,8 +325,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return onJSON(c, 1024, false, (p) => {
       markHot();
       const s = users.Of(c);
-      const admin = (!!s && s.admin) || (adminPass === "" && isLoopback(c));
-      return chainAction(str(p.action), str(p.password), admin);
+      return chainAction(str(p.action), !!s && s.admin);
     });
   }
   // afterglow kept up apart from phosphorus: its latest release, a host's own update, the mesh's
@@ -354,7 +353,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   }
   if (pathname === "/api/afterglow/update" && method === "POST") {
     const s = users.Of(c);
-    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    if (!isBrowser(c) || !(!!s && s.admin)) return forbidden();
     return onJSON(c, 4096, true, async (p) => {
       const hosts = (Array.isArray(p.hosts) ? p.hosts : [])
         .map(str)
@@ -377,7 +376,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   }
   if ((pathname === "/api/apps/install" || pathname === "/api/apps/remove") && method === "POST") {
     const s = users.Of(c);
-    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    if (!isBrowser(c) || !(!!s && s.admin)) return forbidden();
     return onJSON(c, 1024, true, (p) =>
       pathname === "/api/apps/install" ? webapps.Install(str(p.id)) : webapps.Remove(str(p.id)),
     );
@@ -386,7 +385,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   let m = stackOpRe.exec(pathname);
   if ((m || pathname === "/api/stacks/install" || pathname === "/api/stacks/docker") && method === "POST") {
     const s = users.Of(c);
-    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    if (!isBrowser(c) || !(!!s && s.admin)) return forbidden();
     const by = s?.user ?? "admin";
     if (pathname === "/api/stacks/install") return onJSON(c, 512 << 10, true, (p) => stacks.Install(p, by));
     if (pathname === "/api/stacks/docker") return onJSON(c, 1024, true, (p) => stacks.AskDocker(str(p.host), by));
@@ -420,8 +419,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   // settings › network: the mesh's control server, for admins
   if (pathname === "/api/control" && (method === "GET" || method === "POST")) {
     const s = users.Of(c);
-    if (!isBrowser(c) || !sameOrigin(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c))))
-      return forbidden();
+    if (!isBrowser(c) || !sameOrigin(c) || !(!!s && s.admin)) return forbidden();
     if (method === "GET") {
       const [st, b] = await controlStatus();
       return sendJSON(st, b, { "Cache-Control": "no-store" });
@@ -429,9 +427,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return onJSON(c, maxJSONBody, true, controlAction);
   }
   if (pathname === "/api/join-key" && method === "POST") {
-    // admins, or this machine with no admin password
     const s = users.Of(c);
-    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    if (!isBrowser(c) || !(!!s && s.admin)) return forbidden();
     const [st, b] = await mintGuestKey();
     return sendJSON(st, b);
   }
@@ -440,8 +437,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   m = hostCfgRe.exec(pathname);
   if (m && (method === "GET" || method === "POST")) {
     const s = users.Of(c);
-    if (!isBrowser(c) || !sameOrigin(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c))))
-      return forbidden();
+    if (!isBrowser(c) || !sameOrigin(c) || !(!!s && s.admin)) return forbidden();
     const host = m[1]!;
     // only a host the admin is signed into: their own login for it saved
     if (s && !(await users.HostLogin(s, host))[2])
@@ -561,12 +557,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const op = pathname.slice("/internal/control/".length);
     return onJSON(c, maxJSONBody, true, (p) => peers.control.localControlOp(op, p));
   }
-  if (pathname === "/internal/keys" && method === "GET") {
-    if (!(await isTailnet(c))) return forbidden();
-    const keys: Record<string, string> = {};
-    for (const k of envKeys) if (k.mesh) keys[k.name] = process.env[k.name] ?? "";
-    return sendJSON(200, keys, { "Cache-Control": "no-store" });
-  }
 
   if (pathname === "/internal/status/updating" && method === "POST") {
     if (!isLoopback(c)) return forbidden();
@@ -673,7 +663,7 @@ async function stacksCatalogRoute(c: Ctx, pathname: string, q: URLSearchParams, 
   if (!(get && (pathname === "/api/stacks/catalog" || m)) && !post) return;
   if (!(await isLocalOrPeer(c)) || (post && (!isBrowser(c) || !sameOrigin(c)))) return forbidden();
   const s = await users.Soon(c);
-  if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
+  if (!s) return sendJSON(403, { error: "log in as a user" });
   if (pathname === "/api/stacks/catalog") {
     const [st, b] = catalog.catalogRoute(q);
     return sendJSON(st, b, { "Cache-Control": "no-store" });

@@ -8,7 +8,6 @@ export const secretRel = "etc/secret.json";
 export const admin = "admin";
 export const Cookie = "phosphorus-user";
 export const sessionMS = 30 * 24 * 3600 * 1000;
-export const bootSessionMS = 3600 * 1000;
 export const maxVault = 64 * 1024;
 export const maxPass = 256;
 export const triesMS = 15 * 60 * 1000;
@@ -23,7 +22,6 @@ export const prefsFile = (n: string) => `home/${n}/prefs.json`;
 export const wallFile = (n: string) => `home/${n}/wallpaper.json`;
 export const mcpFile = (n: string) => `home/${n}/mcp.json`;
 
-export const adminPass = env("ADMIN_PASS");
 export const nameRe = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 export const reserved = [admin, "shared", "sys", "usr"];
 export const baseDomain = env("BASE_DOMAIN").toLowerCase();

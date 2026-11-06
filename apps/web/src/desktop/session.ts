@@ -26,7 +26,7 @@ interface Session {
   wins: Saved[];
 }
 
-const KEY = () => (st.acct && !st.acct.boot ? `phosphorus-dk-session:${st.acct.user}` : '');
+const KEY = () => (st.acct ? `phosphorus-dk-session:${st.acct.user}` : '');
 let timer: ReturnType<typeof setTimeout> | null = null;
 // saving held while the desk goes down or a session is put back
 let hold = false;

@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@phosphorus/acme": "workspace:*",
     "@phosphorus/afterglow": "workspace:*",
     "@phosphorus/app-sdk": "workspace:*",
     "@phosphorus/appstream": "workspace:*",
@@ -13,6 +14,7 @@
     "@phosphorus/catalog": "workspace:*",
     "@phosphorus/config": "workspace:*",
     "@phosphorus/delta": "workspace:*",
+    "@phosphorus/dns": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/files": "workspace:*",
     "@phosphorus/hostdesk": "workspace:*",

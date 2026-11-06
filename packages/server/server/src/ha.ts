@@ -11,7 +11,7 @@ import { admins, Of } from "@phosphorus/users";
 import { DataDir, FrontendPort, intervalMS, logf, markHot, obj, requestJSON, tailnetIP } from "@phosphorus/util";
 import type { StackWant } from "@phosphorus/wire";
 import type { Ctx } from "@phosphorus/wsock";
-import { adminPass, bootID, isUpdating, selfHost } from "./config.ts";
+import { bootID, isUpdating, selfHost } from "./config.ts";
 import { userUIAsync } from "./hostops.ts";
 import { forbidden, isBrowser, isLoopback, isTailnet, maxJSONBody, onJSON, readRaw, sendJSON } from "./http.ts";
 
@@ -170,7 +170,7 @@ export async function haRoute(c: Ctx, pathname: string, method: string, q: URLSe
   m = stackRe.exec(pathname);
   if (m && method === "POST") {
     const s = Of(c);
-    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    if (!isBrowser(c) || !(!!s && s.admin)) return forbidden();
     if (!h) return sendJSON(503, { error: "failover not started" });
     const id = m[1]!;
     if (m[2] === "standbys")

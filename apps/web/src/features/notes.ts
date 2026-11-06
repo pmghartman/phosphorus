@@ -59,7 +59,7 @@ export function notifyOs(title: string, body: string): void {
 // kept across the reload a host's own update brings
 const CHAIN_SEEN = 'phosphorus-chain-running';
 export function notifyMesh(state: State): void {
-  notifyWildcard(state);
+  notifyDomain(state);
   const ch: Chain | null | undefined = state.chain;
   if (!ch?.chainId) return;
   let running = '';
@@ -91,25 +91,31 @@ export function notifyMesh(state: State): void {
   if (notifying()) notifyOs(t, b);
 }
 
-// *.<domain> not reaching the mesh, to admins in the bell: once per reason, the
-// Cloudflare entries that fix it in the body
-const WILDCARD_SEEN = 'phosphorus-wildcard-seen';
-function notifyWildcard(state: State): void {
-  if (!st.acct?.admin || !state.domain) return;
-  const infos = Object.values(state.hosts ?? {});
-  const miss = infos.find((h) => h.wildcard?.state === 'missing');
+// the domain, to admins in the bell: none set yet, once; an edge host whose dns or
+// https isn't serving, once per reason
+const EDGE_SEEN = 'phosphorus-edge-seen';
+function notifyDomain(state: State): void {
+  if (!st.acct?.admin) return;
+  let why = '';
+  if (!state.domain) why = 'tailnet only: add a domain in settings › network for access from anywhere';
+  else
+    for (const [host, h] of Object.entries(state.hosts ?? {})) {
+      const e = h.edge;
+      if (!e) continue;
+      if (e.dns !== 'serving') why = `${host}: dns ${e.dns}`;
+      else if (e.tls !== 'serving') why = `${host}: https ${e.tls}`;
+      if (why) break;
+    }
   let seen = '';
   try {
-    seen = localStorage.getItem(WILDCARD_SEEN) || '';
+    seen = localStorage.getItem(EDGE_SEEN) || '';
   } catch {}
-  const why = miss ? miss.wildcard!.why || 'missing' : '';
-  // a host that sees it up clears the last reason, so a later break is told again
-  if (!miss && !infos.some((h) => h.wildcard?.state === 'up')) return;
   if (why === seen) return;
   try {
-    localStorage.setItem(WILDCARD_SEEN, why);
+    localStorage.setItem(EDGE_SEEN, why);
   } catch {}
-  if (why) noteAdd(`*.${state.domain} isn't reaching the mesh`, why);
+  if (why)
+    noteAdd(state.domain ? `${state.domain} isn't fully served` : 'no domain yet', why, null, { view: 'network' });
 }
 
 // --- the notification center: what happened mesh-wide, newest first, kept per browser

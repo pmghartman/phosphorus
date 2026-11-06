@@ -3,7 +3,7 @@
 
 import type { Socket, TCPSocketListener, udp } from "bun";
 import { MinUDP, parseQuery, writeReply } from "./wire.ts";
-import { type Zone, answer } from "./zone.ts";
+import { answer, type Zone } from "./zone.ts";
 
 export type Served = {
   addrs: string[];
@@ -87,14 +87,21 @@ export async function serve(o: Opts): Promise<Served> {
   return { addrs: o.addrs, port: o.port, close };
 }
 
-// port 0: a free port both UDP and TCP take, a few tries
+// port 0: a free port both UDP and TCP take, each picking in turn (Windows
+// excludes ranges per protocol) until one suits both
 async function serveAny(o: Opts): Promise<Served> {
   let last: unknown;
-  for (let i = 0; i < 8; i++) {
-    // TCP picks: its free ports are the scarcer ones (Windows excludes ranges)
-    const t = Bun.listen<TCPData>({ hostname: o.addrs[0]!, port: 0, socket: { data() {} } });
-    const port = t.port;
-    t.stop(true);
+  for (let i = 0; i < 16; i++) {
+    let port: number;
+    if (i % 2 === 0) {
+      const t = Bun.listen<TCPData>({ hostname: o.addrs[0]!, port: 0, socket: { data() {} } });
+      port = t.port;
+      t.stop(true);
+    } else {
+      const u = await Bun.udpSocket({ hostname: o.addrs[0]!, port: 0 });
+      port = u.port;
+      u.close();
+    }
     try {
       return await serve({ ...o, port });
     } catch (e) {
