@@ -111,14 +111,19 @@ export async function start(): Promise<Server<WSData>> {
   });
   startHA();
   startEdge();
-  // the domain this frontend was started with changed: run starts it again with the new one
+  // the domain this frontend was started with changed: run starts it again with the
+  // new one, a moment later so the answer to the page that set it gets out
+  let restarting = false;
   store.watch((rel) => {
-    if (rel !== services.domainRel) return;
+    if (rel !== services.domainRel || restarting) return;
     const name = services.domain()?.name ?? "";
     if (name === baseDomain) return;
+    restarting = true;
     logf("[frontend] the domain is now %s, restarting with it", name || "unset");
-    stopEdge();
-    process.exit(RestartExit);
+    setTimeout(() => {
+      stopEdge();
+      process.exit(RestartExit);
+    }, 1500);
   });
   publishHost();
   setInterval(publishHost, 2000);

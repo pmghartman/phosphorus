@@ -127,6 +127,16 @@ export function networkSection(pane: HTMLElement): () => void {
     }
   };
 
+  // a step after which every host's frontend starts again with the new domain: the
+  // page waits for them and reloads
+  const restarting = async (b: HTMLButtonElement, req: Record<string, unknown>) => {
+    const got = await step(b, req);
+    if (!got) return;
+    b.disabled = true;
+    b.textContent = 'saved, the hosts restart with it…';
+    setTimeout(() => location.reload(), 8000);
+  };
+
   // a button minting something shown under it
   const minted = (label: string, action: string, show: (got: any) => HTMLElement | undefined) => {
     const b = btn(label);
@@ -170,7 +180,10 @@ export function networkSection(pane: HTMLElement): () => void {
       const name = input('example.com');
       const picks = edgePicks(e, new Set(e.candidates.length === 1 ? [e.candidates[0]!.host] : []));
       const go = btn('use this domain', 'primary');
-      go.addEventListener('click', () => void step(go, { action: 'domain', name: name.value, edges: picks.picked() }));
+      go.addEventListener(
+        'click',
+        () => void restarting(go, { action: 'domain', name: name.value, edges: picks.picked() }),
+      );
       return [...items, row('domain', name), row('edge hosts', picks.wrap), acts(go)];
     }
     items.push(row('domain', el('code', '', e.domain)));
@@ -216,7 +229,7 @@ export function networkSection(pane: HTMLElement): () => void {
     const save = btn('save edge hosts');
     save.addEventListener('click', () => void step(save, { action: 'domain', name: e.domain, edges: picks.picked() }));
     const drop = btn('remove the domain', 'danger');
-    sure(drop, () => void step(drop, { action: 'domain', name: '' }));
+    sure(drop, () => void restarting(drop, { action: 'domain', name: '' }));
     items.push(row('serve from', picks.wrap), acts(save, drop));
     return items;
   };
