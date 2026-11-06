@@ -16,7 +16,19 @@ import { deskAbs, deskLoc, deskRel, fileOpen, filesWin } from '../../features/ho
 import { el } from '../../lib/dom.ts';
 import { currentTheme } from '../../lib/scheme.ts';
 import { dk } from '../../lib/state.ts';
-import { type DkWin, dkClose, dkFocus, dkMax, dkMin, dkPlace, dkSize, dkSnap, dkStack, dkWin } from '../windows.ts';
+import {
+  type DkWin,
+  dkClose,
+  dkFocus,
+  dkMax,
+  dkMin,
+  dkPlace,
+  dkSize,
+  dkSnap,
+  dkStack,
+  dkTaskIcon,
+  dkWin,
+} from '../windows.ts';
 import { api, hostInfo, type Item, iconSrc } from './hosts.ts';
 import { streamWin } from './hoststream.ts';
 import { dkMenu, dkMenuEl, dkSay, type MenuItem } from './wallpaper.ts';
@@ -102,11 +114,13 @@ export function hostApp(host: string, it: Item | { id: string; name: string }) {
       }
       case 'error': {
         end();
-        // no web inside, or it never got a window up: streamed instead, unless a stream
-        // would hit the same wall
-        const wall = /already open|apps are open|save a login/i.test(String(s.s ?? ''));
-        if ('kind' in it && (s.code === 'native' || (!app.wins.size && !wall))) return streamWin(host, it);
-        return dkSay(`${app.name}: ${s.s}`);
+        const why = String(s.s ?? '');
+        // no web inside or its inspector sealed: streamed instead, as one that never got a
+        // window up is, unless a stream would hit the same wall
+        const shut = s.code === 'native' || s.code === 'sealed';
+        const wall = /already open|apps are open|save a login/i.test(why);
+        if ('kind' in it && (shut || (!app.wins.size && !wall))) return streamWin(host, it);
+        return dkSay(`${app.name}: ${why}`);
       }
       case 'taken':
         end();
@@ -174,11 +188,7 @@ function winOf(app: App, s: WinState, ev: Parameters<Shell['window']>[1]): Shell
   app.wins.add(w);
   app.byId.set(s.id, w);
   if (s.parent) app.parent.set(w, s.parent);
-  if (app.icon) {
-    const img = Object.assign(el('img', 'dk-task-ic dk-task-img'), { alt: '', draggable: false, src: app.icon });
-    img.addEventListener('error', () => img.replaceWith(w.task.querySelector('.dk-task-ic') ?? img), { once: true });
-    w.task.querySelector('.dk-task-ic')?.replaceWith(img);
-  }
+  dkTaskIcon(w.task, app.icon);
   let bare = false;
   let shown = false;
   let closing = false;

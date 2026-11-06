@@ -6,7 +6,7 @@
 
 import { el } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
-import { type DkWin, dkClose, dkSize, dkWin } from '../windows.ts';
+import { type DkWin, dkClose, dkSize, dkTaskIcon, dkWin } from '../windows.ts';
 import { api, type Item, iconSrc } from './hosts.ts';
 import { dkSay } from './wallpaper.ts';
 
@@ -256,7 +256,7 @@ export function streamedOn(host: string): { pids: Set<number>; wids: Set<number>
 }
 
 // a process already running on the host, from its task list: taken up where it runs
-export type Attach = { pid: number; started: number; name: string };
+export type Attach = { pid: number; started: number; name: string; icon?: string };
 
 // a window app opened, one already open (by its id) taken up again, or one running on the
 // host attached to, in a phosphorus window of its own: moved, resized, snapped and minimized
@@ -284,12 +284,7 @@ export function streamWin(host: string, it: Item | { id: string; name: string } 
     w.task.title = `${t} ${host}`;
   };
   // the app's own icon on its task, the window glyph while there's none
-  const src = 'kind' in it ? iconSrc(host, it) : '';
-  if (src) {
-    const img = Object.assign(el('img', 'dk-task-ic dk-task-img'), { alt: '', draggable: false, src });
-    img.addEventListener('error', () => img.replaceWith(w.task.querySelector('.dk-task-ic') ?? img), { once: true });
-    w.task.querySelector('.dk-task-ic')?.replaceWith(img);
-  }
+  dkTaskIcon(w.task, 'kind' in it ? iconSrc(host, it) : attach?.icon || '');
   const btns = head.querySelector('.dk-btns')!;
   const btn = (label: string, glyph: string) => {
     const b = Object.assign(el('button', 'dk-out hd-sbtn'), { type: 'button', title: label, ariaLabel: label });

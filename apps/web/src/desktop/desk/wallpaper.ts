@@ -18,7 +18,7 @@ import { dkWallPick } from '../../settings/appearance.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskAt, dkDeskUpload, dkDeskView } from '../deskfiles.ts';
-import { hostIcons, hostTerm, isShared, setShared, streamPick } from '../spaces.ts';
+import { hostIcons, hostPicks, hostTerm, isShared, setShared } from '../spaces.ts';
 import type { Pop } from '../taskbar.ts';
 import { type DkWin, dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
 import { hostInfo, wallSrc } from './hosts.ts';
@@ -133,7 +133,7 @@ export function dkDeskMenu(icons: HTMLElement) {
     const svc = kind === 'service' && dk.services.find((r) => r.host === host && r.name === name);
     const items: MenuItem[] = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true] as MenuItem] : []),
-      ...(ha ? (streamPick(ha.host, ha.it) as MenuItem[]) : []),
+      ...(ha ? (hostPicks(ha.host, ha.it) as MenuItem[]) : []),
       ...(ha
         ? [
             [

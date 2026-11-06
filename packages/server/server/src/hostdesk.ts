@@ -201,7 +201,15 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       return sendJSON(200, { apps }, nc);
     }
     case "icon": {
-      const b = await hd.icon(s, w.host, q.get("k") ?? "", q.get("v") ?? "");
+      const k = q.get("k") ?? "";
+      // a spec this session hasn't issued (a shared app's, on a server that never read the
+      // host): the desk and apps read first, which issue every icon the host has
+      if (!hd.issued(s, k)) {
+        await hd.desktop(s).catch(() => {});
+        if (!hd.issued(s, k)) await hd.apps(s).catch(() => {});
+        remember(w, s);
+      }
+      const b = await hd.icon(s, w.host, k, q.get("v") ?? "");
       // a miss never kept, so the page's retry asks again
       if (!b) return new Response(null, { status: 404, headers: nc });
       return blobRes(b, "private, max-age=31536000, immutable");

@@ -7,10 +7,11 @@ import { acctCall } from '../../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
 import { hostFiles, onSpace } from '../spaces.ts';
-import { api, hostInfo, hostLoad, type Item } from './hosts.ts';
+import { dkTaskIcon } from '../windows.ts';
+import { api, hostInfo, hostLoad, type Item, iconSrc } from './hosts.ts';
 import { onStreams, streamedOn, streamWin } from './hoststream.ts';
 import { dkIcons } from './icons.ts';
-import { barTasks, label, type Task, titled } from './tasklist.ts';
+import { appOf, barTasks, label, type Task, titled } from './tasklist.ts';
 import { osOf } from './terminal.ts';
 import { dkMenu, dkSay, dkWallPaint, type MenuItem } from './wallpaper.ts';
 
@@ -58,7 +59,13 @@ function paint() {
   group.setAttribute('aria-label', `${h}'s windows`);
   // an app shown here already has its phosphorus window's button
   const list = barTasks(k.list, streamedOn(h));
-  const sig = JSON.stringify([h, [...k.features], list.map((t) => [t.pid, t.started, label(t), titled(t).length])]);
+  // the apps list counted: icons found once the start menu is read
+  const sig = JSON.stringify([
+    h,
+    [...k.features],
+    hostInfo(h).apps.length,
+    list.map((t) => [t.pid, t.started, label(t), titled(t).length]),
+  ]);
   if (sig === drawn) return;
   drawn = sig;
   group.replaceChildren(...list.map((t) => button(h, t)));
@@ -72,6 +79,7 @@ function button(h: string, t: Task): HTMLButtonElement {
     title: `${name}: ${t.name} on ${h}${n > 1 ? `, ${n} windows` : ''}`,
   });
   b.append(dkGlyph(DK_GLYPHS[t.shell ? 'files' : 'app']!, 'dk-task-ic'), el('span', 'dk-task-t', name));
+  if (!t.shell) dkTaskIcon(b, taskIcon(h, t));
   b.addEventListener('click', () => void show(h, t));
   b.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -81,6 +89,13 @@ function button(h: string, t: Task): HTMLButtonElement {
     if (e.button === 1) void end(h, t, false);
   });
   return b;
+}
+
+// the app's own icon, from the host's pins and start menu
+function taskIcon(h: string, t: Task): string {
+  const i = hostInfo(h);
+  const it = appOf(t, [...(i.desk?.pins ?? []), ...i.apps]);
+  return it ? iconSrc(h, it) : '';
 }
 
 function menu(h: string, t: Task): MenuItem[] {
@@ -115,7 +130,7 @@ async function show(h: string, t: Task) {
   if (t.shell) return void hostFiles(h);
   if (!hostCan(h, 'attach')) return dkSay(`${h}'s afterglow can't show a running app here yet: update afterglow`);
   const now = await fresh(h, t);
-  if (now) streamWin(h, { pid: now.pid, started: now.started, name: label(now) });
+  if (now) streamWin(h, { pid: now.pid, started: now.started, name: label(now), icon: taskIcon(h, now) });
 }
 
 // closed as its close button would, or killed; the shell only once the viewer says so

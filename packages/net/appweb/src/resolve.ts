@@ -4,7 +4,13 @@
 
 import type { Host } from "./pipe.ts";
 
-export type Target = { exe: string; args: string[]; electron: boolean; name: string };
+// inspect: whether --inspect-brk gets in, by its fuses; false and the hook has no way in
+export type Target = { exe: string; args: string[]; electron: boolean; inspect: boolean; name: string };
+
+// Electron's fuses sit in its binary after this sentinel: a version byte, a length byte, then
+// one byte per fuse, '0' off, '1' on, 'r' removed; the fourth is EnableNodeCliInspectArguments
+const sentinel = "dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX";
+export const inspectable = (fuses: string) => fuses.length < 4 || fuses[3] === "1";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
@@ -22,7 +28,15 @@ $d = Split-Path $exe
 $res = { param($r) (Test-Path (Join-Path $r 'resources\\app.asar')) -or (Test-Path (Join-Path $r 'resources\\app\\package.json')) }
 $el = & $res $d
 if (-not $el) { $el = [bool](Get-ChildItem $d -Directory -ErrorAction SilentlyContinue | Where-Object { & $res $_.FullName } | Select-Object -First 1) }
-[Console]::Out.Write((@{ exe = $exe; args = $argz; electron = [bool]$el } | ConvertTo-Json -Compress))
+$fz = ''
+if ($el) {
+  try {
+    $s = [IO.File]::ReadAllText($exe, [Text.Encoding]::GetEncoding(28591))
+    $i = $s.IndexOf('${sentinel}', [StringComparison]::Ordinal)
+    if ($i -ge 0) { $n = [int][char]$s[$i + 33]; if ($n -gt 0 -and $n -le 32) { $fz = $s.Substring($i + 34, $n) } }
+  } catch {}
+}
+[Console]::Out.Write((@{ exe = $exe; args = $argz; electron = [bool]$el; fuses = $fz } | ConvertTo-Json -Compress))
 `;
 
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -39,6 +53,15 @@ for x in "$d" "$(dirname "$d")" "$(dirname "$(dirname "$d")")"; do
   for f in "$x"/*; do if bin "$f" && el "$f"; then printf '%s' "$f"; exit 0; fi; done
 done
 printf '%s' "$r"
+`;
+
+// the fuses out of an Electron binary, nothing when it has none (before fuses)
+const fuseScript = (exe: string) => `
+o=$(grep -obaF '${sentinel}' ${shq(exe)} 2>/dev/null | head -1 | cut -d: -f1)
+if [ -n "$o" ]; then
+  n=$(tail -c +$((o+34)) ${shq(exe)} | head -c 1 | od -An -tu1 | tr -d ' ')
+  [ -n "$n" ] && [ "$n" -gt 0 ] && [ "$n" -le 32 ] && tail -c +$((o+35)) ${shq(exe)} | head -c "$n"
+fi
 `;
 
 // a desktop entry's Exec as words, its field codes dropped
@@ -77,11 +100,17 @@ export async function resolve(
     const ps = `powershell -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(winScript(path), "utf16le").toString("base64")}`;
     const j = JSON.parse((await host.output(ps)).trim() || "{}");
     const raw = String(j.args ?? "").trim();
-    return { exe: String(j.exe ?? ""), args: raw ? winWords(raw) : [], electron: !!j.electron, name };
+    return {
+      exe: String(j.exe ?? ""),
+      args: raw ? winWords(raw) : [],
+      electron: !!j.electron,
+      inspect: inspectable(String(j.fuses ?? "")),
+      name,
+    };
   }
   const words = execWords(exec ?? path);
   const [cmd, ...args] = words;
-  if (!cmd) return { exe: "", args: [], electron: false, name };
+  if (!cmd) return { exe: "", args: [], electron: false, inspect: false, name };
   // env NAME=value cmd ...: the command after them
   let i = 0;
   if (cmd === "env") while (i + 1 < words.length && /^-|=/.test(words[i + 1]!)) i++;
@@ -91,7 +120,9 @@ export async function resolve(
   const ok = await host.output(
     `sh -c ${shq(`d=$(dirname ${shq(exe)}); [ -f "$d/resources/app.asar" ] || [ -f "$d/resources/app/package.json" ] && echo yes`)}`,
   );
-  return { exe, args: rest, electron: ok.trim() === "yes", name };
+  const electron = ok.trim() === "yes";
+  const fuses = electron ? (await host.output(`sh -c ${shq(fuseScript(exe))}`)).trim() : "";
+  return { exe, args: rest, electron, inspect: inspectable(fuses), name };
 }
 
 // a Windows command line's arguments as words, as the C runtime splits them

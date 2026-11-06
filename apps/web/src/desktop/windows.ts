@@ -62,6 +62,14 @@ function dkWinGlyph(key: string | null, kind: string): string {
   return 'app';
 }
 
+// a task's glyph swapped for the app's own icon once it loads, kept when it doesn't
+export function dkTaskIcon(task: HTMLElement, src: string): void {
+  if (!src) return;
+  const img = Object.assign(el('img', 'dk-task-ic dk-task-img'), { alt: '', draggable: false });
+  img.addEventListener('load', () => task.querySelector('.dk-task-ic')?.replaceWith(img), { once: true });
+  img.src = src;
+}
+
 // one window, key: a single instance's, else a fresh one per open
 export function dkWin(key: string | null, title: string, sub: string, kind: string): DkWin | null {
   if (key && dk.wins.has(key)) {

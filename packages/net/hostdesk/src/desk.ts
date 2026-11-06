@@ -112,6 +112,9 @@ const wallMax = 48 << 20;
 
 const iconKey = (spec: string, v: string) => `icon\0${spec}\0${v}`;
 
+// whether the probe issued this icon spec to this session
+export const issued = (s: Session, spec: string) => ctxOf(s).icons.has(spec);
+
 // an icon the probe issued, from the cache when its version matches
 export async function icon(s: Session, host: string, spec: string, v: string): Promise<Blob | undefined> {
   const c = ctxOf(s);

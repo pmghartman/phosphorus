@@ -129,7 +129,18 @@ async function run(ws: Conn, w: Who, q: URLSearchParams, base: string) {
       const t0 = Date.now();
       const t = await targetOf(s, path);
       if (!t.electron || !t.exe) {
+        log("[appweb] %s on %s: not a web app inside", t.name, w.host);
         ws.json({ t: "error", code: "native", s: `${t.name} isn't a web app inside` });
+        return ws.close(1000);
+      }
+      // its inspector fused shut: --inspect-brk is ignored, the hook has no way in
+      if (!t.inspect) {
+        log("[appweb] %s on %s: its inspector is fused shut", t.name, w.host);
+        ws.json({
+          t: "error",
+          code: "sealed",
+          s: `${t.name} keeps its inspector shut, so ${w.host} can't serve it here`,
+        });
         return ws.close(1000);
       }
       ws.json({ t: "opening", name: t.name });
@@ -153,6 +164,7 @@ async function run(ws: Conn, w: Who, q: URLSearchParams, base: string) {
     await app.attach(v, vi, base);
     for (const b of early.splice(0)) app.fromViewer(b);
   } catch (e) {
+    log("[appweb] %s on %s: %s", q.get("id") || q.get("path") || "?", w.host, errText(e));
     ws.json({ t: "error", s: errText(e) });
     ws.close(1000);
   }

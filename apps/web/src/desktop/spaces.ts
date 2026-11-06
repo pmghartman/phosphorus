@@ -11,8 +11,8 @@ import { dk, PREF_LS } from '../lib/state.ts';
 import { newSid } from '../lib/util.ts';
 import { hostApp } from './desk/hostapp.ts';
 import { api, hostInfo, hostLoad, hostWarm, type Item, itemKey } from './desk/hosts.ts';
+import { streamWin } from './desk/hoststream.ts';
 import { dkIcons, dkLiveHosts } from './desk/icons.ts';
-import { siteOf } from './desk/sites.ts';
 import { osGlyph, osOf } from './desk/terminal.ts';
 import { dkSay, dkWallPaint } from './desk/wallpaper.ts';
 import { dkView } from './desk.ts';
@@ -125,7 +125,9 @@ export function hostTerm(h: string, run = ''): DkWin | undefined {
   return w;
 }
 
-// --- a host's apps: phosphorus's own where it has one, the rest streamed with afterglow -----
+// --- a host's apps: phosphorus's own where it has one, the rest served from the host as
+// themselves, their pages here and the app's own process there; afterglow's stream when the
+// host can't serve one -----------------------------------------------------------------------
 
 const filesName = /^(file explorer|explorer|files|nautilus|dolphin|thunar|nemo|pcmanfm|caja|this pc)$/i;
 const filesPath = /(\\explorer\.exe|nautilus|dolphin|thunar|nemo|pcmanfm|caja)[^\\/]*$/i;
@@ -155,8 +157,6 @@ export function openHostItem(h: string, it: Item) {
   const own = inHouse(it);
   if (own === 'files') return void hostFiles(h);
   if (own === 'terminal') return void hostTerm(h, it.kind === 'cli' ? (it.run ?? '') : '');
-  const site = siteOf(it);
-  if (site) return void window.open(site.url, '_blank', 'noopener');
   if (it.path) return hostApp(h, it);
   dkSay(`${it.name} has nothing to start it by`);
 }
@@ -171,14 +171,12 @@ export async function deskLaunch(h: string, path: string) {
 // the tip an app's icon wears: what opens it
 export const itemTip = (h: string, it: Item) => {
   const own = inHouse(it);
-  if (own) return `${it.name}: opens phosphorus ${own} on ${h}`;
-  const site = siteOf(it);
-  return site ? `${it.name}: opens ${new URL(site.url).host} in a new tab` : `${it.name} on ${h}`;
+  return own ? `${it.name}: opens phosphorus ${own} on ${h}` : `${it.name} on ${h}`;
 };
 
-// a site app's menu entry for the host's own copy, streamed
-export const streamPick = (h: string, it: Item): [string, () => void, boolean][] =>
-  siteOf(it) && (it.path || it.id) ? [[`open from ${h}`, () => hostApp(h, it), true]] : [];
+// a window app's other way to open, for its right click: afterglow's stream of it
+export const hostPicks = (h: string, it: Item): [string, () => void, boolean][] =>
+  it.kind === 'gui' && it.path && !inHouse(it) ? [[`stream from ${h}`, () => streamWin(h, it), true]] : [];
 
 // --- the shared desktop's apps: any host's, added from its desktop or the apps menu -------
 

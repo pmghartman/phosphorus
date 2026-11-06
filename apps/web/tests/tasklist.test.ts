@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { barTasks, label, type Task } from '../src/desktop/desk/tasklist.ts';
+import type { Item } from '../src/desktop/desk/hosts.ts';
+import { appOf, barTasks, label, type Task } from '../src/desktop/desk/tasklist.ts';
 
 const task = (o: Partial<Task>): Task => ({
   pid: 1,
@@ -43,4 +44,23 @@ test('an app already streamed here has its own window button, by pid or by its w
   });
   const c = task({ pid: 12, windows: [[7, 'C']] });
   expect(barTasks([a, b, c], { pids: new Set([10]), wids: new Set([9]) })).toEqual([c]);
+});
+
+test("a window's app, for its icon: by its program, else by the app named at the end of its title", () => {
+  const apps: Item[] = [
+    { name: 'Slack', kind: 'gui', path: 'C:\\Users\\a\\Start Menu\\Programs\\Slack.lnk', icon: 'l:x' },
+    { name: 'Visual Studio Code', kind: 'gui', path: 'C:\\x\\Code.lnk', icon: 'f:y' },
+    { name: 'Discord', kind: 'gui', path: 'C:\\x\\Discord.lnk' },
+    { name: 'git', kind: 'cli', run: 'git' },
+  ];
+  expect(appOf(task({ name: 'slack.exe', windows: [[1, 'general - mulab - Slack']] }), apps)?.name).toBe('Slack');
+  expect(appOf(task({ name: 'Code.exe', windows: [[1, 'spaces.ts - Visual Studio Code']] }), apps)?.name).toBe(
+    'Visual Studio Code',
+  );
+  expect(
+    appOf(task({ name: 'Update.exe', exe: 'C:\\a\\Discord\\Update.exe', windows: [[1, '#dev - Discord']] }), apps)
+      ?.name,
+  ).toBe('Discord');
+  expect(appOf(task({ name: 'git.exe', windows: [[1, 'git']] }), apps)).toBeUndefined();
+  expect(appOf(task({ name: 'x.exe', windows: [[1, 'Slackware']] }), apps)).toBeUndefined();
 });

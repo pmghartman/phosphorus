@@ -12,6 +12,7 @@ import { dkWebApp, dkWebApps } from './desk/webapps.ts';
 import { dkMenu, dkOpenApp, dkTermApp } from './desk.ts';
 import {
   hostFiles,
+  hostPicks,
   hostTerm,
   isShared,
   itemTip,
@@ -20,7 +21,6 @@ import {
   setShared,
   sharedApps,
   spaceName,
-  streamPick,
 } from './spaces.ts';
 import { dkAnchor, dkPopReg, dkPopsClose, type Pop } from './taskbar.ts';
 
@@ -95,7 +95,7 @@ const hostTile = (h: string, it: Item, sub = ''): Tile => ({
     const on = isShared(h, it);
     return [
       ['open', () => openHostItem(h, it), true],
-      ...streamPick(h, it),
+      ...hostPicks(h, it),
       [on ? 'take off the shared desktop' : 'add to shared', () => setShared(h, it, !on), true],
     ];
   },
