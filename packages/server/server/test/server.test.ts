@@ -54,14 +54,14 @@ test("http smoke", async () => {
     const apps = await (await fetch(base + "/api/apps")).json();
     expect(apps.services).toBeUndefined();
     expect((await fetch(base + "/api/apps/services/install", { method: "POST", body: "{}" })).status).toBe(404);
-    // the installed services: none yet; an install asked for an app the catalogue can't give
+    // the installed services: none yet; an install asked without an admin's login refused
     expect(st.stacks).toEqual({});
     const inst = await fetch(base + "/api/stacks/install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ source: "casaos", ref: "UptimeKuma", active: "testhost" }),
     });
-    expect([inst.status, await inst.json()]).toEqual([404, { error: "no app UptimeKuma in casaos" }]);
+    expect([inst.status, await inst.text()]).toEqual([403, "forbidden"]);
     // the catalogue: for a logged-in user alone
     const cat = await fetch(base + "/api/stacks/catalog");
     expect([cat.status, await cat.json()]).toEqual([403, { error: "log in as a user" }]);
