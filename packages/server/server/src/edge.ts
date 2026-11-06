@@ -104,7 +104,11 @@ function zoneSpec(d: Domain): dns.ZoneSpec {
   const srv: dns.Srv[] = [];
   for (const p of ports())
     if (p.srv) srv.push({ name: p.name, service: p.srv, proto: p.proto, port: p.pub, target: `${p.name}.${d.name}` });
-  return { domain: d.name, edges: up.length ? up : all, hosts, txt: challenge(), srv, serial: 0 };
+  // the challenge's names come whole from the CA, the zone's are relative to it
+  const txt: Record<string, string[]> = {};
+  for (const [n, v] of Object.entries(challenge()))
+    txt[n === d.name ? "" : n.endsWith(`.${d.name}`) ? n.slice(0, -(d.name.length + 1)) : n] = v;
+  return { domain: d.name, edges: up.length ? up : all, hosts, txt, srv, serial: 0 };
 }
 
 function refreshZone(d: Domain) {
@@ -308,6 +312,8 @@ async function order(d: Domain) {
     const issued = await client.order([d.name, `*.${d.name}`], {
       present: async (txt) => {
         store.write(challengeRel, txt, true);
+        // the tick waits on this order, so this edge's zone refreshed here
+        refreshZone(d);
         await untilServed(txt, edgeIPs(d, upSet()));
       },
       cleanup: () => store.remove(challengeRel),

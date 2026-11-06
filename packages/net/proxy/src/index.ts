@@ -253,7 +253,8 @@ function resolve(c: Ctx): Hit {
           return { status: 404, location: `https://${x.domain}${strip(pathname, old)}${search}` };
       }
     if (pathname === "/api/update/local") return { status: 404, text: "not found" };
-    return onMesh(c) ? { frontend: true } : { status: 403, text: "forbidden" };
+    // the domain from anywhere, behind the login; a host's own name on the mesh alone
+    return onMesh(c) || host === baseDomain ? { frontend: true } : { status: 403, text: "forbidden" };
   }
   const x = t.domains.get(host);
   if (x) {
@@ -338,12 +339,17 @@ const protoOf = (c: Ctx) => (isHTTPS(c) ? "https" : "http");
 let httpsReady = false;
 export const setHTTPSReady = (on: boolean) => void (httpsReady = on);
 
-// a public request over plain http for a name under the domain: sent to https
-// once this host serves it, served over http until then
+// a public request over plain http for a name under the domain: sent to https once
+// this host serves it; until then a word on why, never a login in the clear
 const toHTTPS = (c: Ctx): Response | undefined => {
-  if (!baseDomain || !httpsReady || isHTTPS(c) || onMesh(c)) return;
+  if (!baseDomain || isHTTPS(c) || onMesh(c)) return;
   const host = reqHost(c.req);
   if (host !== baseDomain && !host.endsWith("." + baseDomain)) return;
+  if (!httpsReady)
+    return refuse(503, `${baseDomain} isn't on https yet: its certificate is still being issued, try again shortly`, {
+      "Cache-Control": "no-store",
+      "Retry-After": "60",
+    });
   return new Response(null, {
     status: 301,
     headers: { Location: "https://" + host + requestURI(c), "Cache-Control": "no-store" },
