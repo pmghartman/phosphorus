@@ -3,10 +3,13 @@
 import { acctUsers } from '../features/account.ts';
 import { copyIcon, el } from '../lib/dom.ts';
 import { copyText } from '../lib/util.ts';
+import { cardify } from './settings.ts';
 
 export function usersSection(pane: HTMLElement): void {
   const body = el('div', 'acct-pane set-acct');
-  body.append(el('div', 'dk-pick-head', 'users'), acctUsers(), el('div', 'dk-pick-head', 'invite a device'), invite());
+  body.append(
+    ...cardify([el('div', 'dk-pick-head', 'users'), acctUsers(), el('div', 'dk-pick-head', 'invite a device'), invite()]),
+  );
   pane.appendChild(body);
 }
 

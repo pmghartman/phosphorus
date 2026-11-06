@@ -72,7 +72,7 @@
 }
 .hd-w-glyph {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-btns .hd-sbtn.on {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
@@ -174,7 +174,7 @@
 }
 .dk-apps-where {
   flex: none;
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-apps-search {
   flex: 1;
@@ -191,7 +191,6 @@
 .dk-apps-search:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .dk-apps-body {
   flex: 1;
@@ -203,7 +202,7 @@
   margin: 12px 4px 6px;
   color: var(--muted);
   font-size: var(--fs-xs, 12px);
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-apps-none {
   margin: 28px 0;
@@ -366,7 +365,7 @@
 .dk-strip-t {
   color: var(--muted);
   font-size: var(--fs-xs, 12px);
-  font-weight: 600;
+  font-weight: 500;
 }
 .dk-strip-hint {
   margin-left: auto;

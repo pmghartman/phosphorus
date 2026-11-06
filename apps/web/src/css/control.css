@@ -34,7 +34,7 @@
   align-items: center;
   padding: 0.55rem 0.75rem 0.4rem;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--fs-xs);
 }
 .dk-note-clear {

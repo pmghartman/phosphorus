@@ -248,7 +248,8 @@ export function dkIcon(
     title: sub ? `${label} on ${sub}` : label,
   });
   const tile = el('span', 'dk-tile');
-  tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind]!));
+  // settings wears the gear, as its window does (desktop/windows.ts)
+  tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind === 'settings' ? 'gear' : kind]!));
   // a site's own icon once it loads
   dkTryIcons(tile, ([] as string[]).concat(icon), again);
   b.append(tile, el('span', 'dk-label', label));

@@ -62,11 +62,11 @@
 [contenteditable]:focus-visible {
   outline: none;
 }
-/* a typed-in field: its accent edge with a soft halo, never in a terminal */
+/* a typed-in field: its accent edge, no halo, never in a terminal */
 :is(input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"]), textarea, select):focus:not(
   .xterm *
 ) {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
 }
 ::selection {
   background: color-mix(in srgb, var(--accent) 32%, transparent);
@@ -120,13 +120,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-}
-
-/* every card the page is built from, lifted off it */
-.home-col,
-.about-info,
-.mesh-panel {
-  box-shadow: var(--lift);
 }
 
 /* system a screen, dark a filled moon, light a sun, black a hollow thin moon */
@@ -245,22 +238,22 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* every action button one look: quiet by default, .primary the action its form is for,
-   .danger what can't be undone; corners the theme's controls', a pill only in a round theme */
+/* every action button one look: a quiet outline on nothing, .primary the one filled action a
+   view is for, .danger what can't be undone; corners the theme's controls' */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
-  min-height: 1.7rem;
-  padding: 0.22rem 0.7rem;
+  min-height: 1.6rem;
+  padding: 0.1875rem 0.625rem;
   font: inherit;
   font-size: var(--fs-sm);
   line-height: 1.25;
   white-space: nowrap;
   color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, var(--border));
   border-radius: var(--r-ctl, 0);
   text-decoration: none;
   cursor: pointer;
@@ -270,17 +263,17 @@ body {
     color 0.12s;
 }
 .btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 9%, transparent);
-  border-color: color-mix(in srgb, var(--fg) 16%, var(--border));
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 32%, var(--border));
 }
 .btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--bg);
-  font-weight: 600;
+  font-weight: 500;
 }
 .btn.primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 88%, var(--fg));

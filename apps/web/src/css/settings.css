@@ -1,53 +1,84 @@
-/* --- settings: one window, its sections down a rail (settings/); the appearance's controls,
-   rows and segments its own throughout, the borrowed views laid flat in its page ---------------- */
+/* --- settings: one window, its sections down a rail (settings/); the page a stack of flat cards,
+   each named by a small heading inside it, the borrowed views laid flat in the same cards ------ */
 /* a workstation's panel: corners at most a few pixels whatever the theme's rounding */
 .set-pane {
   --set-r: min(var(--r-ctl, 0px), 4px);
   grid-template-columns: 11rem minmax(0, 1fr);
 }
 .set-pane
-  :is(button, input:not([type="checkbox"], [type="radio"]), select, textarea, .dk-ap-tab, .dk-ap-segs, .mesh-panel) {
+  :is(
+    button,
+    input:not([type="checkbox"], [type="radio"]),
+    select,
+    textarea,
+    .dk-ap-tab,
+    .dk-ap-segs,
+    .mesh-panel,
+    .ag-chip,
+    .net-kind,
+    .join-key-cmd
+  ) {
   border-radius: var(--set-r);
 }
 .set-pane .dk-ap-seg {
   border-radius: max(0px, calc(var(--set-r) - 2px));
 }
+/* two weights throughout: regular, and medium where a word leads */
+.set-pane
+  :is(
+    b,
+    strong,
+    .btn.primary,
+    .set-group,
+    .set-hostchip,
+    .dk-cl-title,
+    .dk-cl-tool,
+    .dk-cl-sec-t,
+    .update-section,
+    .update-latest,
+    .about-key,
+    .ag-model-head b,
+    .ag-card-head b,
+    .fm-ask-title
+  ) {
+  font-weight: 500;
+}
+
+/* the rail: its own surface, quiet words, the open section lit with a bar at its edge */
 .set-nav {
   overflow-y: auto;
   gap: 0.1rem;
   padding: 0.6rem 0.5rem;
 }
-/* the rail's groups: a quiet word over its sections */
 .set-group {
   padding: 0.85rem 0.65rem 0.3rem;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  font-weight: 600;
+  color: var(--dim);
+  font-size: var(--fs-2xs);
 }
 .set-group:first-child {
   padding-top: 0.3rem;
-}
-/* the rail's quiet words, its groups and the sections not open: the theme's muted drawn a little
-   toward the text, readable on the rail in every theme */
-.set-group,
-.set-nav .dk-ap-tab:not(.on, .open, :hover, :focus-visible) {
-  color: color-mix(in srgb, var(--muted) 80%, var(--fg));
 }
 .set-nav .dk-ap-tab {
   position: relative;
   gap: 0.55rem;
   padding: 0.3rem 0.6rem;
-  border-radius: var(--set-r);
+  color: var(--muted);
+  background: none;
 }
 .set-nav .dk-ap-tab .ic {
   width: 0.95rem;
   height: 0.95rem;
-}
-/* glyphs in their words' colour, one ink throughout; the open section marked by its bar */
-.set-nav .dk-ap-tab .ic {
   color: inherit;
 }
-/* the section open: a bar of the accent down its left edge */
+.set-nav .dk-ap-tab:is(:hover, :focus-visible) {
+  color: var(--fg);
+  background: none;
+}
+/* the section open: full strength, a bar of the accent down its left edge, no fill */
+.set-nav .dk-ap-tab.on {
+  color: var(--fg);
+  background: none;
+}
 .set-nav .dk-ap-tab.on::before {
   content: "";
   position: absolute;
@@ -72,14 +103,7 @@
 }
 .set-nav .set-subtab {
   padding: 0.3rem 0.6rem;
-  color: var(--muted);
   font-size: var(--fs-md);
-}
-.set-nav .set-subtab:is(:hover, :focus-visible) {
-  color: var(--fg);
-}
-.set-nav .set-subtab.on {
-  color: var(--fg);
 }
 .set-nav .set-subtab.on::before {
   left: calc(-0.55rem - 1px);
@@ -88,7 +112,8 @@
 .set-nav .dk-ap-tab.open {
   color: var(--fg);
 }
-/* the page: the section's own body */
+
+/* the page: the section's own body, cards down it with room between */
 .set-main {
   display: flex;
   flex-direction: column;
@@ -97,141 +122,227 @@
 }
 .set-body {
   flex: 1 1 auto;
-  gap: 0.7rem;
+  gap: 0.85rem;
   padding: 0.9rem 1.3rem 1.6rem;
+}
+.set-body > * {
+  flex: none;
 }
 /* forms and lists at a readable width, the status, graph and models across the whole page */
 .set-body :is(.set-sub, .set-acct, .set-host-cfg, .set-host-rest, .set-cl, .update-pane) {
   width: 100%;
   max-width: 50rem;
 }
-/* every section's headings alike: a word in the text colour over its card or list */
-.set-body :is(.dk-ap-head, .dk-pick-head, .ag-group-head) {
+.set-sub,
+.set-acct,
+.set-host-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* a card: a hairline round a section's part, its parts stacked close inside */
+.set-card,
+.set-body :is(.ag-group, .update-versions, .set-cl, .about-info) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--set-r);
+  background: var(--card);
+}
+/* its name: a small muted word at its top */
+.set-body :is(.dk-ap-head, .dk-pick-head, .ag-group-head, .update-section, .about-info::before) {
   display: flex;
   align-items: baseline;
   gap: 1ch;
-  margin: 0.9rem 0 0.1rem;
+  margin: 0 0 0.1rem;
   padding: 0;
   border: 0;
-  color: var(--fg);
+  color: var(--muted);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0;
+  line-height: 1.4;
 }
 .set-body .ag-group-head::after {
   display: none;
 }
-.set-body :is(.dk-ap-head, .dk-pick-head):first-child,
-.set-body .ag-group:first-child > .ag-group-head {
-  margin-top: 0;
+
+/* key and value: a fixed muted key, the value beside it */
+.set-body .dk-ap-row {
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.1rem 0.7rem;
+  min-height: 1.7rem;
 }
-/* a run of controls: a card, a row each, hairlines between */
-.set-card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--set-r);
-  background: var(--card);
+.set-body .dk-ap-k {
+  color: var(--muted);
+  font-size: var(--fs-sm);
 }
-.set-card > * {
-  padding: 0.5rem 0.8rem;
+.set-body .dk-ap-row > code {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
 }
-.set-card > * + * {
-  border-top: 1px solid var(--border);
-}
-.set-card .dk-ap-row {
-  grid-template-columns: 10rem minmax(0, 1fr);
-  min-height: 2.3rem;
-}
-.set-card .dk-ap-k {
-  color: var(--fg);
-}
-.set-card :is(select.dk-ap-in, input.dk-ap-in:not([type="color"])) {
+.set-body :is(select.dk-ap-in, input.dk-ap-in:not([type="color"])) {
   justify-self: start;
   width: min(100%, 20rem);
 }
-.set-card .dk-ap-check {
-  min-height: 2.3rem;
+.set-body .dk-ap-check {
+  min-height: 1.7rem;
 }
-/* lists: the hosts, the page logins, the users, the shares; a card of rows */
+/* a field on a card: the page's ground, so it reads as a well */
+.set-body :is(input:not([type="checkbox"], [type="radio"], [type="color"]), select, textarea) {
+  background: var(--bg);
+}
+/* notes and hints: small, dim, under what they explain */
+.set-body :is(.dk-note, .dk-ap-note, .ag-about, .ag-dim, .store-link) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.set-body .dk-ap-note {
+  grid-column: 2;
+}
+.set-body .store-link {
+  display: inline;
+  color: var(--accent);
+}
+
+/* buttons: a quiet outline, filled only for the one action a view is for */
+.set-body .btn:not(.primary) {
+  min-height: 0;
+  padding: 0.1875rem 0.625rem;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--fg) 18%, var(--border));
+  color: var(--fg);
+  font-size: var(--fs-sm);
+}
+.set-body .btn:not(.primary):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 32%, var(--border));
+}
+.set-body .btn.primary {
+  min-height: 0;
+  padding: 0.1875rem 0.625rem;
+  font-size: var(--fs-sm);
+}
+.set-body .btn.danger {
+  color: var(--offmesh);
+}
+.set-body :is(.update-actions, .dk-ap-acts) {
+  justify-content: flex-start;
+  gap: 0.4rem;
+  padding: 0;
+}
+.set-body .dk-ap-state {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* a command or key: monospace on a well, its copy button at the row's right */
+.set-body .join-key {
+  margin: 0;
+}
+.set-body .join-key-cmd {
+  gap: 0.5rem;
+  padding: 0.3rem 0.3rem 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.set-body .join-key-cmd code {
+  flex: 1 1 auto;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+.set-body .join-key-cmd .copy-btn {
+  flex: none;
+  margin-left: auto;
+}
+.set-body .join-key-out:empty {
+  display: none;
+}
+
+/* lists: the hosts, the page logins, the users, the shares, the devices; rows parted by hairlines,
+   a small muted header row where the columns want names */
 .set-body .dk-rows {
   margin: 0;
+  padding: 0;
   gap: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--set-r);
-  background: var(--card);
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 .set-body .dk-rows > li {
-  min-height: 2.6rem;
-  padding: 0.4rem 0.9rem;
-}
-.set-body .dk-rows > li + li {
+  min-height: 2.1rem;
+  padding: 0.3rem 0;
   border-top: 1px solid var(--border);
 }
 .set-body .dk-rows > li.empty {
   display: flex;
   align-items: center;
+  color: var(--dim);
+  font-size: var(--fs-sm);
+}
+.set-body .dk-row {
+  gap: 0.4rem;
+}
+.set-body .dk-host {
+  font-size: var(--fs-md);
+}
+.set-body .dk-state {
+  font-size: var(--fs-sm);
+}
+/* a row's actions: muted at its right, lit under the pointer */
+.set-body .dk-row > .btn:not(.primary) {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--fg) 18%, var(--border));
+  color: var(--muted);
+}
+.set-body .dk-row > .btn:not(.primary):hover:not(:disabled) {
+  color: var(--fg);
+}
+.set-body .dk-row > .btn.danger:hover:not(:disabled) {
+  color: var(--offmesh);
+}
+/* a row of fields adding to a list: under the list, parted the same way */
+.set-body .acct-new {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.set-body .dk-rows + .acct-new {
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+.set-body .acct-check {
   color: var(--muted);
   font-size: var(--fs-sm);
 }
-/* a row of fields adding to a list: its card's foot, else a card of its own */
-.set-body .acct-new {
-  margin: 0;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--set-r);
-  background: var(--card);
-}
-.set-body .dk-rows:has(+ .acct-new) {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
-.set-body .dk-rows + .acct-new {
-  border-top-style: dashed;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  margin-top: -1px;
-}
-/* fields on a card: the page's ground, so they read as wells */
-.set-body
-  :is(.set-card, .dk-rows, .acct-new)
-  :is(input:not([type="checkbox"], [type="radio"], [type="color"]), select) {
-  background: var(--bg);
-}
-/* the account panes' buttons as the rest of settings: outlined, quiet on hover */
 
-/* the update's hosts and their releases, a card of rows */
-.set-body .update-versions {
-  border: 1px solid var(--border);
-  border-radius: var(--set-r);
-  background: var(--card);
-}
+/* the update's hosts and their releases */
 .set-body .update-versions:empty {
   display: none;
 }
 .set-body .update-pane .update-row {
-  padding: 0.5rem 0.9rem;
+  padding: 0.3rem 0;
 }
 .set-body .update-pane .update-row + .update-row {
   border-top: 1px solid var(--border);
 }
-/* the connector, a card like the rest */
-.set-body .set-cl {
-  border-radius: var(--set-r);
-  background: var(--card);
+.set-body .update-pane :is(.update-mesh .update-actions, .update-latest) {
+  margin: 0;
+  padding: 0;
 }
-.set-body > * {
-  flex: none;
-}
-/* a field's hint, readable on every theme */
-.set-body .dk-ap-note {
-  color: var(--muted);
-}
-/* a section's part, its rows */
-.set-sub {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+.set-body .update-pane :is(.update-head, .update-confirm) {
+  padding-inline: 0;
 }
 
 /* a stashed view in the page's flow, not filling a window */
@@ -242,21 +353,35 @@
   padding: 0;
 }
 .set-body > #view-about {
-  padding-top: 0.4rem;
+  padding-top: 0;
+}
+/* about: its card named inside like the rest, no title cut through its edge */
+.set-body .about-info {
+  margin: 0;
+}
+.set-body .about-info::before {
+  position: static;
+  transform: none;
+  background: none;
+}
+.set-body .about-key {
+  font-size: var(--fs-sm);
+}
+.set-body .about-val {
+  font-size: var(--fs-md);
 }
 
 /* the mesh graph and its pings, a card of its own height */
 .set-mesh {
   display: flex;
   height: 15rem;
-  margin-top: 0.4rem;
 }
 /* the graph alone: the page's whole height */
 .set-mesh-full {
   flex: 1 1 auto;
   height: auto;
   min-height: 22rem;
-  margin-top: 0.7rem;
+  margin-top: 0.1rem;
 }
 .set-body[data-at="hosts"]:has(> .set-mesh-full) {
   display: flex;
@@ -268,9 +393,13 @@
   min-height: 0;
   margin: 0;
   animation: none;
+  box-shadow: none;
 }
 .set-mesh .mesh-header {
   font-size: var(--fs-xs);
+}
+.set-mesh[hidden] {
+  display: none;
 }
 
 /* profile, users and each host's config: the account's own rows, in the page's flow */
@@ -278,15 +407,7 @@
 .set-host-body.acct-pane {
   height: auto;
   overflow: visible;
-}
-.set-acct {
   padding: 0;
-}
-.set-body .dk-note {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  color: var(--muted);
 }
 /* the password's two fields and its button, no empty column */
 .set-acct form.acct-new {
@@ -296,16 +417,11 @@
 .set-body .dk-ap-segs {
   max-width: 24rem;
 }
-.set-acct .dk-pick-head:first-child {
-  margin-top: 0;
-}
-.set-body .join-key {
-  margin-top: 0.3rem;
-}
 
 /* the connector: its keys, steps and calls, at the page's own width */
 .set-cl {
-  border: 1px solid var(--border);
+  padding: 0;
+  gap: 0;
   font-size: var(--fs-sm);
 }
 .set-cl .dk-cl-key.half {
@@ -317,12 +433,24 @@
 .set-cl .dk-cl-check {
   margin: 0.5rem 0.6rem 0.6rem;
 }
-.set-models {
-  margin-top: 0.6rem;
-}
+/* the models and the agents asking them: a card a group, its model and agent cards wells inside */
 .set-models .ag {
   margin: 0;
   max-width: none;
+  gap: 0.85rem;
+}
+.set-body .ag-models {
+  gap: 0.45rem;
+}
+.set-body .ag-cards {
+  gap: 0.45rem;
+}
+.set-body :is(.ag-model, .ag-card) {
+  border-radius: var(--set-r);
+  background: var(--bg);
+}
+.set-body .ag-pill {
+  font-size: var(--fs-sm);
 }
 
 /* the hosts page's bar: all hosts, then each one; a signed-in host marked */
@@ -331,7 +459,6 @@
   flex-wrap: wrap;
   gap: 0.2rem;
   padding: 0.2rem;
-  margin-top: 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--set-r);
   background: var(--card);
@@ -347,7 +474,6 @@
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-md);
-  font-weight: 600;
   cursor: pointer;
 }
 .set-hostchip.in::before {
@@ -362,36 +488,19 @@
 }
 .set-hostchip.on {
   color: var(--fg);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: var(--tab-hover);
 }
 .set-hostchip:not(.on):is(:hover, :focus-visible) {
   color: var(--fg);
   outline: none;
 }
-.set-mesh[hidden] {
-  display: none;
-}
-.set-host-rest {
-  margin-top: 0.6rem;
-}
 .set-host-cfg .set-host-body {
-  padding: 0;
-}
-.set-host-cfg .store-link {
-  display: inline;
   padding: 0;
 }
 
 /* the picked host's config forms */
 .set-host-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.2rem 0.9rem 0.9rem 1.6rem;
   font-size: var(--fs-md);
-}
-.set-host-body .dk-note {
-  margin: 0;
 }
 .set-host-body :is(.set-shares .dk-row, .acct-new) {
   grid-template-columns: minmax(0, 1fr) 10rem 5.5rem;
@@ -420,16 +529,23 @@
   font-size: var(--fs-2xs);
 }
 
-/* settings › network: headscale's devices, one row each */
+/* settings › network: headscale's devices, one row each, the actions' column one width so the
+   columns hold whatever a row offers */
 .net-dev {
-  grid-template-columns: minmax(0, 1.4fr) 4rem minmax(0, 1fr) 5.5rem auto;
-  padding: 0.25rem 0;
+  grid-template-columns: minmax(0, 1.4fr) 4.5rem minmax(0, 1fr) 5.5rem 8.5rem;
+  padding: 0.3rem 0;
   border-top: 1px solid var(--border);
 }
 .net-dev.net-head {
+  min-height: 0;
+  padding: 0 0 0.25rem;
   border-top: 0;
   color: var(--dim);
   font-size: var(--fs-xs);
+}
+.net-dev.net-head > * {
+  color: inherit;
+  font: inherit;
 }
 .net-name {
   display: flex;
@@ -452,18 +568,21 @@
 .net-dot.on {
   background: var(--online);
 }
+/* a kind: a word on a light tint of its colour */
 .net-kind {
   justify-self: start;
-  padding: 0 0.4rem;
-  border-radius: var(--r-ctl);
-  background: var(--tab-hover);
+  padding: 1px 6px;
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
   color: var(--muted);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
+  line-height: 1.4;
 }
 .net-kind.host {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
 }
 .net-kind.guest {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
   color: var(--warn);
 }
 .net-ip {
@@ -520,20 +639,17 @@
   .set-body {
     padding: 0.8rem 0.8rem 1.2rem;
   }
-  .set-card .dk-ap-row {
+  .set-body .dk-ap-row {
     grid-template-columns: 6.5rem minmax(0, 1fr);
   }
   .set-mesh {
     height: 12rem;
   }
-  .set-host-body.acct-pane {
-    padding-left: 0.9rem;
-  }
   .set-host-body :is(.set-shares .dk-row, .acct-new) {
     grid-template-columns: minmax(0, 1fr) 6.5rem 4.5rem;
   }
   .net-dev {
-    grid-template-columns: minmax(0, 1fr) 4rem auto;
+    grid-template-columns: minmax(0, 1fr) 4.5rem auto;
   }
   .net-dev :is(.net-ip, .net-seen) {
     display: none;
