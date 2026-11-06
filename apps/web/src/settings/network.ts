@@ -236,21 +236,34 @@ export function networkSection(pane: HTMLElement): () => void {
 
   // a domain at porkbun pointed here in one press: its API keys used for the host records
   // and the nameservers, then forgotten
+  // the last press's word, kept through the page's redraws
+  let delegated: { steps?: string[]; error?: string } | undefined;
   const porkbunForm = (e: Edge): HTMLElement[] => {
     const key = secret('porkbun API key');
     const sec = secret('porkbun secret API key');
     const go = btn(`point ${e.domain} here through porkbun`, 'primary');
     const out = el('div', 'join-key-out');
+    const show = () => {
+      if (!delegated) return;
+      out.replaceChildren(
+        ...(delegated.steps ?? []).map((s) => note(s)),
+        ...(delegated.error ? [el('div', 'join-key-err', delegated.error)] : []),
+      );
+    };
+    show();
     go.addEventListener('click', async () => {
-      const got = await step(go, {
-        action: 'delegate',
-        registrar: 'porkbun',
-        apikey: key.value,
-        secretapikey: sec.value,
-      });
-      key.value = '';
-      sec.value = '';
-      if (got?.steps) out.replaceChildren(...(got.steps as string[]).map((s) => note(s)));
+      go.disabled = true;
+      try {
+        const got = await api({ action: 'delegate', registrar: 'porkbun', apikey: key.value, secretapikey: sec.value });
+        delegated = { steps: got.steps as string[] };
+        key.value = '';
+        sec.value = '';
+      } catch (x) {
+        delegated = { error: (x as Error).message };
+      } finally {
+        go.disabled = false;
+      }
+      show();
     });
     return [
       head('at porkbun'),
