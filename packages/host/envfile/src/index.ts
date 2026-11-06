@@ -7,8 +7,7 @@ import { runSync } from "@phosphorus/util";
 // left blank on a host joining a mesh
 export type Key = { name: string; label: string; hint: string; mesh: boolean };
 
-// every key phosphorus reads; a new host brings MESH_KEY, or TS_AUTHKEY on a
-// mesh still on Tailscale's hosted control
+// every key phosphorus reads; a new host brings MESH_KEY alone
 export const Keys: Key[] = [
   {
     name: "MESH_KEY",
@@ -16,23 +15,11 @@ export const Keys: Key[] = [
     hint: "from settings, network on a mesh host; the only key a new host needs",
     mesh: false,
   },
-  {
-    name: "TS_AUTHKEY",
-    label: "Tailscale auth key",
-    hint: "only for a mesh still on Tailscale's hosted control; reusable, expires every 90 days",
-    mesh: false,
-  },
   { name: "BASE_DOMAIN", label: "Domain", hint: "optional, for access off the tailnet", mesh: true },
   {
     name: "TUNNEL_TOKEN",
     label: "Cloudflare tunnel token",
     hint: "optional, with the domain; its routes <domain> and *.<domain> to http://localhost:80",
-    mesh: true,
-  },
-  {
-    name: "TS_API_KEY",
-    label: "Tailscale API token",
-    hint: "guest join keys and their sweep, expires every 90 days",
     mesh: true,
   },
   { name: "ADMIN_PASS", label: "Admin password", hint: "setup admin's login, the gate on a mesh update", mesh: true },
@@ -61,11 +48,8 @@ export function parse(text: string): Record<string, string> {
 
 // the keys a host can't start without: a join key, the rest a peer's
 export function missing(file: string): string[] {
-  return hasJoinKey(read(file)) ? [] : ["MESH_KEY"];
+  return read(file).MESH_KEY ? [] : ["MESH_KEY"];
 }
-
-// MESH_KEY or TS_AUTHKEY set
-export const hasJoinKey = (v: Record<string, string | undefined>) => !!(v.MESH_KEY || v.TS_AUTHKEY);
 
 // a mesh join key's parts: the control server's URL and a headscale preauth key
 export type MeshKey = { url: string; key: string };

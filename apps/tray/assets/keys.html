@@ -47,8 +47,6 @@
   const SETUP = [
     ['BASE_DOMAIN', 'Domain', 'Optional, for access off the tailnet. Copied from a peer when blank.'],
     ['TUNNEL_TOKEN', 'Cloudflare tunnel token', 'Optional, with the domain: route <domain> and *.<domain> to http://localhost:80 on it, and every service gets its own subdomain. Copied from a peer when blank.'],
-    ['TS_AUTHKEY', 'Tailscale auth key', "Only for a mesh still on Tailscale's hosted control, in place of the mesh join key."],
-    ['TS_API_KEY', 'Tailscale API token', "Only for a mesh still on Tailscale's hosted control: guest join keys, guests swept after 3 days. Copied from a peer when blank."],
     ['ADMIN_PASS', 'Admin password', "The setup admin's login and the gate on a mesh update. Copied from a peer when blank."],
   ];
   // the tray's own server, on this machine only, behind this page's random path
@@ -94,7 +92,7 @@
   }
 
   call('status').then((set) => {
-    if (!set.MESH_KEY && !set.TS_AUTHKEY) {
+    if (!set.MESH_KEY) {
       document.getElementById('lead').textContent = 'First start. Only the mesh join key is needed.';
     }
     const more = document.createElement('details');

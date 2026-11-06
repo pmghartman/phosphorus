@@ -132,7 +132,7 @@ export class Mesh {
       POLL_HOT_MS: "600000",
       ...this.env,
     };
-    for (const k of ["TS_API_KEY", "BASE_DOMAIN", "ADMIN_PASS", "TUNNEL_TOKEN"]) delete env[k];
+    for (const k of ["BASE_DOMAIN", "ADMIN_PASS", "TUNNEL_TOKEN"]) delete env[k];
     const proc = Bun.spawn(["bun", join(import.meta.dir, "mesh-node.ts")], {
       cwd: root,
       env,

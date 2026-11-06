@@ -41,7 +41,6 @@ import {
   selfIPNow,
   trusted,
 } from "./discovery.ts";
-import { jsString, sweepGuests, truthy } from "./guests.ts";
 import { HostHeader, Link } from "./link.ts";
 import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
 
@@ -145,6 +144,18 @@ function infoFor(host: string): PeerInfo {
 const isUp = (s: PeerInfo) => !!s.link?.up;
 const sortedHosts = () => [...infos.keys()].sort();
 const upHosts = () => sortedHosts().filter((h) => isUp(infos.get(h)!));
+
+// as a JS template literal renders a JSON value
+const jsString = (v: unknown): string =>
+  v == null
+    ? "null"
+    : Array.isArray(v)
+      ? v.map((e) => (e == null ? "" : jsString(e))).join(",")
+      : typeof v === "object"
+        ? "[object Object]"
+        : String(v);
+// Go's truthy: false, nil, 0, NaN and "" are false
+const truthy = (v: unknown) => (typeof v === "number" ? v !== 0 && !Number.isNaN(v) : !!v);
 
 // an object, with key truthy when given, else null
 function objOrNull(v: unknown, key: string): Record<string, any> | null {
@@ -556,16 +567,11 @@ async function tick() {
     }
     if (best) curChain = best;
   }
-  const live = devices
-    .filter((d) => d.phosphorus === true)
-    .map((d) => String(d.name))
-    .sort();
   swap(merged, (h) => hostIPs.get(h) ?? "");
   if (curLock != null || hooks.ownLock() != null) hot = true;
-  if (selfHost && live.length && live[0] === selfHost) sweepGuests();
   if (now() - lastControl >= controlEveryMS) {
     lastControl = now();
-    void controlTick(upHosts());
+    void controlTick();
   }
   if (hot) markHot();
 }

@@ -1,5 +1,6 @@
 // addresses and the tailnet: loopback and tailnet ranges, the hosts' IPv4s as
 // discovery last listed them
+import { networkInterfaces } from "node:os";
 import { run } from "./proc.ts";
 
 // 127.0.0.1 or ::1
@@ -13,6 +14,25 @@ export function isTailnetAddr(a: string): boolean {
 }
 
 export const isIPv4 = (s: string) => /^\d+\.\d+\.\d+\.\d+$/.test(s);
+
+// an IPv4 routed on the internet: not private, CGNAT, link-local, loopback or reserved
+export function isPublicIPv4(a: string): boolean {
+  if (!isIPv4(a)) return false;
+  const [x, y] = a.split(".").map(Number) as [number, number];
+  if (x === 0 || x === 10 || x === 127 || x >= 224) return false;
+  if (x === 100 && y >= 64 && y <= 127) return false;
+  if (x === 169 && y === 254) return false;
+  if (x === 172 && y >= 16 && y <= 31) return false;
+  if (x === 192 && y === 168) return false;
+  return true;
+}
+
+// the public IPv4 on one of this machine's own interfaces, blank behind NAT
+export function publicIPv4(): string {
+  for (const list of Object.values(networkInterfaces()))
+    for (const i of list ?? []) if (i.family === "IPv4" && !i.internal && isPublicIPv4(i.address)) return i.address;
+  return "";
+}
 let knownIPs = new Map<string, string>();
 
 // host -> IPv4, as mesh's discovery last listed them

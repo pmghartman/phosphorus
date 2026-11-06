@@ -535,7 +535,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return new Response(null, { status: 204, headers: noStore });
   }
 
-  // a host joining with only TS_AUTHKEY: the rest from here, tailnet peers alone
   // a peer's calls for a keyed caller, already checked there: logs, config, page actions
   if (pathname === "/internal/op" && method === "POST") {
     if (!(await isTailnet(c))) return forbidden();

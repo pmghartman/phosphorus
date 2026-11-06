@@ -171,7 +171,7 @@ export const darwin: OS = {
     ),
   async tailscaleKeepUp() {},
   // tailscaleReady the app's CLI in the tools as tailscale, a script exec'ing its full
-  // path for the roles' PATH, logged in with TS_AUTHKEY when it isn't
+  // path for the roles' PATH, joined to the mesh with MESH_KEY when it isn't
   async tailscaleReady() {
     const cli = appTailscale();
     if (!cli) throw fail("no Tailscale here: install the Tailscale app (tailscale.com/download), then phos start");

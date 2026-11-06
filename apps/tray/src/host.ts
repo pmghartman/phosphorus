@@ -40,7 +40,7 @@ export const keyStatus = async () => (await keyState()).keys;
 
 export const keysMissing = async () => {
   const k = await keyStatus();
-  return !k.MESH_KEY && !k.TS_AUTHKEY;
+  return !k.MESH_KEY;
 };
 
 // whether the service and Tailscale are up, both false when the host can't say

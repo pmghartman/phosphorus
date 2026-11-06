@@ -313,14 +313,14 @@ jobs:
           {
             shopt -s nullglob
             # the install steps, each OS's only when built
-            echo "You need a [Tailscale](https://tailscale.com) account and a reusable auth key."
+            echo "You need a mesh join key from settings › network on a host already in the mesh."
             echo
             step() { echo "- $1"; }
             [ -e phosphorus-$VER-macos-arm64.dmg ] && step "**macOS:** open the \`.dmg\` (Apple silicon), drag Phosphorus to Applications, open it (first time: right-click, Open). It lives in the menu bar."
             [ -e phosphorus-$VER-windows-x86_64-setup.exe ] && step "**Windows:** run the setup \`.exe\` (SmartScreen: More info, Run anyway). It lives in the tray."
             ls phosphorus_${VER}_*.deb >/dev/null 2>&1 && step "**Linux:** \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\`."
             echo
-            echo "Then enter the Tailscale auth key when asked; every other host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
+            echo "Then enter the mesh join key when asked; the host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
             echo
             echo "Installed hosts update themselves: **Check for Updates** in the menu bar or tray, \`phos update\`, or the mesh update in the browser, every host at once."
           } > "$RUNNER_TEMP/notes.md"

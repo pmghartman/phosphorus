@@ -102,9 +102,9 @@ async function localHealth(): Promise<Record<string, any>> {
       if (res.status !== 200 || n === 0) tunnel = { state: "down", connections: n, why: "no edge connection ready" };
     } catch {}
   }
-  // the control server this host's tailscale is on, and headscale here when this is its host
+  // the mesh's control server, and headscale here when this is its host
   const c = peers.control.control();
-  const control: Record<string, any> = { on: peers.control.onControl() };
+  const control: Record<string, any> = { url: c?.url ?? "", host: c?.host ?? "" };
   if (c?.host === selfHost) {
     try {
       const res = await fetch(c.url + "/health", { signal: AbortSignal.timeout(3000) });

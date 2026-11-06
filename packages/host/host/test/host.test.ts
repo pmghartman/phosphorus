@@ -229,12 +229,10 @@ test("small helpers", () => {
   expect(lastLine("a\nE: bad\nok\n", /ERROR|E:/)).toBe("E: bad");
   expect(lastLine("a\nb\n")).toBe("b");
   expect(lastLine("", /x/)).toBe("");
-  expect(keySet({ TS_AUTHKEY: "k", BASE_DOMAIN: "" })).toEqual({
-    MESH_KEY: false,
-    TS_AUTHKEY: true,
+  expect(keySet({ MESH_KEY: "k", BASE_DOMAIN: "" })).toEqual({
+    MESH_KEY: true,
     BASE_DOMAIN: false,
     TUNNEL_TOKEN: false,
-    TS_API_KEY: false,
     ADMIN_PASS: false,
   });
   expect(durText(5000)).toBe("5s");
@@ -299,9 +297,6 @@ test("a mesh join key round-trips, anything else refused", async () => {
   expect(envfile.parseMeshKey("phos1.notbase64json")).toBeUndefined();
   const http = envfile.formatMeshKey({ url: "http://hs.mulab.dev", key: "k" });
   expect(envfile.parseMeshKey(http)).toBeUndefined();
-  expect(envfile.hasJoinKey({ MESH_KEY: k })).toBe(true);
-  expect(envfile.hasJoinKey({ TS_AUTHKEY: "t" })).toBe(true);
-  expect(envfile.hasJoinKey({ BASE_DOMAIN: "x" })).toBe(false);
 });
 
 test("headscale's config from the frontend's ask", async () => {

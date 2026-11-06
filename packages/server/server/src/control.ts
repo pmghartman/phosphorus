@@ -1,15 +1,13 @@
-// settings › network: the mesh's own control server picked, checked, and every
-// host moved onto it together; join keys and device approvals asked of it
+// settings › network: the mesh's own control server, its relay, join keys and
+// device approvals asked of it
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import { errText, now } from "@phosphorus/util";
-import { selfHost } from "./config.ts";
 import type { Res } from "./http.ts";
 import { obj, str } from "./js.ts";
 import { hostsInfo } from "./server.ts";
 
 const ctl = peers.control;
-type Control = peers.control.Control;
 
 let healthAt = 0;
 let healthOf = "";
@@ -31,85 +29,72 @@ async function health(url: string): Promise<{ ok: boolean; why?: string }> {
   return h;
 }
 
-const platformOf = (h: string) => str(obj(hostsInfo()[h])?.platform);
+// Linux hosts with a public IPv4 of their own: the ones every device can reach
+function publicHosts(): { name: string; ip: string }[] {
+  return Object.entries(hostsInfo())
+    .map(([name, i]) => ({ name, platform: str(obj(i)?.platform), ip: str(obj(i)?.publicIPv4) }))
+    .filter((h) => h.platform === "linux" && h.ip)
+    .map(({ name, ip }) => ({ name, ip }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
-// the page's view: the choice, each phosphorus host's part in the move, the other devices
+let devicesAt = 0;
+let devicesLast: { devices?: peers.control.Node[]; error?: string } = {};
+
+// headscale's devices from the control host, asked at most every 10s however many pages poll
+async function devices(fresh = false) {
+  if (!fresh && now() - devicesAt < 10_000) return devicesLast;
+  const [st, b] = await ctl.controlOp("nodes");
+  devicesLast =
+    st === 200 && Array.isArray(b?.nodes) ? { devices: b.nodes } : { error: str(b?.error) || `status ${st}` };
+  devicesAt = now();
+  return devicesLast;
+}
+
 export async function controlStatus(): Promise<Res> {
   const c = ctl.control();
-  const up = new Set([selfHost, ...peers.upPeers()]);
-  const names = new Set([selfHost, ...Object.keys(hostsInfo())]);
-  const hosts = [...names].sort().map((name) => {
-    const hc = ctl.hostControl(name);
-    return { name, platform: platformOf(name), up: up.has(name), on: hc?.on ?? "", ready: hc?.ready === true };
-  });
-  const others = peers
-    .lastKnown()
-    .filter((p) => !names.has(p.host))
-    .map((p) => ({ name: p.host, os: p.os, online: p.online }));
-  return [
-    200,
-    {
-      control: c ?? null,
-      self: selfHost,
-      on: ctl.onControl(),
-      hosted: ctl.HostedControl,
-      health: c ? await health(c.url) : null,
-      hosts,
-      others,
-    },
-  ];
+  if (!c) return [200, { control: null, health: null, hosts: publicHosts() }];
+  const [h, d] = await Promise.all([health(c.url), devices()]);
+  return [200, { control: c, health: h, hosts: [], ...d }];
+}
+
+// a device op, the list asked again after so the page shows it at once
+async function deviceOp(op: string, body: Record<string, unknown>): Promise<Res> {
+  const r = await ctl.controlOp(op, body);
+  if (r[0] === 200) await devices(true);
+  return r;
 }
 
 const nameRe = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
-// an admin's step: set, relay, prepare, switch, stop, join-key, approve
+// an admin's step: the server and relay, keys, and the devices on it
 export async function controlAction(p: Record<string, unknown>): Promise<Res> {
   const c = ctl.control();
-  const write = (next: Control) => store.write(ctl.controlRel, next, true);
   switch (str(p.action)) {
     case "set": {
+      if (c) return [409, { error: `the mesh runs on ${c.host}'s control server; it stays there` }];
       const host = str(p.host).toLowerCase();
       const name = str(p.name).toLowerCase().replace(/\.$/, "");
       if (!nameRe.test(name)) return [400, { error: "the control name must be a domain name, e.g. hs.example.com" }];
-      if (!Object.keys(hostsInfo()).includes(host) && host !== selfHost)
-        return [400, { error: `${host || "that"} isn't a phosphorus host` }];
-      if (platformOf(host) !== "linux") return [400, { error: "the control server runs on a Linux host" }];
-      if (c && c.stage !== "running" && c.stage !== "prepared")
-        return [409, { error: "the mesh already moved; its control server stays where it is" }];
-      const url = "https://" + name;
-      write({ host, url, relay: c?.relay === true, stage: "running" });
+      if (!publicHosts().some((h) => h.name === host))
+        return [400, { error: `${host || "that"} isn't a Linux host with a public address` }];
+      store.write(ctl.controlRel, { host, url: "https://" + name, relay: false }, true);
       return [200, { ok: true }];
     }
     case "relay":
       if (!c) return [409, { error: "no control server yet" }];
-      write({ ...c, relay: p.on === true });
-      return [200, { ok: true }];
-    case "prepare": {
-      if (!c) return [409, { error: "no control server yet" }];
-      if (c.stage !== "running") return [409, { error: `already ${c.stage}` }];
-      const h = await health(c.url);
-      if (!h.ok) return [409, { error: h.why ?? "the control server isn't answering" }];
-      write({ ...c, stage: "prepared" });
-      return [200, { ok: true }];
-    }
-    case "switch": {
-      if (!c || c.stage !== "prepared") return [409, { error: "prepare first" }];
-      const up = [selfHost, ...peers.upPeers()];
-      const waiting = up.filter((h) => ctl.hostControl(h)?.ready !== true);
-      if (waiting.length) return [409, { error: `not ready yet: ${waiting.join(", ")}` }];
-      write({ ...c, stage: "switching", at: now() + 30_000, by: selfHost });
-      return [200, { ok: true, at: now() + 30_000 }];
-    }
-    case "stop":
-      if (!c) return [200, { ok: true }];
-      if (c.stage !== "running" && c.stage !== "prepared")
-        return [409, { error: "the mesh is on it now; it can't be turned off from here" }];
-      store.remove(ctl.controlRel);
+      store.write(ctl.controlRel, { ...c, relay: p.on === true }, true);
       return [200, { ok: true }];
     case "join-key":
       return ctl.controlOp("join-key");
+    case "device-key":
+      return ctl.controlOp("device-key");
     case "approve":
-      return ctl.controlOp("approve", { authId: str(p.authId) });
+      return deviceOp("approve", { authId: str(p.authId) });
+    case "rename":
+      return deviceOp("rename", { id: str(p.id), name: str(p.name) });
+    case "remove":
+      return deviceOp("remove", { id: str(p.id) });
   }
-  return [400, { error: "action must be set, relay, prepare, switch, stop, join-key or approve" }];
+  return [400, { error: "action must be set, relay, join-key, device-key, approve, rename or remove" }];
 }

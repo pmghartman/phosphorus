@@ -420,6 +420,65 @@
   font-size: var(--fs-2xs);
 }
 
+/* settings › network: headscale's devices, one row each */
+.net-dev {
+  grid-template-columns: minmax(0, 1.4fr) 4rem minmax(0, 1fr) 5.5rem auto;
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--border);
+}
+.net-dev.net-head {
+  border-top: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+.net-name {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.net-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.net-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.net-dot.on {
+  background: var(--online);
+}
+.net-kind {
+  justify-self: start;
+  padding: 0 0.4rem;
+  border-radius: var(--r-ctl);
+  background: var(--tab-hover);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.net-kind.host {
+  color: var(--accent);
+}
+.net-kind.guest {
+  color: var(--warn);
+}
+.net-ip {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.net-acts {
+  display: flex;
+  gap: 0.3rem;
+  justify-content: flex-end;
+}
+
 /* a phone: the rail a row of tabs across the top */
 @media (max-width: 720px) {
   .set-pane {
@@ -472,5 +531,11 @@
   }
   .set-host-body :is(.set-shares .dk-row, .acct-new) {
     grid-template-columns: minmax(0, 1fr) 6.5rem 4.5rem;
+  }
+  .net-dev {
+    grid-template-columns: minmax(0, 1fr) 4rem auto;
+  }
+  .net-dev :is(.net-ip, .net-seen) {
+    display: none;
   }
 }

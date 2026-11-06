@@ -126,7 +126,7 @@ export async function askKeys(file: string): Promise<boolean> {
     println("that MESH_KEY isn't a mesh join key, nothing saved");
     return false;
   }
-  if (!envfile.hasJoinKey({ ...have, ...vals })) {
+  if (!(vals.MESH_KEY || have.MESH_KEY)) {
     println("MESH_KEY is needed, nothing saved");
     return false;
   }

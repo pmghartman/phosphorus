@@ -8,13 +8,13 @@ import * as stacks from "@phosphorus/stacks";
 import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
-import { logf, markHot, marshal } from "@phosphorus/util";
+import { markHot, marshal, publicIPv4 } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import * as afterglow from "./afterglow.ts";
-import { adminPass, baseDomain, getPlatform, selfHost, selfInfo, tsAPIKey, Version } from "./config.ts";
+import { adminPass, baseDomain, getPlatform, selfHost, selfInfo, Version } from "./config.ts";
 import { ownHA } from "./ha.ts";
 import type { Res } from "./http.ts";
-import { decode, obj, str } from "./js.ts";
+import { decode, obj } from "./js.ts";
 import { filesInfo } from "./shares.ts";
 
 // --- etc/hosts/<host>/ ------------------------------------------------------
@@ -32,6 +32,7 @@ export function publishHost() {
   put("info", {
     version: Version(),
     platform: getPlatform(),
+    publicIPv4: publicIPv4(),
     files: filesInfo(),
     apps: webapps.installed(),
     found: unpublished(),
@@ -154,80 +155,7 @@ export function chainAction(action: string, password: string, admin: boolean, on
 
 // --- guest keys --------------------------------------------------------------
 
-const tsTailnet = "https://api.tailscale.com/api/v2/tailnet/-";
-
-let guestTagOwned = false;
-
-// a tailscale API error, as against one reaching it
-class TSError extends Error {}
-
-async function ownGuestTag() {
-  if (guestTagOwned) return;
-  const got = await fetch(tsTailnet + "/acl", {
-    headers: { Authorization: "Bearer " + tsAPIKey, Accept: "application/hujson" },
-    signal: AbortSignal.timeout(10000),
-  });
-  const body = await got.text();
-  if (got.status < 200 || got.status >= 300) throw new TSError(`tailscale said ${got.status} reading the policy`);
-  let lines = body.split("\n");
-  const live = (re: RegExp) => lines.findIndex((l) => re.test(l) && !/^\s*\/\//.test(l));
-  if (live(/"tag:guest"\s*:/) === -1) {
-    const owners = live(/^\s*"tagOwners"\s*:\s*\{/);
-    if (owners !== -1)
-      lines = [...lines.slice(0, owners + 1), '\t\t"tag:guest": ["autogroup:admin"],', ...lines.slice(owners + 1)];
-    else {
-      const at = live(/^\s*\{/) + 1;
-      lines = [...lines.slice(0, at), '\t"tagOwners": { "tag:guest": ["autogroup:admin"] },', ...lines.slice(at)];
-    }
-    const etag = got.headers.get("etag") || "*";
-    const put = await fetch(tsTailnet + "/acl", {
-      method: "POST",
-      body: lines.join("\n"),
-      signal: AbortSignal.timeout(10000),
-      headers: { Authorization: "Bearer " + tsAPIKey, "Content-Type": "application/hujson", "If-Match": etag },
-    });
-    const b = await put.text();
-    if (put.status < 200 || put.status >= 300) {
-      const msg = str(obj(decode(b))?.message) || "no reason given";
-      throw new TSError(`tailscale said ${put.status} adding tag:guest to the policy: ${msg}`);
-    }
-    logf("[frontend] added tag:guest to the tailnet policy tagOwners");
-  }
-  guestTagOwned = true;
-}
-
-export async function mintGuestKey(): Promise<Res> {
-  // on the mesh's own control server: its key, with the server to log in to
-  if (peers.control.onOwnControl()) return peers.control.controlOp("guest-key");
-  if (!tsAPIKey) return [503, { error: "TS_API_KEY unset in .env" }];
-  try {
-    await ownGuestTag();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return [500, { error: e instanceof TSError ? msg : "couldn't reach tailscale: " + msg }];
-  }
-  const body = marshal({
-    capabilities: {
-      devices: { create: { reusable: false, ephemeral: true, preauthorized: true, tags: ["tag:guest"] } },
-    },
-    expirySeconds: 3 * 24 * 3600,
-    description: "phosphorus guest",
-  });
-  let res: Response;
-  try {
-    res = await fetch(tsTailnet + "/keys", {
-      method: "POST",
-      body,
-      headers: { Authorization: "Bearer " + tsAPIKey, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(10000),
-    });
-  } catch (e) {
-    return [500, { error: "couldn't reach tailscale: " + (e instanceof Error ? e.message : String(e)) }];
-  }
-  const out = obj(decode(await res.text())) ?? {};
-  if (res.status < 200 || res.status >= 300)
-    return [500, { error: `tailscale said ${res.status}: ${str(out.message) || "no reason given"}` }];
-  return [200, { key: out.key, expires: out.expires }];
-}
+// a guest device's key, from the mesh's control server with its URL to log in to
+export const mintGuestKey = (): Promise<Res> => peers.control.controlOp("guest-key");
 
 // --- startup -----------------------------------------------------------------
