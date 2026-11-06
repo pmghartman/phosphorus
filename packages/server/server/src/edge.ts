@@ -219,6 +219,28 @@ function publishAcme() {
 
 // the registrar's delegation as the world's resolvers see it: asked every five
 // minutes once it's there, every minute until then
+// the domain's nameservers as its parent zone's own servers hand them out, so no
+// resolver's cache of the registrar's old ones holds the answer back; the system
+// resolver's word when no parent server answers
+async function registryNs(name: string): Promise<string[]> {
+  const clean = (n: string) => n.toLowerCase().replace(/\.$/, "");
+  const parent = name.slice(name.indexOf(".") + 1);
+  try {
+    for (const server of (await resolver.resolveNs(parent)).slice(0, 3)) {
+      try {
+        const ip = (await resolver.resolve4(server))[0];
+        if (!ip) continue;
+        const r = await dns.query({ server: ip, name, type: dns.Type.NS, timeoutMs: 3000 });
+        const ns = [...r.answer, ...r.authority].flatMap((x) =>
+          x.data.type === dns.Type.NS && x.name === clean(name) ? [clean(x.data.target)] : [],
+        );
+        if (ns.length) return ns;
+      } catch {}
+    }
+  } catch {}
+  return (await resolver.resolveNs(name)).map(clean);
+}
+
 async function checkDelegation(d: Domain) {
   if (now() - delegation.at < (delegation.ok ? 5 * 60_000 : 60_000)) return;
   delegation.at = now();
@@ -227,7 +249,7 @@ async function checkDelegation(d: Domain) {
     ? `set its nameservers to ${want.join(" and ")} at the registrar`
     : "pick an edge host first";
   try {
-    const ns = (await resolver.resolveNs(d.name)).map((n) => n.toLowerCase().replace(/\.$/, ""));
+    const ns = await registryNs(d.name);
     if (ns.some((n) => want.includes(n))) delegation = { ok: true, why: "", at: now() };
     else
       delegation = { ok: false, why: `${d.name} points at ${ns.join(", ") || "no nameservers"}: ${where}`, at: now() };
