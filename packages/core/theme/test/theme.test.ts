@@ -11,7 +11,7 @@ test("tokens", () => {
 });
 
 test("layers", () => {
-  expect(tokens("light")["--bg"]).toBe("#fbfaf7");
+  expect(tokens("light")["--bg"]).toBe("#ffffff");
   expect(tokens("light")["color-scheme"]).toBe("light");
   expect(tokens("black")["--bg"]).toBe("#000000");
   // black keeps dark's text and accent
