@@ -3,6 +3,7 @@
 
 import { logf } from "@phosphorus/util";
 import type { Socket, TCPSocketListener } from "bun";
+import { finish, flush, type Out, outbox, send } from "./pipe.ts";
 
 // the client behind each loopback connection the splitter made, by its source port
 const clients = new Map<number, string>();
@@ -51,7 +52,8 @@ export function sniOf(b: Uint8Array): string | undefined | null {
   return "";
 }
 
-type Side = { peer?: Socket<Side>; buf: Uint8Array[]; pending: boolean };
+// out: what's waiting to be written to this side
+type Side = { peer?: Socket<Side>; buf: Uint8Array[]; pending: boolean; out: Out };
 
 export type Split = {
   port: number;
@@ -75,13 +77,13 @@ export function split(port: number, hostname?: string): Split {
     port,
     socket: {
       open(s) {
-        s.data = { buf: [], pending: true };
+        s.data = { buf: [], pending: true, out: outbox() };
         s.timeout(helloWaitS);
       },
       data(s, chunk) {
         const d = s.data;
         if (d.peer) {
-          d.peer.write(chunk);
+          send(d.peer, d.peer.data.out, chunk, s);
           return;
         }
         d.buf.push(chunk);
@@ -98,15 +100,19 @@ export function split(port: number, hostname?: string): Split {
         connect(s, all, to);
       },
       close(s) {
-        s.data?.peer?.end();
+        const up = s.data?.peer;
+        if (up) finish(up, up.data.out);
       },
       timeout(s) {
         if (s.data?.pending) s.end();
       },
       error(s) {
-        s.data?.peer?.end();
+        const up = s.data?.peer;
+        if (up) finish(up, up.data.out);
       },
-      drain() {},
+      drain(s) {
+        flush(s, s.data.out);
+      },
     },
   });
   return {
@@ -136,26 +142,28 @@ function connect(down: Socket<Side>, head: Uint8Array, port: number) {
     port,
     socket: {
       open(up) {
-        up.data = { peer: down, buf: [], pending: false };
+        up.data = { peer: down, buf: [], pending: false, out: outbox() };
         down.data.peer = up;
         clients.set(up.localPort, client);
-        up.write(head);
+        send(up, up.data.out, head, down);
       },
       data(up, chunk) {
-        down.write(chunk);
+        send(down, down.data.out, chunk, up);
       },
       close(up) {
         clients.delete(up.localPort);
-        down.end();
+        finish(down, down.data.out);
       },
       error(up) {
         clients.delete(up.localPort);
-        down.end();
+        finish(down, down.data.out);
       },
       connectError() {
         down.end();
       },
-      drain() {},
+      drain(up) {
+        flush(up, up.data.out);
+      },
     },
   }).catch((e) => {
     logf("[edge] loopback %d: %s", port, (e as Error).message);

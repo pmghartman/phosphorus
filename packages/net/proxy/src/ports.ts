@@ -2,6 +2,7 @@
 // connection carried over the tailnet to the service's own port on its host
 
 import type { Socket, TCPSocketListener, udp } from "bun";
+import { finish, flush, type Out, outbox, send } from "./pipe.ts";
 
 export type PortSpec = { name: string; proto: "tcp" | "udp"; pub: number; ip: string; port: number };
 
@@ -11,7 +12,8 @@ export type Forwarded = {
   stop(): void;
 };
 
-type Pipe = { peer?: Socket<Pipe>; head: Uint8Array[] };
+// out: what's waiting to be written to this side
+type Pipe = { peer?: Socket<Pipe>; head: Uint8Array[]; out: Out };
 
 const keyOf = (s: PortSpec) => `${s.proto}:${s.pub}`;
 const same = (a: PortSpec, b: PortSpec) => a.ip === b.ip && a.port === b.port && a.name === b.name;
@@ -26,44 +28,52 @@ function tcp(spec: PortSpec, hostname?: string): Open {
     port: spec.pub,
     socket: {
       open(down) {
-        down.data = { head: [] };
+        down.data = { head: [], out: outbox() };
         Bun.connect<Pipe>({
           hostname: spec.ip,
           port: spec.port,
           socket: {
             open(up) {
-              up.data = { peer: down, head: [] };
+              up.data = { peer: down, head: [], out: outbox() };
               down.data.peer = up;
-              for (const h of down.data.head) up.write(h);
+              for (const h of down.data.head) send(up, up.data.out, h, down);
               down.data.head = [];
             },
-            data(_up, chunk) {
-              down.write(chunk);
+            data(up, chunk) {
+              send(down, down.data.out, chunk, up);
             },
             close() {
-              down.end();
+              finish(down, down.data.out);
             },
             error() {
-              down.end();
+              finish(down, down.data.out);
             },
             connectError() {
               down.end();
             },
-            drain() {},
+            drain(up) {
+              flush(up, up.data.out);
+            },
           },
         }).catch(() => down.end());
       },
       data(down, chunk) {
-        if (down.data.peer) down.data.peer.write(chunk);
-        else down.data.head.push(chunk);
+        const up = down.data.peer;
+        if (up) send(up, up.data.out, chunk, down);
+        // a copy: the chunk is Bun's buffer, held until the service answers
+        else down.data.head.push(new Uint8Array(chunk));
       },
       close(down) {
-        down.data?.peer?.end();
+        const up = down.data?.peer;
+        if (up) finish(up, up.data.out);
       },
       error(down) {
-        down.data?.peer?.end();
+        const up = down.data?.peer;
+        if (up) finish(up, up.data.out);
       },
-      drain() {},
+      drain(down) {
+        flush(down, down.data.out);
+      },
     },
   });
   return { spec, close: () => l.stop(true) };
