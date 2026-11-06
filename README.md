@@ -23,7 +23,9 @@ Install Phosphorus on each of your machines. They find each other over WireGuard
 
 1. Get a mesh join key from settings › network on a host already in the mesh.
 2. Install the [latest release](https://github.com/pmghartman/phosphorus/releases/latest) and run `phos`.
-3. Open the link it prints.
+3. Open the link it prints. A new mesh asks for its first admin there.
+
+For the desktop from anywhere, give the mesh a domain in settings › network: pick the Linux hosts with a public address that serve it, then point the domain's nameservers at them at your registrar, from the same page when the domain is at Porkbun. Phosphorus serves the domain's DNS itself and gets its certificate from Let's Encrypt; every service gets `<name>.<domain>`, and any TCP or UDP port can be opened on the internet.
 
 Full steps: [Getting started](https://github.com/pmghartman/phosphorus/wiki/Getting-started). Everything else is in the [wiki](https://github.com/pmghartman/phosphorus/wiki).
 

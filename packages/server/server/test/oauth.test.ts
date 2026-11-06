@@ -4,7 +4,7 @@ import type { Ctx } from "@phosphorus/wsock";
 
 const { appHandler, start } = await import("@phosphorus/server");
 
-// a request as the ingress hands it over, cloudflared's https in front
+// a request as the ingress hands it over, a peer's edge saying https
 const viaIngress = (path: string, init: RequestInit = {}): Ctx => {
   const url = "http://mesh.test" + path;
   return {

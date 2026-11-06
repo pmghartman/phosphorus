@@ -111,7 +111,7 @@ export class Mesh {
       POLL_HOT_MS: "600000",
       ...this.env,
     };
-    for (const k of ["BASE_DOMAIN", "ADMIN_PASS", "TUNNEL_TOKEN"]) delete env[k];
+    delete env.BASE_DOMAIN;
     // this bun itself, never a shim whose kill leaves the host running
     const proc = Bun.spawn([process.execPath, join(import.meta.dir, "mesh-node.ts")], {
       cwd: root,

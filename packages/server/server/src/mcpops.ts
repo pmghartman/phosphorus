@@ -4,24 +4,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { calls as mcpCalls, watch as mcpWatch } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
-import { health, wildcard } from "@phosphorus/services";
+import { health } from "@phosphorus/services";
 import { close as termClose } from "@phosphorus/term";
 import type { Chain } from "@phosphorus/update";
 import { HasMCPKey, OpenGrant, SealGrant } from "@phosphorus/users";
-import {
-  DataDir,
-  errText,
-  marshal,
-  now,
-  RepoDir,
-  startDetached,
-  TunnelMetrics,
-  tailnetIP,
-  writeJSONAtomic,
-} from "@phosphorus/util";
+import { DataDir, errText, marshal, now, RepoDir, startDetached, tailnetIP, writeJSONAtomic } from "@phosphorus/util";
 import type { Conn } from "@phosphorus/wsock";
 import { Client } from "ssh2";
 import { hostSSHHost, hostSSHPort, selfHost, Version } from "./config.ts";
+import { edgeInfo } from "./edge.ts";
 import { onHost } from "./hostops.ts";
 import type { Res } from "./http.ts";
 import { decode, num, obj, str, utf8 } from "./js.ts";
@@ -88,20 +79,8 @@ async function localOp(op: string, p: Record<string, any>): Promise<Res> {
 
 const started = now();
 
-// localHealth this host's tunnel as cloudflared's /ready says, *.<domain> through it,
-// its control server, and its frontend
+// localHealth this host's part of the domain's edge, its control server, and its frontend
 async function localHealth(): Promise<Record<string, any>> {
-  let tunnel: Record<string, any> = { state: "off", why: "no TUNNEL_TOKEN, tailnet only" };
-  if (process.env.TUNNEL_TOKEN) {
-    tunnel = { state: "down", why: "cloudflared's metrics not answering on " + TunnelMetrics };
-    try {
-      const res = await fetch(`http://${TunnelMetrics}/ready`, { signal: AbortSignal.timeout(3000) });
-      const r = obj(decode(await res.text()));
-      const n = num(r?.readyConnections);
-      tunnel = { state: "up", connections: n };
-      if (res.status !== 200 || n === 0) tunnel = { state: "down", connections: n, why: "no edge connection ready" };
-    } catch {}
-  }
   // the mesh's control server, and headscale here when this is its host
   const c = peers.control.control();
   const control: Record<string, any> = { url: c?.url ?? "", host: c?.host ?? "" };
@@ -113,13 +92,11 @@ async function localHealth(): Promise<Record<string, any>> {
       control.serving = `down: ${c.url} not answering: ${e instanceof Error ? e.message : e}`;
     }
   }
-  // *.<domain> through the tunnel: what puts a blank-mode service on a subdomain
   return {
     host: selfHost,
     version: Version(),
-    tunnel,
     control,
-    wildcard: wildcard(),
+    edge: edgeInfo() ?? null,
     uptimeSec: Math.trunc((now() - started) / 1000),
   };
 }

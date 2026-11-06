@@ -1,8 +1,9 @@
 // phos alone: the front page, this host's state and the link to the desktop
-// where every app is; the keys asked for line by line on a new host
+// where every app is; the join key asked for on a new host
+import { readFileSync } from "node:fs";
 import * as envfile from "@phosphorus/envfile";
 import { FrontendPort } from "@phosphorus/util";
-import { envPath, fail, keysMissing, println } from "./base.ts";
+import { at, fail, keysMissing, println } from "./base.ts";
 import { readPassword } from "./ctl.ts";
 import { os } from "./os.ts";
 import { keptName, labelOf, tailscaleStatus } from "./tailnet.ts";
@@ -14,9 +15,18 @@ export function desktopURLs(domain: string, host: string): string[] {
   return domain ? [`https://${domain}/`, tail] : [tail];
 }
 
+// meshDomain the mesh's domain as run last served it, "" on the tailnet alone
+export function meshDomain(): string {
+  try {
+    return readFileSync(at("state", "run", "base-domain"), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 // desktopLinks this host's desktop addresses as it knows them now
 export async function desktopLinks(): Promise<string[]> {
-  return desktopURLs(envfile.read(envPath()).BASE_DOMAIN ?? "", await tailnetHost());
+  return desktopURLs(meshDomain(), await tailnetHost());
 }
 
 export type Front = {
@@ -100,18 +110,19 @@ export async function front(version: string) {
   const running = await os.svcActive();
   const mesh = running ? await meshState() : undefined;
   const host = mesh?.host || (await tailnetHost());
-  const domain = envfile.read(envPath()).BASE_DOMAIN ?? "";
-  println(frontPage({ version, running, host, domain, up: mesh?.up, seen: mesh?.seen }, !!process.stdout.isTTY));
+  println(
+    frontPage({ version, running, host, domain: meshDomain(), up: mesh?.up, seen: mesh?.seen }, !!process.stdout.isTTY),
+  );
 }
 
-// askKeys .env's keys typed one per line with no echo, a blank one kept; false
+// askKeys the join key typed with no echo, a blank line keeping what's set; false
 // when nothing was saved
 export async function askKeys(file: string): Promise<boolean> {
   if (!process.stdin.isTTY)
-    throw fail("no terminal to type the keys in: use the Phosphorus app, or phos keys --stdin with KEY=value lines");
+    throw fail("no terminal to type the key in: use the Phosphorus app, or phos keys --stdin with KEY=value lines");
   const have = envfile.read(file);
-  println("the keys for this host, typed without echo; a blank line keeps what's set");
-  if (keysMissing()) println("joining a mesh: MESH_KEY alone, the rest copied from a peer");
+  println("the join key for this host, typed without echo; a blank line keeps what's set");
+  if (keysMissing()) println("everything else is set up on the desktop once this host is up");
   const vals: Record<string, string> = {};
   for (const k of envfile.Keys) {
     println(`\n${k.label} (${k.name}, ${have[k.name] ? "set" : "not set"}): ${k.hint}`);

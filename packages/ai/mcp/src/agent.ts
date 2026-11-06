@@ -135,7 +135,7 @@ export const agentTools = (): Tool[] => [
         source: {
           type: "string",
           description:
-            "phosphorus (all, default), run (the service's start, its tools fetched), frontend, cloudflared, model, control (headscale, on the control host), mesh",
+            "phosphorus (all, default), run (the service's start, its tools fetched), frontend, model, control (headscale, on the control host), mesh",
         },
         level: {
           type: "string",
@@ -335,7 +335,7 @@ export function describe() {
     mesh_hosts:
       "Start here. Every device on the mesh's tailnet: name, OS, whether it runs phosphorus (only those are hosts you can act on), " +
       "plus this host and the mesh's domain. Host names from here are what every other tool's host takes. " +
-      "health true adds each phosphorus host's health: answering, version, round trip in ms, its Cloudflare tunnel and whether *.<domain> reaches the mesh through it (wildcard, with the Cloudflare entries to add when missing).",
+      "health true adds each phosphorus host's health: answering, version, round trip in ms, and on an edge host (one serving the mesh's domain) its dns, https and public ports.",
     services:
       "Every web service published on the mesh: host, name, port, mode, public, and the URL a person opens. " +
       "With host and name, that one service checked right now instead: listening, its HTTP status, published or why not. " +

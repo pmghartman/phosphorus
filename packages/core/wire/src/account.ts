@@ -16,7 +16,6 @@ export interface Vault {
 export interface Me {
   user: string;
   admin: boolean;
-  boot: boolean;
   vault?: Vault;
   vaultOK?: boolean;
   prefs?: Record<string, string>;

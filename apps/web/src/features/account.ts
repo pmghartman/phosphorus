@@ -18,45 +18,46 @@ const dkView = document.getElementById('view-desktop')!;
 export async function acctStart(): Promise<void> {
   const me = await acctCall<Me & { setup?: boolean }>('/api/me');
   if (me.ok) acctIn(me as Me);
-  else acctLogin(!!me.setup);
+  else if (me.setup) acctSetup();
+  else acctLogin();
 }
 
-// a real form, so the browser offers to save and fill it
-// the login form; setup the first visit's, the setup admin's; as a name typed in for the person
-function acctLogin(setup: boolean, as = '') {
+// a real form, so the browser offers to save and fill it; setup: a fresh mesh's
+// first visit, the admin made and logged in at once
+function acctLogin(setup = false) {
   st.acct = null;
   stateStop();
   dkLogout();
-  const form = Object.assign(el('form', 'dk-login acct-login'), { method: 'post', action: '/api/login' });
+  const form = Object.assign(el('form', setup ? 'dk-login acct-login acct-setup' : 'dk-login acct-login'), {
+    method: 'post',
+    action: setup ? '/api/setup' : '/api/login',
+  });
   const user = Object.assign(el('input'), {
     name: 'username',
-    placeholder: 'user',
+    placeholder: setup ? 'admin name' : 'user',
     autocomplete: 'username' as const,
     spellcheck: false,
     autocapitalize: 'off',
     required: true,
-    value: as,
   });
   const pass = Object.assign(el('input'), {
     name: 'password',
     type: 'password',
     placeholder: 'password',
-    autocomplete: 'current-password' as const,
+    autocomplete: (setup ? 'new-password' : 'current-password') as 'new-password' | 'current-password',
   });
   const why = el('span', 'dk-state bad');
-  const go = Object.assign(el('button', 'btn primary', 'log in'), { type: 'submit' });
+  const go = Object.assign(el('button', 'btn primary', setup ? 'create' : 'log in'), { type: 'submit' });
   const actions = el('div', 'update-actions');
   actions.append(why, go);
   form.append(
-    el('div', 'home-col-head', 'phosphorus'),
+    el('div', 'home-col-head', setup ? 'set up phosphorus' : 'phosphorus'),
     el(
       'p',
       'dk-note',
-      as
-        ? `${as} is the admin now: log in as them`
-        : setup
-          ? 'first time: log in as admin, password from phos keys'
-          : 'log in',
+      setup
+        ? 'a new mesh: name its first admin and pick a password; the domain and the rest are in settings'
+        : 'log in',
     ),
     user,
     pass,
@@ -66,7 +67,7 @@ function acctLogin(setup: boolean, as = '') {
     e.preventDefault();
     go.disabled = true;
     why.textContent = '';
-    const me = await acctCall<Me>('/api/login', { user: user.value.trim(), pass: pass.value });
+    const me = await acctCall<Me>(setup ? '/api/setup' : '/api/login', { user: user.value.trim(), pass: pass.value });
     go.disabled = false;
     if (!me.ok) {
       why.textContent = me.error || 'no answer';
@@ -88,7 +89,6 @@ function acctIn(me: Me) {
   const acct: Account = {
     user: me.user,
     admin: me.admin,
-    boot: me.boot,
     wallpaper: me.wallpaper || 0,
     vault: me.vault || { hosts: {}, pages: {} },
     vaultOK: me.vaultOK !== false,
@@ -96,10 +96,6 @@ function acctIn(me: Me) {
   st.acct = acct;
   acct.vault.hosts ||= {};
   acct.vault.pages ||= {};
-  if (acct.boot) {
-    acctSetup();
-    return;
-  }
   acctPrefs(me.prefs || {}, me.prefsAt || 0);
   if (acctNext()) return;
   if (!stateUp()) connectState();
@@ -110,7 +106,7 @@ function acctIn(me: Me) {
 
 export async function acctSave(): Promise<string> {
   const acct = st.acct;
-  if (!acct || acct.boot) return '';
+  if (!acct) return '';
   // a vault the serving host couldn't read yet, the saved one merged under before saving
   if (!acct.vaultOK) {
     const me = await acctCall<Me>('/api/me');
@@ -133,7 +129,7 @@ let prefsQuiet = false;
 // only the keys this browser changed sent, another's newer ones left be
 const prefsDirty = new Set<string>();
 function prefsSoon(key?: string) {
-  if (prefsQuiet || !st.acct || st.acct.boot) return;
+  if (prefsQuiet || !st.acct) return;
   for (const k of key ? [key] : Object.keys(PREF_LS)) prefsDirty.add(k);
   clearTimeout(prefsTimer!);
   prefsTimer = setTimeout(() => {
@@ -220,7 +216,7 @@ export async function acctCheck(): Promise<boolean | undefined> {
   acctChecking = false;
   if (me.status === 401 && st.acct) acctLogin(!!me.setup);
   // another browser's icon moves, theme or wallpaper, taken in
-  if (!me.ok || !st.acct || st.acct.boot || me.user !== st.acct.user) return me.status !== 0;
+  if (!me.ok || !st.acct || me.user !== st.acct.user) return me.status !== 0;
   if ((me.prefsAt || 0) > prefsAt && JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) {
     acctPrefs(me.prefs || {}, me.prefsAt);
     dkLayout();
@@ -263,54 +259,32 @@ function acctNext(): boolean {
   return true;
 }
 
-export async function acctLogout(as = ''): Promise<void> {
+export async function acctLogout(): Promise<void> {
   await acctCall('/api/logout', {});
-  acctLogin(false, as);
+  acctLogin();
 }
 
-// the setup admin: only the users list, then out
-function acctSetup() {
-  dkLogout();
-  const box = el('div', 'dk-login acct-login acct-setup');
-  const out = Object.assign(el('button', 'btn', 'log out'), { type: 'button' });
-  out.addEventListener('click', () => acctLogout());
-  const actions = el('div', 'update-actions');
-  actions.appendChild(out);
-  box.append(
-    el('div', 'home-col-head', 'set up phosphorus'),
-    el('p', 'dk-note', 'create the first admin, then log in as them'),
-    // the first admin made: the setup admin's done, the login asked of them
-    acctUsers((name, admin) => admin && acctLogout(name), true),
-    actions,
-  );
-  const stage = el('div', 'dk-stage');
-  stage.appendChild(box);
-  const desk = el('div', 'dk-desk');
-  desk.append(stage, dkBar());
-  dkView.replaceChildren(desk);
-}
+// a fresh mesh's first visit: the first admin made, the login form in setup's clothes
+const acctSetup = () => acctLogin(true);
 
-// the users list and a new user's form, for admins; added told of each user made;
-// first: setup's form alone, the one it makes an admin
-export function acctUsers(added?: (name: string, admin: boolean) => void, first = false): HTMLElement {
+// the users list and a new user's form, for admins; added told of each user made
+export function acctUsers(added?: (name: string, admin: boolean) => void): HTMLElement {
   const wrap = el('div', 'acct-users');
   const list = el('ul', 'dk-rows');
   const name = noFill(
     Object.assign(el('input'), { placeholder: 'new user', spellcheck: false, autocapitalize: 'off' }),
   );
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
-  const admin = Object.assign(el('input'), { type: 'checkbox', checked: first });
+  const admin = Object.assign(el('input'), { type: 'checkbox' });
   const adminLabel = el('label', 'acct-check');
   adminLabel.append(admin, ' admin');
-  adminLabel.hidden = first;
-  const add = Object.assign(el('button', 'btn primary', first ? 'create' : 'add'), { type: 'button' });
+  const add = Object.assign(el('button', 'btn primary', 'add'), { type: 'button' });
   const why = el('div', 'dk-state bad');
   const row = el('div', 'dk-row acct-new');
   row.append(name, pass, adminLabel, add);
   const draw = (r: { ok: boolean; error?: string; users?: UserRow[] }) => {
     why.textContent = r.ok ? '' : r.error || 'no answer';
     if (!r.users) return;
-    list.hidden = first && !r.users.length;
     list.replaceChildren(
       ...(r.users.length
         ? r.users.map((u) => {
@@ -433,7 +407,7 @@ function dkRemember(host: string, user: string, pass: string) {
   try {
     localStorage.setItem(DK_USERS_KEY, JSON.stringify(users));
   } catch {}
-  if (st.acct && !st.acct.boot) {
+  if (st.acct) {
     st.acct.vault.hosts[host] = { user, pass };
     acctSave();
   }

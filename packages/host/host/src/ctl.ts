@@ -75,15 +75,8 @@ export async function readPassword(): Promise<string | undefined> {
 type Agent = { id?: string; state?: string; version?: string; error?: string; current?: boolean };
 
 // update handed to the host's agent (the systemd path unit, the app), its
-// verdict waited on; ADMIN_PASS the gate when set
+// verdict waited on
 export async function update() {
-  const want = envfile.read(envPath()).ADMIN_PASS;
-  if (want) {
-    print("admin password: ");
-    const got = await readPassword();
-    println();
-    if (got !== want) throw fail("wrong password");
-  }
   const id = `cli-${Math.floor(Date.now() / 1000)}-${process.pid}`;
   mkdirSync(at("state"), { recursive: true });
   const tmp = at("state", "update-request.json.tmp");

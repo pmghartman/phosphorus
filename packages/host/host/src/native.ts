@@ -46,7 +46,7 @@ export const frontendUp = "http://127.0.0.1:8090/";
 
 export const nativeEnvFile = () => at("state", "run", "native.env");
 
-// tool a fetched binary: tailscale, tailscaled, cloudflared
+// tool a fetched binary: tailscale, tailscaled
 export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".exe" : name);
 
 // --- the baked env ------------------------------------------------------------

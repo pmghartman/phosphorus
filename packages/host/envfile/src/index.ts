@@ -3,26 +3,17 @@
 import { chmodSync, chownSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { runSync } from "@phosphorus/util";
 
-// one .env entry, as the setup forms ask for it; mesh: copied from a peer when
-// left blank on a host joining a mesh
-export type Key = { name: string; label: string; hint: string; mesh: boolean };
+// one .env entry, as the setup forms ask for it
+export type Key = { name: string; label: string; hint: string };
 
-// every key phosphorus reads; a new host brings MESH_KEY alone
+// every key phosphorus reads: the join key alone, the rest of a mesh's settings
+// made on its desktop and kept in the store
 export const Keys: Key[] = [
   {
     name: "MESH_KEY",
     label: "Mesh join key",
-    hint: "from settings, network on a mesh host; the only key a new host needs",
-    mesh: false,
+    hint: "from settings, network on a mesh host; the only key a host needs",
   },
-  { name: "BASE_DOMAIN", label: "Domain", hint: "optional, for access off the tailnet", mesh: true },
-  {
-    name: "TUNNEL_TOKEN",
-    label: "Cloudflare tunnel token",
-    hint: "optional, with the domain; its routes <domain> and *.<domain> to http://localhost:80",
-    mesh: true,
-  },
-  { name: "ADMIN_PASS", label: "Admin password", hint: "setup admin's login, the gate on a mesh update", mesh: true },
 ];
 
 // every KEY=value, blank values kept

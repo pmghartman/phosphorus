@@ -1,11 +1,11 @@
 // Tailscale, the mesh's transport: its status, signing in under phosphorus's
-// name, the pinned installer, and the mesh's keys from a peer
+// name, and the pinned installer
 import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as envfile from "@phosphorus/envfile";
-import { FrontendPort, run as runCmd } from "@phosphorus/util";
+import { run as runCmd } from "@phosphorus/util";
 import { at, envPath, eprint, fail, fileExists, readTrim, say, sleep } from "./base.ts";
 import { os } from "./os.ts";
 
@@ -71,7 +71,7 @@ export async function tailnetJoin(state: string) {
     mkdirSync(at("state", "run"), { recursive: true });
     writeFileSync(joined, new Date().toISOString().replace(/\.\d+Z$/, "Z") + "\n");
   };
-  const known = !!env.BASE_DOMAIN || !!env.ADMIN_PASS || fileExists(joined);
+  const known = fileExists(joined);
   const mk = envfile.parseMeshKey(env.MESH_KEY);
   const prefs = await tailscalePrefs();
   // on the key's server, or a known install whose prefs didn't read
@@ -158,43 +158,3 @@ export async function tailscaleLogin(launch: () => Promise<void>, hint: () => st
   }
   await tailnetJoin(st);
 }
-
-// --- the mesh's keys from a peer -------------------------------------------------------
-
-// meshKeyValues the missing keys from a peer, saved into .env, none missing none asked
-export async function meshKeyValues(): Promise<Record<string, string>> {
-  const want = envfile.Keys.filter((k) => k.mesh && !process.env[k.name]).map((k) => k.name);
-  if (want.length === 0) return {};
-  const [got, ip] = await peerKeys();
-  const vals: Record<string, string> = {};
-  for (const k of want) if (got[k]) vals[k] = got[k]!;
-  try {
-    envfile.set(envPath(), vals);
-  } catch (e) {
-    eprint(`can't save the keys into ${envPath()}: ${e instanceof Error ? e.message : e}\n`);
-  }
-  eprint(`copied ${keysOf(vals).join(", ")} from ${ip}\n`);
-  return vals;
-}
-
-// peerKeys the mesh's keys from the first online peer serving them, and its address
-export async function peerKeys(): Promise<[Record<string, string>, string]> {
-  const status = parse(await tailscaleStatus());
-  if (status === undefined) throw fail("can't list tailnet peers: no status");
-  const peers = Object.values((status?.Peer ?? {}) as Record<string, { TailscaleIPs?: string[]; Online?: boolean }>);
-  for (const p of peers) {
-    if (!p.Online) continue;
-    for (const ip of p.TailscaleIPs ?? []) {
-      if (!ip.includes(".")) continue;
-      try {
-        const r = await fetch(`http://${ip}:${FrontendPort}/internal/keys`, { signal: AbortSignal.timeout(3000) });
-        const got = await r.json();
-        if (r.status !== 200 || !got || typeof got !== "object") continue;
-        return [got as Record<string, string>, ip];
-      } catch {}
-    }
-  }
-  throw fail("no peer on the tailnet has the keys");
-}
-
-export const keysOf = (m: Record<string, string>) => envfile.Keys.filter((k) => m[k.name]).map((k) => k.name);

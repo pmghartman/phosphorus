@@ -96,7 +96,7 @@ test("ingress forwards http and websockets", async () => {
   const base = `http://127.0.0.1:${front.port}`;
   const r = await fetch(`${base}/box/web/hi?x=1`);
   expect(await r.text()).toBe("/hi?x=1 http");
-  // through the tunnel, cloudflared saying so: https, with no forwarded_proto to set
+  // from a peer's edge over the tailnet, it saying https: kept, with no forwarded_proto to set
   const t = await fetch(`${base}/box/web/hi`, { headers: { "X-Forwarded-Proto": "https" } });
   expect(await t.text()).toBe("/hi https");
   expect(r.headers.get("content-security-policy")).toBe("frame-ancestors 'self' https://mulab.dev");

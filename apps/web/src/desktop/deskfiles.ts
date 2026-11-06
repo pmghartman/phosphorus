@@ -22,8 +22,8 @@ import { dkFileApp, dkFileOffer, dkWebApp } from './desk/webapps.ts';
 import { dkIcon, dkIcons, dkSay } from './desk.ts';
 import type { DkWin } from './windows.ts';
 
-// the Desktop folder in the home, none for the boot admin
-export const dkDeskDir = () => (st.acct && !st.acct.boot ? `${st.acct.user}/Desktop` : '');
+// the Desktop folder in the home
+export const dkDeskDir = () => (st.acct ? `${st.acct.user}/Desktop` : '');
 // where a drop lands
 export const dkDeskAt = () => (dkDeskDir() && st.selfHost ? { loc: homeLoc(), dir: dkDeskDir() } : null);
 

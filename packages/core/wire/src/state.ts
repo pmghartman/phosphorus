@@ -107,8 +107,8 @@ export interface HostInfo {
   services?: Record<string, { log: string; exit?: number }>;
   // web pages listening on the host that nothing declares yet (packages/services Found)
   found?: FoundPage[];
-  // *.<domain> reaching the mesh through the tunnel, as this host last saw it (packages/services Wildcard)
-  wildcard?: { state: string; why?: string };
+  // an edge host's part of the domain: its dns, https and public ports (server edge.ts EdgeInfo)
+  edge?: { dns: string; tls: string; ports: Record<string, string> };
   // this host's copy of each installed app (packages/stacks)
   stacks?: Record<string, StackStatus>;
   // docker here, for the install check

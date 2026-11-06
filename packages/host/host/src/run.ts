@@ -1,11 +1,11 @@
-// phosphorus run, the service's main process: tailscale checked, the
-// frontend, the tunnel, the model daemon and the control server as labelled
-// children, all down with a core one
+// phosphorus run, the service's main process: tailscale checked, the frontend,
+// the model daemon and the control server as labelled children, all down with
+// a core one; the frontend started again when the mesh's domain changes
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import * as envfile from "@phosphorus/envfile";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { writeRoles } from "@phosphorus/procs";
-import { env as envOf, TunnelMetrics } from "@phosphorus/util";
+import { RestartExit } from "@phosphorus/util";
 import type { Subprocess } from "bun";
 import {
   at,
@@ -25,9 +25,9 @@ import {
   stamp,
   stdio,
 } from "./base.ts";
-import { nativeEnvFile, runEnv, tool, withPath } from "./native.ts";
+import { nativeEnvFile, runEnv, withPath } from "./native.ts";
 import { os, type Stop } from "./os.ts";
-import { keepName, keptName, labelOf, meshKeyValues, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
+import { keepName, keptName, labelOf, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
 import { ensureTools } from "./tools.ts";
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
@@ -134,24 +134,15 @@ async function tailnetSelf(): Promise<string> {
   return (st.Self?.DNSName ?? "").replace(/\.$/, "");
 }
 
-// fillMeshKeys a joining host's missing keys from a peer, waited on only
-// when this host can't run without them
-async function fillMeshKeys() {
-  let need = true,
-    missing = false;
-  for (const k of envfile.Keys) {
-    missing ||= k.mesh && !process.env[k.name];
-    need &&= !k.mesh || !process.env[k.name];
-  }
-  if (!missing) return;
-  const tries = need ? 30 : 1;
-  for (let i = 0; i < tries; i++) {
-    try {
-      const vals = await meshKeyValues();
-      for (const [k, v] of Object.entries(vals)) process.env[k] = v;
-      return;
-    } catch {}
-    await sleep(2000);
+// meshDomain the mesh's domain as the store on disk has it, the frontend's
+// BASE_DOMAIN; "" before the desktop sets one or when this host hasn't synced it
+export function meshDomain(sysDir = process.env.PHOSPHORUS_SYS_DIR || at("sys")): string {
+  try {
+    const f = JSON.parse(readFileSync(join(sysDir, "etc", "mesh", "domain.json"), "utf8"));
+    const name = f?.gone ? "" : f?.data?.name;
+    return typeof name === "string" && /^[a-z0-9.-]+$/.test(name) ? name : "";
+  } catch {
+    return "";
   }
 }
 
@@ -213,37 +204,22 @@ export async function runMain(stop: Stop): Promise<number> {
   const name = keptName() || labelOf(dns);
   keepName(name);
   say(`on the tailnet as ${dns}, on the mesh as ${name}`);
-  await fillMeshKeys();
-  // no domain: the tailnet alone, http://<host>/
-  if (!process.env.BASE_DOMAIN) say("no BASE_DOMAIN, served on the tailnet only");
-  writeFileSync(at("state", "run", "base-domain"), (process.env.BASE_DOMAIN ?? "") + "\n", { mode: 0o644 });
   process.env.SELF_HOST = name;
   process.env.HOST_SSH_PORT = "22";
-  const env = withPath(
-    Object.fromEntries(Object.entries(process.env).filter((kv): kv is [string, string] => kv[1] !== undefined)),
-  );
+  // the mesh's domain from the store, the frontend's BASE_DOMAIN; the tailnet alone without one
+  const withDomain = () => {
+    const domain = meshDomain();
+    process.env.BASE_DOMAIN = domain;
+    writeFileSync(at("state", "run", "base-domain"), domain + "\n", { mode: 0o644 });
+    say(domain ? `serving ${domain}` : "no domain yet, served on the tailnet only");
+    return withPath(
+      Object.fromEntries(Object.entries(process.env).filter((kv): kv is [string, string] => kv[1] !== undefined)),
+    );
+  };
+  const env = withDomain();
   const bin = binPath("phosphorus");
 
   const frontend = child({ role: "frontend", core: true, graceMs: 15_000, argv: [bin, "serve"], env });
-  const tunnel = child({
-    role: "cloudflared",
-    core: true,
-    graceMs: 10_000,
-    prefix: true,
-    env,
-    argv: [
-      tool("cloudflared"),
-      "tunnel",
-      "--no-autoupdate",
-      "--loglevel",
-      "warn",
-      "--protocol",
-      envOf("TUNNEL_PROTOCOL", "http2"),
-      "--metrics",
-      TunnelMetrics,
-      "run",
-    ],
-  });
   const kids = [frontend];
   const extra: Child[] = [];
   if (isModelHost()) extra.push(child({ role: "model", graceMs: 30_000, argv: [bin, "model"], env }));
@@ -254,20 +230,7 @@ export async function runMain(stop: Stop): Promise<number> {
     if (control) await stopChild(control);
     throw fail(`couldn't start the frontend: ${errText(e)}`);
   }
-  // the ingress answering before the tunnel hands it anything
   await waitHealthz();
-  if (!process.env.TUNNEL_TOKEN) say("tunnel: no TUNNEL_TOKEN, tailnet only");
-  else {
-    say("tunnel: joining the Cloudflare tunnel as a replica");
-    try {
-      start(tunnel);
-    } catch (e) {
-      await stopChild(frontend);
-      if (control) await stopChild(control);
-      throw fail(`couldn't start cloudflared: ${errText(e)}`);
-    }
-    kids.push(tunnel);
-  }
   for (const c of extra) {
     try {
       start(c);
@@ -282,7 +245,7 @@ export async function runMain(stop: Stop): Promise<number> {
   const ex = exits();
   const watch = (c: Child) => void c.done?.then(() => ex.push(c));
   for (const c of all) watch(c);
-  // the model and tunnel at once, the frontend last so its services hand off
+  // the model and control at once, the frontend last so its services hand off
   // while the mesh can still see it
   const shutdown = async () => {
     await Promise.all(all.filter((c) => c !== frontend).map(stopChild));
@@ -296,8 +259,19 @@ export async function runMain(stop: Stop): Promise<number> {
       await shutdown();
       return 0;
     }
+    // the frontend asking for the mesh's new domain: started again with it, alone
+    if (c === frontend && c.proc?.exitCode === RestartExit) {
+      frontend.env = withDomain();
+      try {
+        start(frontend);
+        watch(frontend);
+        continue;
+      } catch (e) {
+        say(`couldn't restart the frontend: ${errText(e)}`);
+      }
+    }
     if (c.core) {
-      say(`${c.role} exited, stopping the rest so this host leaves tunnel rotation`);
+      say(`${c.role} exited, stopping the rest`);
       await shutdown();
       throw new ExitCode(1);
     }

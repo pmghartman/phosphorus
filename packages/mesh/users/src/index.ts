@@ -29,13 +29,13 @@ export {
 export {
   Exists,
   IsAdmin,
+  NoAdmin,
   OAuthClient,
   OAuthCode,
   OAuthRedirectFor,
   OAuthRedirectOK,
   OAuthRegister,
   OAuthToken,
-  Setup,
 } from "./oauth.ts";
 export { admins, Cookie, Init, MaxWall, MeshKey, type Req, str, truthy, vaultFile } from "./secrets.ts";
 export {
@@ -58,6 +58,7 @@ export {
   type Session,
   SetAdmin,
   SetPrefs,
+  Setup,
   SetVault,
   SetWallpaper,
   SignIn,

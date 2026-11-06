@@ -184,7 +184,7 @@ export function dkDeskMenu(icons: HTMLElement) {
               : (['your wallpaper here', () => wallMineSet(sp, true), !!st.acct?.wallpaper] as MenuItem),
           ]
         : []),
-      ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
+      ['change wallpaper…', dkWallPick, !!st.acct],
       ['appearance…', () => dkSettings('appearance'), true],
       null,
       [

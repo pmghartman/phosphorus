@@ -82,7 +82,7 @@ function storeFor(r: Running): AppStore {
 
 function whoOf(r: Running, c: Ctx): Who | undefined {
   const s = users.Of(c);
-  if (!s || s.boot) return;
+  if (!s) return;
   const who = { user: s.user, admin: !!s.admin };
   r.whos.set(who, { s, c });
   return who;

@@ -13,5 +13,3 @@ process.env.FRONTEND_PORT = "0";
 process.env.INGRESS_PORT = "0";
 process.env.CATALOG_FETCH = "0";
 delete process.env.BASE_DOMAIN;
-delete process.env.ADMIN_PASS;
-delete process.env.TUNNEL_TOKEN;

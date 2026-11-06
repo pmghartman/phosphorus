@@ -94,7 +94,7 @@ const SECTIONS: Section[] = [
     label: 'network',
     glyph: () => DK_GLYPHS.lock!,
     group: 'mesh',
-    blurb: 'control server, relay, join keys',
+    blurb: 'domain, public ports, control server, relay, join keys',
     admin: true,
     draw: networkSection,
   },
@@ -165,7 +165,7 @@ export const settingsAt = (): SettingsAt => at;
 
 // the window, opened or raised, at a section (and its own part, or a host) when named
 export function dkSettings(s?: SettingsAt, sub?: string): void {
-  if (!dk.desk || !st.acct || st.acct.boot) return;
+  if (!dk.desk || !st.acct) return;
   const pick = SECTIONS.find((x) => x.id === s && shown(x));
   if (pick) at = pick.id;
   if (!SECTIONS.some((x) => x.id === at && shown(x))) at = 'profile';

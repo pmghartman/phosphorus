@@ -2,7 +2,14 @@
 // names this host the mesh's control server, its config written from that ask
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ControlDir, ControlSocket, type ControlSpec, ControlSpecFile, HeadscaleBin } from "@phosphorus/util";
+import {
+  ControlBehindPort,
+  ControlDir,
+  ControlSocket,
+  type ControlSpec,
+  ControlSpecFile,
+  HeadscaleBin,
+} from "@phosphorus/util";
 import type { Subprocess } from "bun";
 import { errText, homeDir, print, setHome, sleep } from "./base.ts";
 import { ensurePin, headscalePin } from "./tools.ts";
@@ -23,6 +30,7 @@ export function readSpec(file = ControlSpecFile): ControlSpec | undefined {
       url: s.url,
       baseDomain: s.baseDomain,
       relay: s.relay === true,
+      behind: s.behind === true,
       ipv4: typeof s.ipv4 === "string" ? s.ipv4 : undefined,
       ipv6: typeof s.ipv6 === "string" ? s.ipv6 : undefined,
     };
@@ -38,13 +46,13 @@ export const controlPolicy = () => ({
   acls: [{ action: "accept", src: ["*"], dst: ["*:*"] }],
 });
 
-// headscale's config: TLS of its own on 443 by TLS-ALPN-01, so the ingress keeps
-// 80; Tailscale's relays always, its own beside them when relay is on
+// headscale's config: TLS of its own by TLS-ALPN-01 on 443, or on loopback behind
+// the edge's splitter; Tailscale's relays always, its own beside them when relay is on
 export function controlConfig(spec: ControlSpec, dir = ControlDir, socket = ControlSocket) {
   const host = new URL(spec.url).hostname;
   return {
     server_url: spec.url,
-    listen_addr: ":443",
+    listen_addr: spec.behind ? `127.0.0.1:${ControlBehindPort}` : ":443",
     metrics_listen_addr: "127.0.0.1:9091",
     grpc_listen_addr: "127.0.0.1:50443",
     grpc_allow_insecure: false,

@@ -10,7 +10,6 @@ export const selfHost = process.env.SELF_HOST ?? "";
 export const baseDomain = process.env.BASE_DOMAIN ?? "";
 export const hostSSHHost = env("HOST_SSH_HOST", "127.0.0.1");
 export const hostSSHPort = env("HOST_SSH_PORT", "22");
-export const adminPass = env("ADMIN_PASS");
 
 export const platformFile = join(RunDir, "platform.json");
 export const bootID = uuid();

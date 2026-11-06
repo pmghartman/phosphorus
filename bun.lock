@@ -283,6 +283,9 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/net/acme": {
+      "name": "@phosphorus/acme",
+    },
     "packages/net/afterglow": {
       "name": "@phosphorus/afterglow",
     },
@@ -301,6 +304,9 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/net/dns": {
+      "name": "@phosphorus/dns",
+    },
     "packages/net/hostdesk": {
       "name": "@phosphorus/hostdesk",
       "dependencies": {
@@ -317,6 +323,9 @@
         "@phosphorus/util": "workspace:*",
         "@phosphorus/wsock": "workspace:*",
       },
+    },
+    "packages/net/registrar": {
+      "name": "@phosphorus/registrar",
     },
     "packages/net/term": {
       "name": "@phosphorus/term",
@@ -338,10 +347,14 @@
     },
     "packages/net/wsock": {
       "name": "@phosphorus/wsock",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
     },
     "packages/server/server": {
       "name": "@phosphorus/server",
       "dependencies": {
+        "@phosphorus/acme": "workspace:*",
         "@phosphorus/afterglow": "workspace:*",
         "@phosphorus/app-sdk": "workspace:*",
         "@phosphorus/appstream": "workspace:*",
@@ -349,7 +362,7 @@
         "@phosphorus/catalog": "workspace:*",
         "@phosphorus/config": "workspace:*",
         "@phosphorus/delta": "workspace:*",
-        "@phosphorus/envfile": "workspace:*",
+        "@phosphorus/dns": "workspace:*",
         "@phosphorus/files": "workspace:*",
         "@phosphorus/hostdesk": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
@@ -358,6 +371,7 @@
         "@phosphorus/peers": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
         "@phosphorus/reconfig": "workspace:*",
+        "@phosphorus/registrar": "workspace:*",
         "@phosphorus/services": "workspace:*",
         "@phosphorus/stacks": "workspace:*",
         "@phosphorus/stats": "workspace:*",
@@ -405,6 +419,8 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.3", "", { "os": "win32", "cpu": "x64" }, "sha512-GhtOPphBWlnCepqpNk/w5eGN5oGRCzL20EbAkL1XCIpyboeVC9R642noyT43l8LSenGS4qz9IL8sKPfwY37V/Q=="],
 
+    "@phosphorus/acme": ["@phosphorus/acme@workspace:packages/net/acme"],
+
     "@phosphorus/afterglow": ["@phosphorus/afterglow@workspace:packages/net/afterglow"],
 
     "@phosphorus/app-chat": ["@phosphorus/app-chat@workspace:optional/chat"],
@@ -428,6 +444,8 @@
     "@phosphorus/config": ["@phosphorus/config@workspace:packages/host/config"],
 
     "@phosphorus/delta": ["@phosphorus/delta@workspace:packages/net/delta"],
+
+    "@phosphorus/dns": ["@phosphorus/dns@workspace:packages/net/dns"],
 
     "@phosphorus/elector": ["@phosphorus/elector@workspace:packages/mesh/elector"],
 
@@ -456,6 +474,8 @@
     "@phosphorus/proxy": ["@phosphorus/proxy@workspace:packages/net/proxy"],
 
     "@phosphorus/reconfig": ["@phosphorus/reconfig@workspace:packages/host/reconfig"],
+
+    "@phosphorus/registrar": ["@phosphorus/registrar@workspace:packages/net/registrar"],
 
     "@phosphorus/server": ["@phosphorus/server@workspace:packages/server/server"],
 

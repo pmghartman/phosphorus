@@ -1,6 +1,6 @@
 #!/bin/sh
 # Linux package: the release and its binary under /usr/lib/phosphorus, the service's and
-# update agent's units, the apt feed; tailscale and cloudflared fetched by the host itself
+# update agent's units, the apt feed; tailscale fetched by the host itself
 # Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN   Env: PHOSPHORUS_APT_KEY (binary keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -41,7 +41,7 @@ Priority: optional
 Homepage: https://github.com/pmghartman/phosphorus
 Description: one service per machine, a mesh of hosts
  The phosphorus host: its services published, the others' polled, one web UI and cli.
- Runs under systemd, fetching its pinned tailscale and cloudflared; installed services run in Docker.
+ Runs under systemd, fetching its pinned tailscale; installed services run in Docker.
 CTL
 dpkg-deb --root-owner-group -Zxz -z9 --build "$T" "$OUT" >/dev/null
 echo "package: $OUT"

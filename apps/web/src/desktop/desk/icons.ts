@@ -54,7 +54,7 @@ export function dkDesktop(): void {
   // the bar: a phone's way home, the apps menu, the windows, the host chips, then the status items
   const bar = dkBar(tasks, hosts);
   bar.prepend(dkHomeBtn(), dkAppsBtn());
-  const status = st.acct?.boot ? [] : [dkMeshQuick(), dkUpdateQuick(), dkMcpTray()];
+  const status = [dkMeshQuick(), dkUpdateQuick(), dkMcpTray()];
   bar.append(...status.filter((x): x is HTMLElement => !!x), dkBellTray(), dk.clock!, dkControlTray());
   dkWallPaint();
   desk.append(icons, wins, bar);

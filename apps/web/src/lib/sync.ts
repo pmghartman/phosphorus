@@ -110,6 +110,6 @@ export const stateUp = () => !!stateWs;
 export const stateClosed = () => stateWs?.readyState === WebSocket.CLOSED;
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && st.acct && !st.acct.boot && stateClosed()) connectState();
+  if (!document.hidden && st.acct && stateClosed()) connectState();
 });
 setInterval(pruneConnections, 1000);

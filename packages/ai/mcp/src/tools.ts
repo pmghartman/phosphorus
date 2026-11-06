@@ -39,7 +39,8 @@ export const coreTools = (): Tool[] => [
       health: {
         type: "boolean",
         default: false,
-        description: "key only: each phosphorus host's health too, answering, version, round trip and tunnel",
+        description:
+          "key only: each phosphorus host's health too, answering, version, round trip and its part of the edge",
       },
     }),
     run: async (a, m) => {

@@ -14,7 +14,7 @@ export const RTT_SAMPLE_MS = 2000;
 // the table's number: the median of the last few samples
 export const RTT_SHOWN_OF = 5;
 
-// every host pinged from this browser, through the tunnel and the host serving
+// every host pinged from this browser, through the edge and the host serving
 // the page, the whole round trip timed here
 
 export async function pingHosts(): Promise<void> {

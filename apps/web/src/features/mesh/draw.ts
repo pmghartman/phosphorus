@@ -141,11 +141,11 @@ export function meshModelsFrom(state: State): void {
   if (modelChanged && !meshAnimFrame) drawMesh();
 }
 
-// the touched elements drawMesh() drew (tunnel spoke, peer arc, service stem)
+// the touched elements drawMesh() drew (hub spoke, peer arc, service stem)
 // via getPointAtLength(), so the pulse rides the real curve
 
 export function pulsePoint(key: string, host: string, distFrac: number): DOMPoint | null {
-  const ids = ['mesh-tunnel-self'];
+  const ids = ['mesh-hub-self'];
   if (host !== st.selfHost) ids.push(`peer-${host}`);
   ids.push(`stem-${key}`);
   const segs = ids
@@ -437,7 +437,7 @@ export function drawMesh(): void {
   hubDns.textContent = st.meshDomain || 'tailnet';
   meshSvg.appendChild(hubDns);
 
-  // spokes on the tunnel, only this node's highlighted
+  // spokes to the hub, the mesh's domain or the tailnet, only this node's highlighted
   hosts.forEach((m) => {
     const p = posOf(m, true);
     const isSelf = m === st.selfHost;
@@ -446,10 +446,10 @@ export function drawMesh(): void {
       y1: hubY,
       x2: p.x,
       y2: p.y,
-      class: isSelf ? 'mesh-line-tunnel self' : 'mesh-line-tunnel',
+      class: isSelf ? 'mesh-line-hub self' : 'mesh-line-hub',
       style: edgeFog(hub, p),
     };
-    if (isSelf) spoke.id = 'mesh-tunnel-self';
+    if (isSelf) spoke.id = 'mesh-hub-self';
     edges.appendChild(svgEl('line', spoke));
   });
 
@@ -504,7 +504,7 @@ export function drawMesh(): void {
     });
   });
 
-  // no spoke, not routable through the tunnel
+  // no spoke, not a phosphorus host
   others.forEach((name) => {
     const { os } = outside.get(name)!;
     const p = posOf(name, false);

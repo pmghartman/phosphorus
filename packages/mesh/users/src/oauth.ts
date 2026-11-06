@@ -102,7 +102,6 @@ export async function OAuthCode(
   redirect: string,
   challenge: string,
 ): Promise<[string, string]> {
-  if (s.boot) return ["", "the setup admin can't sign an agent in, make a user first"];
   const [key, ok] = await KeyOf(s, c);
   if (!ok) return ["", "this host hasn't your saved logins yet, try again shortly"];
   return [SealGrant({ oa: 1, ci: hex(sha(clientId)), r: redirect, x: challenge, t: key }, oauthCodeMS), ""];
@@ -135,5 +134,5 @@ export const Exists = (name: string) => live(name) !== undefined;
 // IsAdmin a live admin user
 export const IsAdmin = (name: string) => live(name)?.admin === true;
 
-// Setup true while no admin user exists
-export const Setup = async () => !(await anyAdmin());
+// NoAdmin true while no admin user exists: the first visitor's setup
+export const NoAdmin = async () => !(await anyAdmin());

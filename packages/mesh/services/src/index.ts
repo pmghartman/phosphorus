@@ -1,17 +1,41 @@
 // this host's own services: the installed ones it serves (packages/stacks) and the
 // found pages published as records in the store (records.ts), health checked, live ones
-// published; a blank scheme sniffed, each a subdomain once *.<domain> answers; pages
+// published; a blank scheme sniffed, each a subdomain once the domain has its certificate; pages
 // neither names found and offered, one whose record was removed not written back
 import { connect } from "node:net";
 import type { Row } from "@phosphorus/proxy";
 import { env, envInt, errText, FrontendPort, IdleMS, markHot, marshal, Notes, now } from "@phosphorus/util";
+import { edgePorts, publicUp } from "./domain.ts";
 import { listening } from "./listen.ts";
 import { adoptOne, records, removedPorts } from "./records.ts";
-import { pollWildcard, wildcardUp } from "./wildcard.ts";
 
+export {
+  type AcmeState,
+  acmeRel,
+  acmeState,
+  acmeStateRel,
+  challenge,
+  challengeRel,
+  type Domain,
+  domain,
+  domainRe,
+  domainRel,
+  edgePorts,
+  type PortRec,
+  type PortRow,
+  portError,
+  ports,
+  publicUp,
+  removePort,
+  selfPorts,
+  setPort,
+  type TLSRec,
+  tls,
+  tlsCovers,
+  tlsRel,
+} from "./domain.ts";
 export { listening, portsOf } from "./listen.ts";
 export { editService, listed, records, removedPorts, setPublic } from "./records.ts";
-export { tunnelID, type Wildcard, wildcard, wildcardUp } from "./wildcard.ts";
 export type { Row };
 
 const notes = new Notes("services");
@@ -107,8 +131,8 @@ function connects(host: string, port: number): Promise<boolean> {
 
 // --- rows ------------------------------------------------------------------
 
-// a subdomain once *.<domain> reaches the mesh, a path till then
-const pickMode = () => (wildcardUp() ? "subdomain" : "path");
+// a subdomain once the domain has its certificate, a path till then
+const pickMode = () => (publicUp() ? "subdomain" : "path");
 
 // a name this host serves as the active copy of a failover stack: its row the
 // master one, the proxy serving it over a former active's
@@ -152,13 +176,14 @@ const findAtOnce = 8;
 const titleRe = /<title[^>]*>([^<]*)<\/title>/i;
 const nameRe = /^[a-z0-9][a-z0-9-]*$/;
 
-// phosphorus's own: ssh, the ingress, the frontend, the model
+// phosphorus's own: ssh, the ingress, the frontend, the model, and the edge's
 function ownPorts(): Set<number> {
   return new Set([
     envInt("HOST_SSH_PORT", 22) || 22,
     envInt("INGRESS_PORT", 80),
     FrontendPort,
     envInt("MODEL_SERVER_PORT", 8791),
+    ...edgePorts,
   ]);
 }
 
@@ -279,7 +304,6 @@ export async function refresh(ip: string): Promise<Row[]> {
     if (out) rows.push(out);
   }
   for (const [k, p] of probes) if (!p.seen && !p.busy) probes.delete(k);
-  pollWildcard();
   if (findMS > 0 && !finding && now() - lastFind >= findMS) {
     finding = true;
     lastFind = now();

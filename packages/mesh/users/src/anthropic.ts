@@ -23,7 +23,7 @@ export function cleanToken(v: unknown): string {
 
 // SetAnthropic the token sealed in the vault, "" clearing it
 export async function SetAnthropic(s: Session | undefined, p: Record<string, any>): Promise<R> {
-  if (!s || s.boot || !s.key?.length) return errR(403, "log in as a user");
+  if (!s || !s.key?.length) return errR(403, "log in as a user");
   const t = str(p.token).trim();
   if (t !== "" && cleanToken(t) === "")
     return errR(400, "that isn't a token: run claude setup-token and paste what it prints");

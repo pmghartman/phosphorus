@@ -1,11 +1,24 @@
-// the ingress cloudflared points at: every published service by path or
-// subdomain, the frontend itself for everything else
+// the ingress: every published service by path or subdomain, the frontend
+// itself for everything else; on an edge host over TLS behind the 443 splitter
 
 import { envInt, isLoopbackAddr, isTailnetAddr, logf, magicDNS, marshal, Notes } from "@phosphorus/util";
-import { type Ctx, dial, type Handler, isUpgrade, remoteIP, upgrade, type WSData, websocket } from "@phosphorus/wsock";
+import {
+  type Ctx,
+  dial,
+  type Handler,
+  isHTTPS,
+  isUpgrade,
+  remoteIP,
+  upgrade,
+  type WSData,
+  websocket,
+} from "@phosphorus/wsock";
 import type { Server } from "bun";
+import { splitClient } from "./edge.ts";
 
+export { type Split, sniOf, split } from "./edge.ts";
 export { favicon, faviconWhy, type Icon } from "./favicon.ts";
+export { type Forwarded, forwardPorts, type PortSpec } from "./ports.ts";
 
 export const baseDomain = process.env.BASE_DOMAIN ?? "";
 const selfHost = process.env.SELF_HOST ?? "";
@@ -319,9 +332,18 @@ export function frameable(csp: string): string {
 
 const hostPort = (rt: Route) => (rt.ip.includes(":") ? `[${rt.ip}]` : rt.ip) + ":" + rt.port;
 
-// https for a request over TLS or through the tunnel, its cloudflared saying so
-const protoOf = (c: Ctx) =>
-  c.url.protocol === "https:" || c.req.headers.get("x-forwarded-proto") === "https" ? "https" : "http";
+const protoOf = (c: Ctx) => (isHTTPS(c) ? "https" : "http");
+
+// a public request over plain http for a name under the domain: sent to https
+const toHTTPS = (c: Ctx): Response | undefined => {
+  if (!baseDomain || isHTTPS(c) || onMesh(c)) return;
+  const host = reqHost(c.req);
+  if (host !== baseDomain && !host.endsWith("." + baseDomain)) return;
+  return new Response(null, {
+    status: 301,
+    headers: { Location: "https://" + host + requestURI(c), "Cache-Control": "no-store" },
+  });
+};
 
 // the request's headers as the service gets them
 function outHeaders(rt: Route, c: Ctx): Headers {
@@ -417,7 +439,7 @@ async function forwardSocket(rt: Route, c: Ctx, p: string): Promise<Response | u
 // the login's checks, users.pass and users.issuers
 export type Gate = { pass: (c: Ctx) => boolean; issuers: (c: Ctx) => string[] };
 
-const openAPI = /^\/api\/(me|login|logout|users|run)(\/|$)/;
+const openAPI = /^\/api\/(me|login|logout|setup|users|run)(\/|$)/;
 
 // public routes left to the service's own login
 const gated = (h: Hit) => (h.route ? !h.route.git && !h.route.public : !!h.frontend);
@@ -468,6 +490,8 @@ export function handler(app: Handler, gate: Gate): Handler {
   };
   return async (c) => {
     c.ingress = true;
+    const up = toHTTPS(c);
+    if (up) return up;
     const h = resolve(c);
     if (isUpgrade(c.req)) {
       const pin = h.frontend ? pinRoute(c.req) : undefined;
@@ -504,8 +528,11 @@ export function handler(app: Handler, gate: Gate): Handler {
   };
 }
 
-// a Bun server on port for handler h, every request's context made
-export function serve(port: number, h: Handler, ingress: boolean, hostname?: string): Server<WSData> {
+export type TLS = { cert: string; key: string };
+
+// a Bun server on port for handler h, every request's context made; with tls
+// the edge's loopback server, each request's client the splitter's
+export function serve(port: number, h: Handler, ingress: boolean, hostname?: string, tls?: TLS): Server<WSData> {
   return Bun.serve<WSData>({
     port,
     hostname,
@@ -513,8 +540,10 @@ export function serve(port: number, h: Handler, ingress: boolean, hostname?: str
     maxRequestBodySize: Number.MAX_SAFE_INTEGER,
     development: false,
     websocket,
+    ...(tls ? { tls: { cert: tls.cert, key: tls.key } } : {}),
     async fetch(req, server) {
-      const c: Ctx = { req, url: new URL(req.url), ip: remoteIP(server, req), ingress, server };
+      const ip = (tls && splitClient(server.requestIP(req))) || remoteIP(server, req);
+      const c: Ctx = { req, url: new URL(req.url), ip, ingress, server };
       try {
         return await h(c);
       } catch (e) {
@@ -535,4 +564,14 @@ export function listen(port: number, app: Handler, gate: Gate) {
     process.exit(1);
   }
   notes.log(`serving ${baseDomain || "the tailnet"} on port ${port}`);
+}
+
+// the ingress over TLS on loopback, the splitter's target; undefined when it can't start
+export function listenTLS(tls: TLS, app: Handler, gate: Gate): Server<WSData> | undefined {
+  try {
+    return serve(0, handler(app, gate), true, "127.0.0.1", tls);
+  } catch (e) {
+    notes.log(`can't serve TLS: ${(e as Error).message}`);
+    return;
+  }
 }

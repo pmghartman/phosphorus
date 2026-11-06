@@ -30,12 +30,7 @@ export async function createService() {
     say("installing the phosphorus service...");
     if (!(await run("sc", "create", svcName, "binPath=", bin, "start=", "auto", "DisplayName=", "Phosphorus host")))
       throw fail("couldn't install the service: sc create failed");
-    await quiet(
-      "sc",
-      "description",
-      svcName,
-      "phosphorus run: the frontend, the tunnel and the model as its own processes",
-    );
+    await quiet("sc", "description", svcName, "phosphorus run: the frontend and the model as its own processes");
   }
   await svcRecovery();
   // SY and BA full, interactive and service users query, authenticated users start and stop

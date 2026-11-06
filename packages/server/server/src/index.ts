@@ -12,6 +12,7 @@ import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { listen as ingressListen, serve as proxyServe } from "@phosphorus/proxy";
 import { start as reconfigStart } from "@phosphorus/reconfig";
+import * as services from "@phosphorus/services";
 import { setStackRows } from "@phosphorus/services";
 import * as stacks from "@phosphorus/stacks";
 import * as stats from "@phosphorus/stats";
@@ -19,7 +20,7 @@ import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
-import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus/util";
+import { env, errText, flushWrites, logf, markHot, RestartExit, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
@@ -39,6 +40,7 @@ import {
   setUpdating,
   Version,
 } from "./config.ts";
+import { startEdge, stopEdge } from "./edge.ts";
 import { startHA, stopHA } from "./ha.ts";
 import { hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
 import { meshOnly } from "./http.ts";
@@ -108,6 +110,16 @@ export async function start(): Promise<Server<WSData>> {
     self: () => ({ version: Version(), bootId: bootID }),
   });
   startHA();
+  startEdge();
+  // the domain this frontend was started with changed: run starts it again with the new one
+  store.watch((rel) => {
+    if (rel !== services.domainRel) return;
+    const name = services.domain()?.name ?? "";
+    if (name === baseDomain) return;
+    logf("[frontend] the domain is now %s, restarting with it", name || "unset");
+    stopEdge();
+    process.exit(RestartExit);
+  });
   publishHost();
   setInterval(publishHost, 2000);
   reconfigStart(() => isUpdating() || update.busy());
@@ -127,6 +139,7 @@ export async function serve(): Promise<number> {
     process.once("SIGTERM", () => r());
     process.once("SIGINT", () => r());
   });
+  stopEdge();
   // each stack this host runs handed over while its final pull can still be served
   await stopHA();
   await stopApps();
@@ -152,7 +165,7 @@ function initMCP() {
       },
       update: (action, admin, only) => {
         markHot();
-        const [st, body] = chainAction(action, "", admin, only);
+        const [st, body] = chainAction(action, admin, only);
         if (st === 409) return [409, { error: "no update started here to " + action }];
         return [st, body];
       },

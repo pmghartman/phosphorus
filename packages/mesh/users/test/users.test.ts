@@ -8,7 +8,6 @@ import type { Req, Session } from "@phosphorus/users";
 process.env.PHOSPHORUS_REPO_DIR = mkdtempSync(join(tmpdir(), "phos-users-"));
 process.env.BASE_DOMAIN = "mesh.example";
 process.env.SELF_HOST = "tshost";
-process.env.ADMIN_PASS = "bootpw";
 const store = await import("@phosphorus/store");
 // the tree, secret and tokens the Go package wrote, loaded before any MeshKey
 const testdata = join(import.meta.dir, "testdata");
@@ -87,7 +86,7 @@ test("go's files, keys and tokens open as they are", async () => {
     const c = req({ cookie: `other=1; phosphorus-user=${fx.token}` });
     const s = U.Of(c)!;
     expect(s).toBeDefined();
-    expect([s.user, s.admin, s.boot, hex(s.key)]).toEqual(["pmh", true, false, fx.sessionKey]);
+    expect([s.user, s.admin, hex(s.key)]).toEqual(["pmh", true, fx.sessionKey]);
     expect(U.Pass(c)).toBe(true);
     expect(U.Issuers(c)).toEqual(["gohost"]);
     expect(await U.Soon(c)).toEqual(s);
@@ -97,14 +96,7 @@ test("go's files, keys and tokens open as they are", async () => {
       hosts: { razer: { user: "pmh", pass: "x" } },
       pages: { forge: { url: "https://forge.example", user: "u", pass: "p" } },
     });
-    expect([me.vaultOK, me.prefs, me.user, me.admin, me.boot, me.wallpaper]).toEqual([
-      true,
-      { theme: "dark" },
-      "pmh",
-      true,
-      false,
-      0,
-    ]);
+    expect([me.vaultOK, me.prefs, me.user, me.admin, me.wallpaper]).toEqual([true, { theme: "dark" }, "pmh", true, 0]);
     expect(me.prefsAt).toBe(store.stamp("home/pmh/prefs.json"));
     expect(await U.AnthropicToken(s)).toBe("sk-ant-oat01-abc_DEF-123");
     expect(await U.HostLogin(s, "razer")).toEqual(["pmh", "x", true]);
@@ -121,7 +113,12 @@ test("go's files, keys and tokens open as they are", async () => {
     expect([o.status, o.body.fresh, o.body.hosts, o.body.pages]).toEqual([200, false, ["razer"], ["forge"]]);
     expect(U.OpenGrant(o.body.key)?.m).toBe(U.OpenGrant(fx.mcpKey)?.m);
     expect(o.body.url.startsWith("https://mesh.example/api/mcp/")).toBe(true);
-    expect([U.HasMCPKey("pmh"), U.Exists("pmh"), U.IsAdmin("pmh"), await U.Setup()]).toEqual([true, true, true, false]);
+    expect([U.HasMCPKey("pmh"), U.Exists("pmh"), U.IsAdmin("pmh"), await U.NoAdmin()]).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
   });
   // the cookie expired: 30 days
   const real = Date.now;
@@ -154,8 +151,8 @@ test("login issues a cookie this package and go read alike", async () => {
   ]);
   expect(U.Refresh(req({ host: "box" }), s)).toBeUndefined();
   expect(U.Refresh(c, s)![1]!.startsWith(`phosphorus-user=${s.token}; Max-Age=259`)).toBe(true);
-  // the setup admin off once an admin user exists
-  expect((await U.Login({ user: "admin", pass: "bootpw" }, c)).status).toBe(403);
+  // the first admin's setup off once an admin user exists
+  expect((await U.Setup({ user: "root", pass: "rootpw" }, c)).status).toBe(403);
   // a wrong password, then the lockout after five from one address
   const bad = await U.Login({ user: "pmh", pass: "nope" }, c);
   expect(bad).toEqual({ status: 401, body: { error: "wrong user or password" } });
@@ -246,7 +243,7 @@ test("users made here, their vault, mcp key and password change", async () => {
 function vaultSession(hosts: Record<string, any>): Session {
   const key = U.Derive("pw", "00").subarray(32);
   store.write(U.vaultFile("ann"), U.Seal(key, marshal({ hosts, pages: {} })));
-  return { user: "ann", admin: false, boot: false, key, token: "", e: 0 };
+  return { user: "ann", admin: false, key, token: "", e: 0 };
 }
 
 test("anthropic token", async () => {
@@ -272,9 +269,6 @@ test("anthropic token", async () => {
   expect(await U.HostLogins(s)).toEqual(["mulab-01"]);
   expect((await U.SetAnthropic(s, { token: "" })).status).toBe(200);
   expect(await U.AnthropicToken(s)).toBe("");
-  expect(
-    (await U.SetAnthropic({ user: "admin", admin: true, boot: true, token: "", e: 0 }, { token: "x" })).status,
-  ).toBe(403);
   expect((await U.SetAnthropic({ ...s, key: undefined }, { token: "x" })).status).toBe(403);
 });
 
@@ -323,10 +317,6 @@ test("oauth: a registered agent's code traded once for the user's mcp key", asyn
   expect(U.CheckMCPKey(code)[0]).toBeUndefined();
   expect(U.OAuthToken({ ...p, code: id }).body.error).toBe("invalid_grant");
   expect(U.OAuthToken({ ...p, grant_type: "password" }).body.error).toBe("unsupported_grant_type");
-  // the setup admin can't sign an agent in
-  expect(
-    (await U.OAuthCode({ user: "admin", admin: true, boot: true, token: "", e: 0 }, req(), id, cb, challenge))[0],
-  ).toBe("");
   // revoked: the token the agent holds refused
   U.MCPRevoke(s);
   expect(U.CheckMCPKey(t.body.access_token)[1]).toBe("revoked or replaced by a newer key");

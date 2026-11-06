@@ -45,7 +45,7 @@ export function sameOrigin(c: Ctx): boolean {
 // login a pass where a key would be for any other caller
 export function pageUser(c: Ctx): boolean {
   const s = Of(c);
-  return !!s && !s.boot && sameOrigin(c);
+  return !!s && sameOrigin(c);
 }
 
 // meshOnly the frontend port: loopback and tailnet sockets alone, by a Host

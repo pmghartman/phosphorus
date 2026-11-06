@@ -3,6 +3,7 @@
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as envfile from "@phosphorus/envfile";
+import { domain } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import {
   ControlDir,
@@ -284,7 +285,9 @@ export async function controlTick() {
   try {
     const c = control();
     const mine = c?.host === SelfHost && process.platform === "linux";
-    writeSpec(mine ? { url: c.url, baseDomain: magicDomain(c.url), relay: c.relay } : undefined);
+    // an edge host too: 443 is the splitter's, headscale behind it
+    const behind = !!domain()?.edges.includes(SelfHost);
+    writeSpec(mine ? { url: c.url, baseDomain: magicDomain(c.url), relay: c.relay, behind } : undefined);
     if (mine) {
       await sweepGuests();
       await mirrorDevices();

@@ -39,7 +39,7 @@ test("http smoke", async () => {
     expect(bound.status).toBe(403);
     // an unknown api path, and a peer-only one from the browser side
     expect((await fetch(base + "/api/nope")).status).toBe(404);
-    expect((await fetch(base + "/internal/keys")).status).toBe(403);
+    expect((await fetch(base + "/internal/op", { method: "POST", body: "{}" })).status).toBe(403);
     // the state, and its poll interval
     const st = await (await fetch(base + "/api/state")).json();
     expect(st.self.host).toBe("testhost");

@@ -39,13 +39,13 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
   switch (pathname) {
     case "/api/me/mcp": {
       const s = Of(c);
-      if (!s || s.boot || !sameOrigin(c)) return refuse(403);
+      if (!s || !sameOrigin(c)) return refuse(403);
       return accept(c, (ws) => void mcpSocket(ws, s.user));
     }
     case "/api/state": {
       const s = Of(c);
-      const user = s && !s.boot ? s.user : "";
-      const admin = !!s && !s.boot && s.admin;
+      const user = s ? s.user : "";
+      const admin = !!s && s.admin;
       return accept(c, (ws) => {
         const st = buildState();
         noteState(st);
@@ -86,7 +86,7 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
   let direct = "";
   if (host !== selfHost && !(host in peerIPs())) {
     const u = Of(c);
-    if (!u || u.boot) return refuse(403);
+    if (!u) return refuse(403);
     direct = await tailnetIP(host);
     if (!direct) return refuse(404);
   }

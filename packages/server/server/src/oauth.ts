@@ -124,18 +124,12 @@ async function authorize(c: Ctx, p: Record<string, any>, posted: boolean): Promi
   if (!ask) return page(400, "can't sign this agent in", `<p class="err">${esc(why)}</p>`);
   const iss = originOf(c);
   let s = await users.Soon(c);
-  if (s?.boot) s = undefined;
   if (!posted) return page(200, "sign in an agent", form(ask, s?.user ?? "", ""));
   if (str(p.act) === "deny") return back(ask.redirect, { error: "access_denied", state: ask.state, iss });
   let cookie: string[] = [];
   if (!s || str(p.user) !== "") {
     const [r, ns] = await users.SignIn({ user: p.user, pass: p.pass }, c);
-    if (!ns || ns.boot)
-      return page(
-        r.status === 200 ? 403 : r.status,
-        "sign in an agent",
-        form(ask, "", ns?.boot ? "the setup admin can't sign an agent in, make a user first" : str(r.body?.error)),
-      );
+    if (!ns) return page(r.status === 200 ? 403 : r.status, "sign in an agent", form(ask, "", str(r.body?.error)));
     s = ns;
     cookie = r.cookie ?? [];
   }

@@ -23,7 +23,7 @@ import {
 // the user's saved host logins ride along, sealed under a secret held only in
 // the key, its copy under the user's own key so a vault change reseals them
 export async function MCPKey(s: Session | undefined, _p: Record<string, any> | undefined, c: Req): Promise<R> {
-  if (!s || s.boot) return errR(403, "log in as a user");
+  if (!s) return errR(403, "log in as a user");
   const lu = live(s.user);
   if (!lu) return errR(403, "no such user");
   const [v, ok] = await vaultOf(s);
@@ -45,7 +45,7 @@ export async function MCPKey(s: Session | undefined, _p: Record<string, any> | u
 // MCPURL the user's key as its url: the one in use, sealed again so nothing using
 // it breaks, or a fresh one when there's none or it can't be opened
 export async function MCPURL(s: Session | undefined, p: Record<string, any> | undefined, c: Req): Promise<R> {
-  if (!s || s.boot) return errR(403, "log in as a user");
+  if (!s) return errR(403, "log in as a user");
   const lu = live(s.user);
   if (!lu) return errR(403, "no such user");
   const rec = mcpRecord(s.user);
@@ -151,7 +151,7 @@ export function mcpOpen(key: string, box: (r: McpRec) => Box | undefined): Recor
 
 // MCPRevoke every key of the session's user void
 export function MCPRevoke(s: Session | undefined, _p?: Record<string, any>): R {
-  if (!s || s.boot) return errR(403, "log in as a user");
+  if (!s) return errR(403, "log in as a user");
   store.remove(mcpFile(s.user));
   return { status: 200, body: { ok: true } };
 }
@@ -174,5 +174,5 @@ export function CheckMCPKey(key: string): [Session | undefined, string] {
   if (o.p !== lu.pwAt) return [undefined, "voided by a password change, make a new one"];
   const cur = mcpRecord(u).g;
   if (cur === "" || cur !== g) return [undefined, "revoked or replaced by a newer key"];
-  return [{ user: u, admin: lu.admin, boot: false, token: "", e: 0 }, ""];
+  return [{ user: u, admin: lu.admin, token: "", e: 0 }, ""];
 }
