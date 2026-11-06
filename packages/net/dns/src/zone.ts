@@ -72,8 +72,10 @@ export function build(spec: ZoneSpec): Zone {
   a("", edges);
   add("", { name: domain, ttl: ttlLong, data: { type: Type.CAA, flags: 0, tag: "issue", value: "letsencrypt.org" } });
   for (const [r, ips] of Object.entries(spec.hosts ?? {})) a(canon(r), ips);
+  // a record per value: one record's strings read as one joined value
   for (const [r, texts] of Object.entries(spec.txt ?? {}))
-    if (texts.length) add(canon(r), { name: abs(canon(r), domain), ttl: ttlTxt, data: { type: Type.TXT, texts } });
+    for (const t of texts)
+      add(canon(r), { name: abs(canon(r), domain), ttl: ttlTxt, data: { type: Type.TXT, texts: [t] } });
   for (const s of spec.srv ?? []) {
     const r = canon(`_${s.service}._${s.proto}.${s.name}`);
     add(r, {

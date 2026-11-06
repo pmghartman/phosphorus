@@ -41,8 +41,8 @@ test("the zone: apex, nameservers, wildcard, own names, texts and srv", () => {
   const own = answer(z, ask("control.example.com", Type.A));
   expect(own.answer.map((r) => (r.data as any).ip)).toEqual(["203.0.113.9"]);
   const txt = answer(z, ask("_acme-challenge.example.com", Type.TXT));
-  expect(txt.answer).toHaveLength(1);
-  expect((txt.answer[0]!.data as any).texts).toEqual(["tok1", "tok2"]);
+  // the apex's and the wildcard's tokens each a record of its own, never one joined value
+  expect(txt.answer.map((r) => (r.data as any).texts)).toEqual([["tok1"], ["tok2"]]);
   const srv = answer(z, ask("_minecraft._tcp.mc.example.com", Type.SRV));
   expect((srv.answer[0]!.data as any).port).toBe(25565);
   expect(srv.additional.map((r) => (r.data as any).ip).sort()).toEqual(["203.0.113.1", "203.0.113.2"]);
@@ -101,6 +101,6 @@ test("served over UDP and TCP on loopback, the client falling back to TCP on tru
   // many texts: over 512 bytes with EDNS absent is not what the client sends, so a TXT bulk fits in 1232
   zone = build({ ...spec, txt: { big: Array.from({ length: 30 }, (_, i) => "x".repeat(40) + i) } });
   const t = await query({ server: "127.0.0.1", port, name: "big.example.com", type: Type.TXT, timeoutMs: 2000 });
-  expect((t.answer[0]!.data as any).texts).toHaveLength(30);
+  expect(t.answer).toHaveLength(30);
   s.close();
 });
