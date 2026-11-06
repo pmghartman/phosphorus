@@ -36,7 +36,6 @@
   color: var(--muted);
   font-weight: 600;
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
 }
 .dk-note-clear {
   background: none;
@@ -162,5 +161,5 @@
   overflow: visible;
 }
 .dk-ctl-avatar .dk-crown {
-  stroke: var(--sand);
+  stroke: var(--warn);
 }

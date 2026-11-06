@@ -277,7 +277,66 @@ const goTo = (v: StoreView) => () => {
   stateVars.tab = v;
 };
 
-// the rail: the views, then the services' categories and catalogues while those are open
+// the services' filters: a catalogue and a category, each a select beside the search
+function filters(): HTMLElement[] {
+  if (!catalog) return [];
+  const sel = (name: string, label: string, choices: [string, string][], now: string, pick: (v: string) => void) => {
+    const s = Object.assign(el('select', 'store-filter'), { ariaLabel: label, title: label });
+    s.dataset.keep = name;
+    for (const [v, text] of choices) s.append(Object.assign(el('option', '', text), { value: v, selected: v === now }));
+    s.addEventListener('change', () => {
+      pick(s.value);
+      stateVars.openId = '';
+      stateVars.all = false;
+      draw();
+    });
+    return s;
+  };
+  const sources = catalog.sources.filter((x) => x.id !== 'github');
+  const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
+  const cats = new Map<string, number>();
+  for (const l of inSource) {
+    const c = lead(l, stateVars.source).category;
+    if (c) cats.set(c, (cats.get(c) ?? 0) + 1);
+  }
+  const common = [...cats]
+    .filter(([c, n]) => n >= CAT_MIN || c === stateVars.category)
+    .sort(([a, n], [b, m]) => m - n || a.localeCompare(b))
+    .slice(0, CAT_MAX);
+  return [
+    sel(
+      'source',
+      'catalogue',
+      [
+        ['', 'every catalogue'],
+        ...sources.map((x): [string, string] => [
+          x.id,
+          `${x.name}${fetching(x) ? ' …' : x.error ? ' !' : x.apps ? ` (${x.apps})` : ''}`,
+        ]),
+      ],
+      stateVars.source,
+      (v) => {
+        stateVars.source = v;
+        stateVars.category = '';
+      },
+    ),
+    ...(common.length > 1
+      ? [
+          sel(
+            'category',
+            'category',
+            [['', 'every category'], ...common.map(([c, n]): [string, string] => [c, `${c} (${n})`])],
+            stateVars.category,
+            (v) => {
+              stateVars.category = v;
+            },
+          ),
+        ]
+      : []),
+  ];
+}
+
+// the rail: the views alone, one of them current; the catalogues' credit at its foot
 function rail(): HTMLElement {
   const nav = Object.assign(el('nav', 'store-nav'), { ariaLabel: 'service wizard' });
   const t = stateVars.tab;
@@ -296,43 +355,6 @@ function rail(): HTMLElement {
     navRow(VIEWS.github.title, t === 'github', '', goTo('github'), DK_GLYPHS.code),
   );
   if (t === 'services' && catalog) {
-    const sources = catalog.sources.filter((x) => x.id !== 'github');
-    const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
-    const cats = new Map<string, number>();
-    for (const l of inSource) {
-      const c = lead(l, stateVars.source).category;
-      if (c) cats.set(c, (cats.get(c) ?? 0) + 1);
-    }
-    const common = [...cats]
-      .filter(([c, n]) => n >= CAT_MIN || c === stateVars.category)
-      .sort(([a, n], [b, m]) => m - n || a.localeCompare(b))
-      .slice(0, CAT_MAX);
-    if (common.length > 1) {
-      nav.append(
-        el('div', 'store-nav-group', 'categories'),
-        navRow('every category', !stateVars.category, `${inSource.length}`, () => {
-          stateVars.category = '';
-        }),
-        ...common.map(([c, n]) =>
-          navRow(c, stateVars.category === c, `${n}`, () => {
-            stateVars.category = stateVars.category === c ? '' : c;
-          }),
-        ),
-      );
-    }
-    nav.append(
-      el('div', 'store-nav-group', 'catalogues'),
-      navRow('every catalogue', !stateVars.source, '', () => {
-        stateVars.source = '';
-        stateVars.category = '';
-      }),
-      ...sources.map((x) =>
-        navRow(x.name, stateVars.source === x.id, fetching(x) ? '…' : x.error ? '!' : `${x.apps}`, () => {
-          stateVars.source = stateVars.source === x.id ? '' : x.id;
-          stateVars.category = '';
-        }),
-      ),
-    );
     const credit = Object.assign(el('button', 'store-link store-credit', 'sources and licenses'), { type: 'button' });
     credit.addEventListener('click', () => storeShow('sources'));
     nav.append(credit);
@@ -561,8 +583,7 @@ export function front(): HTMLElement {
           ? stackViews().length + dk.services.length
           : 0;
   if (n) h.append(el('span', 'store-view-n', `${n}`));
-  const picks = [stateVars.category, stateVars.source && SOURCE_NAMES[stateVars.source as SourceId]].filter(Boolean);
-  title.append(h, el('p', 'store-lead', v === 'services' && picks.length ? picks.join(' · ') : VIEWS[v].lead));
+  title.append(h, el('p', 'store-lead', VIEWS[v].lead));
   const tools = el('div', 'store-tools');
   if (v !== 'github') {
     const refresh = Object.assign(el('button', 'store-icon-btn'), {
@@ -572,7 +593,7 @@ export function front(): HTMLElement {
     });
     refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'));
     refresh.addEventListener('click', () => (v === 'apps' ? read(true) : readCatalog()));
-    tools.append(search(), refresh);
+    tools.append(...(v === 'services' ? filters() : []), search(), refresh);
   }
   head.append(title, tools);
   main.append(head);

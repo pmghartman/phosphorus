@@ -89,7 +89,6 @@
 .dk-cl-title {
   color: var(--fg);
   font-weight: 600;
-  letter-spacing: 0.04em;
 }
 .dk-cl-state {
   color: var(--muted);
@@ -126,7 +125,6 @@
   padding: 0.6rem 0.85rem 0.3rem;
   color: var(--muted);
   font-weight: 600;
-  letter-spacing: 0.04em;
 }
 /* the calls a running log like a coding agent's: a bullet and the call, its outcome hung under it */
 .dk-cl-calls {

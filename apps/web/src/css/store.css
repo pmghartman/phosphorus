@@ -1,10 +1,4 @@
 /* --- apps: a store for the mesh's optional extras (apps/store.ts) ---------- */
-.dk-icon.dk-apps .ic {
-  color: var(--rose);
-}
-.dk-icon.dk-app .ic {
-  color: var(--teal);
-}
 .dk-app-apps .dk-body > .view {
   padding: 0;
   overflow: hidden;
@@ -118,7 +112,8 @@
   display: flex;
   align-items: baseline;
   gap: 0.6rem;
-  font-size: var(--fs-xl);
+  font-size: var(--fs-lg);
+  font-weight: 600;
 }
 .store-view-n {
   color: var(--muted);
@@ -165,17 +160,15 @@
 }
 .store h1 {
   margin: 0;
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--fg);
-  letter-spacing: -0.01em;
 }
 .store h2 {
   margin: 0;
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--muted);
-  letter-spacing: 0.04em;
 }
 /* the wizard's banner: its wand in a tile of the accent, its name and what it does */
 /* the catalogues not reached, one quiet line */
@@ -222,6 +215,22 @@
   font-size: var(--fs-md);
 }
 .store-search:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+/* the services' filters: a catalogue, a category */
+.store-filter {
+  height: 2rem;
+  max-width: 11rem;
+  padding: 0 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl, 0);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.store-filter:focus-visible {
   outline: none;
   border-color: var(--accent);
 }
@@ -333,7 +342,7 @@
   color: var(--offmesh);
 }
 .store-tile-sub.wait {
-  color: var(--sand);
+  color: var(--warn);
 }
 /* the pill centred on the tile, the badge hung below it */
 .store-tile-side {
@@ -350,23 +359,15 @@
   white-space: nowrap;
   font-size: var(--fs-2xs);
   color: color-mix(in srgb, var(--accent) 65%, var(--fg));
-  letter-spacing: 0.03em;
 }
 /* the icon: the app's own once a host serves it, its initial until then */
-/* each app its own colour: its hue (--hue, from its name) at the theme's teal lightness and
-   chroma, so every theme keeps it muted and readable */
-/* an icon alone, no box: the app's own picture, else its initial in its hue */
+/* an icon alone, no box: the app's own picture, else its initial in the page's ink */
 .store-icon {
-  --tint: var(--teal);
+  --tint: var(--muted);
   flex: none;
   display: grid;
   place-items: center;
   overflow: hidden;
-}
-@supports (color: oklch(from red l c h)) {
-  .store-icon {
-    --tint: oklch(from var(--teal) l c var(--hue, 180));
-  }
 }
 .store-icon.sm {
   width: 2.1rem;
@@ -397,11 +398,11 @@
 }
 .store-mono {
   color: var(--tint);
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-xl);
   font-weight: 600;
 }
 .store-icon.lg .store-mono {
-  font-size: 2.4rem;
+  font-size: 1.8rem;
 }
 
 .store-pill.big {
@@ -573,20 +574,19 @@
 }
 .store-host.mid .store-dot,
 .store-host.old .store-dot {
-  background: var(--sand);
+  background: var(--warn);
 }
 .store-host.fail .store-dot {
   background: var(--offmesh);
 }
 .store-host.mid .store-host-state {
   color: var(--accent);
-  animation: update-blink 1.2s ease-in-out infinite;
 }
 .store-host.fail .store-host-state {
   color: var(--offmesh);
 }
 .store-host.old .store-host-state {
-  color: var(--sand);
+  color: var(--warn);
 }
 .store-host-name {
   color: var(--fg);
@@ -717,7 +717,7 @@
   font-size: var(--fs-xs);
 }
 .store-pick-note.warn {
-  color: var(--sand);
+  color: var(--warn);
 }
 .store-remove {
   align-self: flex-start;
@@ -921,7 +921,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
   color: var(--accent);
 }
 .store-route-tag.warn {
-  color: var(--sand);
+  color: var(--warn);
 }
 .store-route-tag.bad,
 .store-count.bad {
@@ -1099,7 +1099,7 @@ a.store-tree-name:hover {
   color: var(--online);
 }
 .store-verdict.wait {
-  color: var(--sand);
+  color: var(--warn);
 }
 .store-verdict.bad {
   color: var(--offmesh);
@@ -1108,8 +1108,7 @@ a.store-tree-name:hover {
   color: var(--accent);
 }
 .store-count.wait {
-  color: var(--sand);
-  animation: update-blink 1.2s ease-in-out infinite;
+  color: var(--warn);
 }
 .store-check {
   list-style: none;
@@ -1126,7 +1125,7 @@ a.store-tree-name:hover {
   color: var(--fg);
 }
 .store-check li::before {
-  font-weight: 700;
+  font-weight: 600;
 }
 .store-check li.ok::before {
   content: "\2713";
@@ -1134,7 +1133,7 @@ a.store-tree-name:hover {
 }
 .store-check li.warn::before {
   content: "\21";
-  color: var(--sand);
+  color: var(--warn);
 }
 .store-check li.block::before {
   content: "\2715";
@@ -1168,7 +1167,7 @@ a.store-tree-name:hover {
   font-size: var(--fs-sm);
 }
 .store-env-req {
-  color: var(--sand);
+  color: var(--warn);
   font-size: var(--fs-xs);
 }
 .store-env-name {

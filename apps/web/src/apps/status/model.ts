@@ -57,11 +57,14 @@ export function modelHtml(m: ModelHost): string {
   let ctx = '';
   if (m.ready && m.ctx) {
     const { cells, parts, used } = ctxCells(m);
-    // counts by colour alone, the names on hover
+    // the total, then each kind's count and name
     const legend = [
       `<span>${kTok(used)}/${kTok(m.ctx)} <span class="st-dim">${pct(used / m.ctx)}</span></span>`,
-      ...parts.map(([k, label, n]) => `<span title="${label}"><i class="ctx-${k} full"></i>${kTok(n)}</span>`),
-      `<span title="free"><i></i>${kTok(m.ctx - used)}</span>`,
+      ...parts.map(
+        ([k, label, n]) =>
+          `<span><i class="ctx-${k} full"></i>${kTok(n)} <span class="st-dim">${esc(label)}</span></span>`,
+      ),
+      `<span><i></i>${kTok(m.ctx - used)} <span class="st-dim">free</span></span>`,
     ].join(' ');
     ctx = `<div class="st-ctx"><div class="st-ctx-grid">${cells}</div><div class="st-model-key">${legend}</div></div>`;
   }

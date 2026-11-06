@@ -6,16 +6,7 @@
   grid-template-columns: 11rem minmax(0, 1fr);
 }
 .set-pane
-  :is(
-    button,
-    input:not([type="checkbox"], [type="radio"]),
-    select,
-    textarea,
-    .dk-ap-tab,
-    .dk-ap-segs,
-    .update-row,
-    .mesh-panel
-  ) {
+  :is(button, input:not([type="checkbox"], [type="radio"]), select, textarea, .dk-ap-tab, .dk-ap-segs, .mesh-panel) {
   border-radius: var(--set-r);
 }
 .set-pane .dk-ap-seg {

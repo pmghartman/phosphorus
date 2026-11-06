@@ -39,7 +39,6 @@
   font-size: var(--fs-3xs);
   font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.04em;
   color: var(--muted);
   pointer-events: none;
 }

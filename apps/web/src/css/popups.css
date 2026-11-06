@@ -42,7 +42,6 @@
   line-height: 1;
   pointer-events: none;
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
 }
 .modal-header > * {
   padding: 0 0.45ch;
@@ -85,7 +84,6 @@
 .update-head {
   padding: 0.45rem 0.75rem 0.1rem;
   font-size: var(--fs-2xs);
-  letter-spacing: 0.04em;
   color: var(--muted);
   font-weight: 600;
 }
@@ -97,7 +95,6 @@
 .update-ver,
 .update-state {
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
   white-space: nowrap;
 }
 .update-head .update-ver,

@@ -52,33 +52,9 @@
   color: var(--mesh-self);
 }
 
-/* each kind of thing its own hue, on its headline and its panel's word */
+/* one hue for every headline and panel word: the accent; the series inside a graph keep their own */
 :is(.st-stat, .st-panel) {
-  --st-hue: var(--fg);
-}
-:is(.st-stat, .st-panel):is(.st-cpu, .st-cpus) {
   --st-hue: var(--accent);
-}
-:is(.st-stat, .st-panel).st-mem {
-  --st-hue: var(--sand);
-}
-:is(.st-stat, .st-panel).st-disk {
-  --st-hue: var(--sky);
-}
-:is(.st-stat, .st-panel).st-net {
-  --st-hue: var(--teal);
-}
-:is(.st-stat, .st-panel).st-gpu {
-  --st-hue: var(--sage);
-}
-.st-panel.st-ctr {
-  --st-hue: var(--rose);
-}
-.st-panel.st-proc {
-  --st-hue: var(--sky);
-}
-.st-panel.st-model {
-  --st-hue: var(--glyph-purple);
 }
 
 /* the headlines: one card, a cell each, hairlines between however they wrap */
@@ -103,15 +79,14 @@
     0 -1px 0 var(--border);
 }
 .st-stat-k {
-  color: var(--st-hue);
+  color: var(--muted);
   font-size: var(--fs-xs);
   font-weight: 600;
 }
 .st-stat-v {
   color: var(--fg);
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-xl);
   font-weight: 600;
-  letter-spacing: -0.02em;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -127,9 +102,6 @@
 }
 
 /* the day by the hour across the page: one graph out of 100%, net's 24h totals under it on their own axis */
-.st-panel.st-day {
-  --st-hue: var(--teal);
-}
 .st-panels:not(:has(.st-panel)) {
   display: none;
 }
@@ -429,20 +401,20 @@
 .st-ctx {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 1.2ch;
+  align-items: flex-start;
+  gap: 0.5rem 1.8ch;
   line-height: 1.35;
 }
 .st-ctx-grid {
   display: grid;
-  grid-template-columns: repeat(10, 0.9ch);
-  gap: 0.25ch;
+  grid-template-columns: repeat(10, 1.15ch);
+  gap: 0.3ch;
   flex: none;
 }
 .st-ctx i {
   display: inline-block;
-  width: 0.9ch;
-  height: 0.9ch;
+  width: 1.15ch;
+  height: 1.15ch;
   border: 1px solid var(--border);
   vertical-align: -0.1em;
 }
@@ -482,17 +454,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* the key a column beside the waffle: the total first, then each kind with its name */
 .st-model-key {
   flex: 1 1 12ch;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 .st-model-key > span {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  gap: 0.6ch;
   white-space: nowrap;
-  margin-right: 1ch;
+}
+.st-model-key > span:first-child {
+  margin-bottom: 0.2rem;
+  color: var(--fg);
 }
 .st-model-key i {
-  margin-right: 0.4ch;
+  flex: none;
 }
 .st-model-foot {
   display: flex;
@@ -532,13 +513,13 @@
 }
 
 .st-lo {
-  color: var(--sage);
+  color: var(--online);
 }
 .st-mid {
-  color: var(--sand);
+  color: var(--warn);
 }
 .st-hi {
-  color: var(--rose);
+  color: var(--offmesh);
 }
 .st-cache {
   color: var(--sky);

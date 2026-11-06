@@ -16,30 +16,6 @@ svg.ic.ic-fill {
   fill: currentColor;
   stroke: none;
 }
-/* each kind of thing its own muted hue */
-.ic-host {
-  color: var(--rose);
-}
-.ic-folder,
-.ic-mkdir,
-.ic-rename {
-  color: var(--sand);
-}
-.ic-file,
-.ic-split {
-  color: var(--sky);
-}
-.ic-upload,
-.ic-download {
-  color: var(--sage);
-}
-.ic-refresh {
-  color: var(--teal);
-}
-.ic-view,
-.ic-trash {
-  color: var(--rose);
-}
 
 /* status line, only while there is something to say */
 

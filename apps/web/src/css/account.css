@@ -129,9 +129,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dk-icon.dk-users .ic {
-  color: var(--sky);
-}
 @media (max-width: 720px) {
   .acct-user,
   .acct-page,
@@ -162,7 +159,7 @@
   height: 0.85rem;
 }
 .dk-bar .dk-profile .dk-crown {
-  stroke: var(--sand);
+  stroke: var(--warn);
 }
 .dk-bar .dk-profile .ic {
   overflow: visible;
@@ -279,5 +276,4 @@
   color: var(--muted);
   font-weight: 600;
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
 }

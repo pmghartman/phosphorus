@@ -1,9 +1,8 @@
 // the desktop switcher: a button on the bar naming the desktop shown, and a filmstrip along the
-// bottom of the screen, each desktop a card of its own wallpaper; a host not logged into locked
+// bottom of the screen, each desktop a card of its own wallpaper; the hosts logged into alone
 
-import { dkUnlock } from '../features/account.ts';
 import { hostSwitchNow } from '../features/mesh/mesh.ts';
-import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
+import { DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkSettings } from '../settings/settings.ts';
 import { hostInfo, hostWarm, wallSrc } from './desk/hosts.ts';
@@ -15,13 +14,12 @@ import { dkPopReg, dkPopsClose } from './taskbar.ts';
 let btn: HTMLButtonElement | undefined;
 let strip: HTMLElement | undefined;
 
-// the desktops: the shared one, then each host up, logged in first, the one serving this page first
+// the desktops: the shared one, then each host logged into and up, the one serving this page first
 function desktops(): string[] {
   const up = new Set([...st.terminalHosts, st.selfHost]);
-  const rank = (h: string) => (dk.creds.has(h) ? 0 : 1);
-  const hosts = [...new Set([...dk.creds.keys(), ...st.terminalHosts])]
+  const hosts = [...dk.creds.keys()]
     .filter((h) => up.has(h))
-    .sort((a, b) => rank(a) - rank(b) || Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b));
+    .sort((a, b) => Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b));
   return ['', ...hosts];
 }
 
@@ -108,41 +106,28 @@ function shot(h: string): HTMLElement {
     }
   }
   if (url) box.style.backgroundImage = `url("${url}")`;
-  else if (!h || dk.creds.has(h)) box.append(dkGlyph(spaceGlyph(h), 'dk-card-mark'));
+  else box.append(dkGlyph(spaceGlyph(h), 'dk-card-mark'));
   return box;
 }
 
 function card(h: string): HTMLButtonElement {
-  const locked = !!h && !dk.creds.has(h);
   const here = hostSwitchNow()?.to || st.selfHost;
   const wins = [...dk.wins.values()].filter((w) => (w.space ?? '') === h && !w.leaving).length;
-  const b = Object.assign(el('button', `dk-card${h === dk.space ? ' cur' : ''}${locked ? ' locked' : ''}`), {
+  const b = Object.assign(el('button', `dk-card${h === dk.space ? ' cur' : ''}`), {
     type: 'button',
-    title: locked
-      ? `log in to ${h}`
-      : h
-        ? `${h}'s desktop: its apps, files and terminals${h === here ? `; this page is served by ${h}` : ''}`
-        : 'the shared desktop: phosphorus and the apps added to it',
+    title: h
+      ? `${h}'s desktop: its apps, files and terminals${h === here ? `; this page is served by ${h}` : ''}`
+      : 'the shared desktop: phosphorus and the apps added to it',
   });
   b.setAttribute('role', 'option');
   b.setAttribute('aria-selected', String(h === dk.space));
   const pic = shot(h);
-  if (locked) pic.append(dkGlyph(DK_GLYPHS.lock!, 'dk-card-lock'));
   const label = el('span', 'dk-card-t');
-  label.append(
-    dkGlyph(locked ? DK_GLYPHS.lock! : spaceGlyph(h), 'dk-card-ic'),
-    el('span', 'dk-card-name', spaceName(h)),
-  );
-  const note = locked ? 'log in' : wins ? `${wins} ${wins === 1 ? 'window' : 'windows'}` : '';
+  label.append(dkGlyph(spaceGlyph(h), 'dk-card-ic'), el('span', 'dk-card-name', spaceName(h)));
+  const note = wins ? `${wins} ${wins === 1 ? 'window' : 'windows'}` : '';
   if (note) label.append(el('span', 'dk-card-n', note));
   b.append(pic, label);
   b.addEventListener('click', () => {
-    // the login asked for by the switcher's button, the strip closed under it
-    if (locked) {
-      show(false);
-      if (btn) dkUnlock(h, btn, () => dkSpace(h));
-      return;
-    }
     dkSpace(h);
     show(false);
   });
@@ -153,7 +138,7 @@ function card(h: string): HTMLButtonElement {
         e.clientX,
         e.clientY,
         [
-          [locked ? `log in to ${h}` : `${h}'s desktop`, () => b.click(), true],
+          [`${h}'s desktop`, () => b.click(), true],
           ['settings', () => dkSettings('hosts', h), true],
         ],
         undefined,
@@ -172,9 +157,9 @@ function fill(peek = true) {
   row.append(...ids.map(card));
   strip.replaceChildren(head, row);
   place();
-  // a logged in host never seen in this browser: its last desk asked for, its wallpaper then shown
+  // a host never seen in this browser: its last desk asked for, its wallpaper then shown
   for (const h of peek ? ids : [])
-    if (h && dk.creds.has(h) && !hostInfo(h).desk)
+    if (h && !hostInfo(h).desk)
       void hostWarm(h).then((got) => {
         if (got && strip && !strip.hidden) fill();
       });

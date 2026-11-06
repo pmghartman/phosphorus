@@ -113,7 +113,6 @@
   color: var(--muted);
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
 }
 .fm-place {
   display: flex;
@@ -242,33 +241,20 @@
 .fm-cols .fm-c-size {
   text-align: right;
 }
+/* one ink: folders the text's, files muted */
 .fm-dir {
-  color: var(--sand);
+  color: var(--fg);
 }
-.fm-file {
-  color: var(--sky);
-}
-.fm-code {
-  color: var(--accent);
-}
-.fm-image {
-  color: var(--teal);
-}
+.fm-file,
+.fm-code,
+.fm-image,
 .fm-video,
-.fm-pdf {
-  color: var(--rose);
-}
-.fm-audio {
-  color: var(--sage);
-}
-.fm-archive {
-  color: var(--accent-2);
-}
+.fm-pdf,
+.fm-audio,
+.fm-archive,
+.fm-drive,
 .fm-place .fm-host {
-  color: var(--rose);
-}
-.fm-drive {
-  color: var(--sky);
+  color: var(--muted);
 }
 .fm-status {
   flex: none;

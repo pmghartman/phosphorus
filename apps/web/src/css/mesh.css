@@ -27,7 +27,6 @@
   line-height: 1;
   color: var(--muted);
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
   background: none;
   border: 0;
   pointer-events: none;
@@ -222,7 +221,6 @@
 }
 .mesh-stats-head {
   color: var(--muted);
-  letter-spacing: 0.04em;
   font-size: var(--fs-3xs);
   padding-top: 0.35rem;
 }
