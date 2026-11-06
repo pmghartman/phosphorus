@@ -157,6 +157,8 @@ function serveTLS(on: boolean) {
     try {
       splitter = split(httpsPort);
       notes.note("443", `443 split on this edge`);
+      // a fresh splitter: the certificate's state worked out again below
+      tlsSig = "\0";
     } catch (e) {
       tlsState = `can't listen on ${httpsPort}: ${errText(e)}`;
       notes.note("443", tlsState);
