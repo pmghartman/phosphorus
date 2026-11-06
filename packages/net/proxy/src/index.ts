@@ -334,9 +334,14 @@ const hostPort = (rt: Route) => (rt.ip.includes(":") ? `[${rt.ip}]` : rt.ip) + "
 
 const protoOf = (c: Ctx) => (isHTTPS(c) ? "https" : "http");
 
+// https served here: the edge's TLS ingress up with a certificate
+let httpsReady = false;
+export const setHTTPSReady = (on: boolean) => void (httpsReady = on);
+
 // a public request over plain http for a name under the domain: sent to https
+// once this host serves it, served over http until then
 const toHTTPS = (c: Ctx): Response | undefined => {
-  if (!baseDomain || isHTTPS(c) || onMesh(c)) return;
+  if (!baseDomain || !httpsReady || isHTTPS(c) || onMesh(c)) return;
   const host = reqHost(c.req);
   if (host !== baseDomain && !host.endsWith("." + baseDomain)) return;
   return new Response(null, {

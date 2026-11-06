@@ -5,7 +5,15 @@ import { promises as resolver } from "node:dns";
 import { Client, LetsEncrypt, newAccountKey } from "@phosphorus/acme";
 import * as dns from "@phosphorus/dns";
 import * as peers from "@phosphorus/peers";
-import { type Forwarded, forwardPorts, listenTLS, type PortSpec, type Split, split } from "@phosphorus/proxy";
+import {
+  type Forwarded,
+  forwardPorts,
+  listenTLS,
+  type PortSpec,
+  type Split,
+  setHTTPSReady,
+  split,
+} from "@phosphorus/proxy";
 import {
   acmeRel,
   acmeState,
@@ -151,6 +159,7 @@ function serveTLS(on: boolean) {
     tlsServer = undefined;
     tlsSig = "";
     tlsState = "off";
+    setHTTPSReady(false);
     return;
   }
   if (!splitter) {
@@ -177,6 +186,7 @@ function serveTLS(on: boolean) {
     ? listenTLS({ cert: t.cert, key: t.key }, appHandler, { pass: users.Pass, issuers: users.Issuers })
     : undefined;
   splitter.setIngress(tlsServer?.port ?? 0);
+  setHTTPSReady(!!tlsServer);
   tlsState = tlsServer ? "serving" : t ? "the certificate didn't load" : "no certificate yet";
   notes.note("tls", tlsServer ? `https served with the certificate of ${new Date(t!.at).toISOString()}` : tlsState);
   // the last server's connections finish on their own
