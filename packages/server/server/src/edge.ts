@@ -215,9 +215,10 @@ function publishAcme() {
   store.write(acmeStateRel, { ...s, at: now() });
 }
 
-// the registrar's delegation as the world's resolvers see it, asked every five minutes
+// the registrar's delegation as the world's resolvers see it: asked every five
+// minutes once it's there, every minute until then
 async function checkDelegation(d: Domain) {
-  if (now() - delegation.at < 5 * 60_000) return;
+  if (now() - delegation.at < (delegation.ok ? 5 * 60_000 : 60_000)) return;
   delegation.at = now();
   const want = zone?.nameservers ?? [];
   const where = want.length

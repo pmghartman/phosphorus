@@ -65,6 +65,8 @@ const row = (k: string, ...v: (HTMLElement | string)[]) => {
 };
 const input = (placeholder: string, value = '') =>
   noFill(Object.assign(el('input', 'dk-ap-in'), { placeholder, value, spellcheck: false, autocapitalize: 'off' }));
+const secret = (placeholder: string) =>
+  noFill(Object.assign(el('input', 'dk-ap-in'), { placeholder, spellcheck: false, autocapitalize: 'off' }), true);
 
 async function api(body?: Record<string, unknown>): Promise<any> {
   const r = await fetch('/api/control', body ? { method: 'POST', body: JSON.stringify(body) } : {});
@@ -199,6 +201,7 @@ export function networkSection(pane: HTMLElement): () => void {
         ...e.nameservers.map((n) => copyRow(`${n.name}  ${n.ip}`, 'nameserver and its address')),
         row('delegation', e.delegation.ok ? 'the registrar points here' : e.delegation.why || 'checking'),
       );
+      if (!e.delegation.ok) items.push(...porkbunForm(e));
     }
     const t = e.tls;
     let cert = '';
@@ -216,6 +219,36 @@ export function networkSection(pane: HTMLElement): () => void {
     sure(drop, () => void step(drop, { action: 'domain', name: '' }));
     items.push(row('serve from', picks.wrap), acts(save, drop));
     return items;
+  };
+
+  // a domain at porkbun pointed here in one press: its API keys used for the host records
+  // and the nameservers, then forgotten
+  const porkbunForm = (e: Edge): HTMLElement[] => {
+    const key = secret('porkbun API key');
+    const sec = secret('porkbun secret API key');
+    const go = btn(`point ${e.domain} here through porkbun`, 'primary');
+    const out = el('div', 'join-key-out');
+    go.addEventListener('click', async () => {
+      const got = await step(go, {
+        action: 'delegate',
+        registrar: 'porkbun',
+        apikey: key.value,
+        secretapikey: sec.value,
+      });
+      key.value = '';
+      sec.value = '';
+      if (got?.steps) out.replaceChildren(...(got.steps as string[]).map((s) => note(s)));
+    });
+    return [
+      head('at porkbun'),
+      note(
+        `a domain registered at porkbun can be pointed here from this page: at porkbun turn on API access for ${e.domain} (domain management, its details) and make an API key (account, API access); the keys are used for the host records and the nameservers above, then forgotten. any other registrar takes the nameservers by hand`,
+      ),
+      row('API key', key),
+      row('secret', sec),
+      acts(go),
+      out,
+    ];
   };
 
   // --- public ports --------------------------------------------------------------------

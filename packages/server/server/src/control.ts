@@ -1,6 +1,7 @@
 // settings › network: the mesh's domain and its edge hosts, public ports, its own
 // control server, its relay, join keys and device approvals asked of it
 import * as peers from "@phosphorus/peers";
+import { porkbun } from "@phosphorus/registrar";
 import { domainRe, domainRel, portError, removePort, setPort } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import { errText, now } from "@phosphorus/util";
@@ -76,13 +77,32 @@ function setDomain(p: Record<string, unknown>): Res {
   return [200, { ok: true }];
 }
 
-// an admin's step: the domain and its edges, a public port, the control server and
-// relay, keys, and the devices on it
+// the domain pointed at the edges at its registrar: porkbun's API keys used for the
+// glue records and the nameservers, then forgotten
+async function delegate(p: Record<string, unknown>): Promise<Res> {
+  const e = edgeStatus();
+  if (!e.domain) return [409, { error: "set the domain first" }];
+  if (!e.nameservers.length) return [409, { error: "no edge host with a public address yet" }];
+  if (str(p.registrar) !== "porkbun") return [400, { error: "the registrar must be porkbun" }];
+  const keys = { apikey: str(p.apikey).trim(), secretapikey: str(p.secretapikey).trim() };
+  if (!keys.apikey || !keys.secretapikey)
+    return [400, { error: "porkbun's API key and secret API key are both needed" }];
+  try {
+    return [200, { steps: await porkbun.delegate(keys, e.domain, e.nameservers) }];
+  } catch (err) {
+    return [502, { error: errText(err) }];
+  }
+}
+
+// an admin's step: the domain and its edges, its delegation, a public port, the
+// control server and relay, keys, and the devices on it
 export async function controlAction(p: Record<string, unknown>): Promise<Res> {
   const c = ctl.control();
   switch (str(p.action)) {
     case "domain":
       return setDomain(p);
+    case "delegate":
+      return delegate(p);
     case "port-set": {
       const row = {
         host: str(p.host).toLowerCase(),
@@ -131,7 +151,7 @@ export async function controlAction(p: Record<string, unknown>): Promise<Res> {
     400,
     {
       error:
-        "action must be domain, port-set, port-remove, set, relay, join-key, device-key, approve, rename or remove",
+        "action must be domain, delegate, port-set, port-remove, set, relay, join-key, device-key, approve, rename or remove",
     },
   ];
 }

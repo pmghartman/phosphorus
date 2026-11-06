@@ -324,6 +324,9 @@
         "@phosphorus/wsock": "workspace:*",
       },
     },
+    "packages/net/registrar": {
+      "name": "@phosphorus/registrar",
+    },
     "packages/net/term": {
       "name": "@phosphorus/term",
       "dependencies": {
@@ -354,7 +357,6 @@
         "@phosphorus/config": "workspace:*",
         "@phosphorus/delta": "workspace:*",
         "@phosphorus/dns": "workspace:*",
-        "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
         "@phosphorus/hostdesk": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
@@ -363,6 +365,7 @@
         "@phosphorus/peers": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
         "@phosphorus/reconfig": "workspace:*",
+        "@phosphorus/registrar": "workspace:*",
         "@phosphorus/services": "workspace:*",
         "@phosphorus/stacks": "workspace:*",
         "@phosphorus/stats": "workspace:*",
@@ -465,6 +468,8 @@
     "@phosphorus/proxy": ["@phosphorus/proxy@workspace:packages/net/proxy"],
 
     "@phosphorus/reconfig": ["@phosphorus/reconfig@workspace:packages/host/reconfig"],
+
+    "@phosphorus/registrar": ["@phosphorus/registrar@workspace:packages/net/registrar"],
 
     "@phosphorus/server": ["@phosphorus/server@workspace:packages/server/server"],
 
