@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Socket } from "bun";
 
 // the package read once per test run: the same domain proxy.test.ts sets
 process.env.BASE_DOMAIN = "mulab.dev";
@@ -207,3 +208,95 @@ test("public ports: TCP and UDP carried to the service, a dropped spec closed", 
     udpSvc.close();
   }
 });
+
+// a server sending these bytes once anything arrives, minding its own backpressure
+function bulk(big: Uint8Array) {
+  const pump = (s: Socket<{ off: number }>) => {
+    while (s.data.off < big.length) {
+      const n = s.write(big, s.data.off);
+      if (n <= 0) return;
+      s.data.off += n;
+    }
+    s.end();
+  };
+  const l = Bun.listen<{ off: number }>({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open(s) {
+        s.data = { off: -1 };
+      },
+      data(s) {
+        if (s.data.off >= 0) return;
+        s.data.off = 0;
+        pump(s);
+      },
+      drain: pump,
+    },
+  });
+  return { port: l.port, stop: () => l.stop(true) };
+}
+
+// everything a client reading nothing for its first moments gets, until the far side closes
+function slowRead(port: number, first: Uint8Array): Promise<Uint8Array> {
+  return new Promise((res, rej) => {
+    const got: Uint8Array[] = [];
+    Bun.connect({
+      hostname: "127.0.0.1",
+      port,
+      socket: {
+        open(s) {
+          s.write(first);
+          s.pause();
+          setTimeout(() => s.resume(), 300);
+        },
+        data(_s, d) {
+          got.push(new Uint8Array(d));
+        },
+        close() {
+          const out = new Uint8Array(got.reduce((n, g) => n + g.length, 0));
+          let i = 0;
+          for (const g of got) {
+            out.set(g, i);
+            i += g.length;
+          }
+          res(out);
+        },
+        error(_s, e) {
+          rej(e);
+        },
+        connectError(_s, e) {
+          rej(e);
+        },
+      },
+    });
+  });
+}
+
+test("a reply bigger than the kernel's buffers reaches a slow client whole, through 443 and a public port", async () => {
+  const big = new Uint8Array(16 << 20);
+  for (let i = 0; i < big.length; i++) big[i] = (i * 31 + (i >> 13)) & 0xff;
+  const svc = bulk(big);
+  const sp = split(0, "127.0.0.1");
+  sp.setIngress(svc.port);
+  const l = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+  const pub = l.port;
+  l.stop(true);
+  const fw = await forwardPorts(
+    [{ name: "big", proto: "tcp", pub, ip: "127.0.0.1", port: svc.port }],
+    undefined,
+    "127.0.0.1",
+  );
+  try {
+    const viaEdge = await slowRead(sp.port, new TextEncoder().encode("GET /big HTTP/1.1\r\n\r\n"));
+    expect(viaEdge.length).toBe(big.length);
+    expect(Bun.hash(viaEdge)).toBe(Bun.hash(big));
+    const viaPort = await slowRead(pub, new TextEncoder().encode("go"));
+    expect(viaPort.length).toBe(big.length);
+    expect(Bun.hash(viaPort)).toBe(Bun.hash(big));
+  } finally {
+    fw.stop();
+    sp.stop();
+    svc.stop();
+  }
+}, 30_000);
