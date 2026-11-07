@@ -18,13 +18,11 @@ const allowed = new Set([
   "CC0-1.0",
   "Unlicense",
   "BlueOak-1.0.0",
-  "Python-2.0",
-  "PSF-2.0",
   "MIT-0",
   "Zlib",
-  "CC-BY-4.0",
-  "LGPL-3.0-or-later",
 ]);
+// dependencies a package lists for its command line alone, never in what ships
+const cliOnly: Record<string, string[]> = { "markdown-it": ["argparse"] };
 const licenseFile = /^(licen[cs]e|copying|notice|unlicense)([-._].*)?$/i;
 const root = resolve(import.meta.dir, "..");
 const checkOnly = process.argv.includes("--check");
@@ -109,7 +107,7 @@ function walk(name: string, from: string) {
     texts,
     purl: `pkg:npm/${name}@${pj.version}`,
   });
-  for (const dep of Object.keys(pj.dependencies ?? {})) walk(dep, dir);
+  for (const dep of Object.keys(pj.dependencies ?? {})) if (!cliOnly[name]?.includes(dep)) walk(dep, dir);
   // an optional dependency that didn't install is left out
   for (const dep of Object.keys(pj.optionalDependencies ?? {})) {
     try {

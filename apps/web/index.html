@@ -57,12 +57,12 @@ window or popup while open and back here on close -->
         <span class="update-progress-label" id="update-progress-label"></span>
       </div>
       <div class="update-mesh" id="update-mesh">
-        <div class="update-section">phosphorus</div>
-        <p class="update-latest" id="update-latest" hidden></p>
-        <ul class="update-versions" id="update-versions"></ul>
-        <div class="update-actions" id="update-start">
-          <button type="button" class="btn" id="mesh-update">update</button>
+        <div class="update-top">
+          <span class="update-section">phosphorus</span>
+          <span class="update-latest" id="update-latest" hidden></span>
+          <span class="update-go" id="update-start"><button type="button" class="btn" id="mesh-update">update</button></span>
         </div>
+        <ul class="update-versions" id="update-versions"></ul>
         <div class="update-actions" id="update-foot" hidden>
           <button type="button" id="update-cancel" class="btn danger">cancel</button>
         </div>
@@ -71,12 +71,12 @@ window or popup while open and back here on close -->
                 </div>
     <!-- afterglow, phosphorus's streaming host, updated on its own; settings › update alone: features/afterglowup.ts -->
     <div class="update-pane update-ag" id="update-ag" hidden>
-      <div class="update-section">afterglow</div>
-      <p class="update-latest" id="update-ag-latest"></p>
-      <ul class="update-versions" id="update-ag-versions"></ul>
-      <div class="update-actions">
-        <button type="button" class="btn" id="update-ag-go">update afterglow</button>
+      <div class="update-top">
+        <span class="update-section">afterglow</span>
+        <span class="update-latest" id="update-ag-latest"></span>
+        <span class="update-go"><button type="button" class="btn" id="update-ag-go">update</button></span>
       </div>
+      <ul class="update-versions" id="update-ag-versions"></ul>
     </div>
     <div class="view" id="view-status"><div class="st-wait">connecting</div></div>
     <!-- optional apps for the mesh, drawn by apps/store.ts -->
@@ -88,11 +88,11 @@ window or popup while open and back here on close -->
           <div class="about-version" id="about-version"></div>
         </div>
         <div class="about-info">
-          <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
-          <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0. <a class="about-link" href="/licenses/LICENSE.txt" target="_blank" rel="noopener">Read the license</a></span></div>
-          <div class="about-row"><span class="about-key">bundled</span><span class="about-val">Bun (MIT) and, on Windows, Wintun (its prebuilt binaries license), with the npm packages in the app and this page, xterm.js and KaTeX among them, each under its own license.</span></div>
-          <div class="about-row"><span class="about-key">downloaded</span><span class="about-val">llama.cpp (MIT), fetched by a host that runs a model; a model&rsquo;s weights come under their own license. Services installed from the service wizard run under their own licenses, shown on each one&rsquo;s page.</span></div>
-          <div class="about-row"><span class="about-key">notices</span><span class="about-val">Every component&rsquo;s license text, also beside the app as THIRD_PARTY_NOTICES.txt. <a class="about-link" href="/licenses/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">Read the third-party notices</a></span></div>
+          <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman</span></div>
+          <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache-2.0 &middot; <a class="about-link" href="/licenses/LICENSE.txt" target="_blank" rel="noopener">text</a></span></div>
+          <div class="about-row"><span class="about-key">bundles</span><span class="about-val">Bun, Wintun on Windows, npm packages</span></div>
+          <div class="about-row"><span class="about-key">fetches</span><span class="about-val">llama.cpp, on a model host</span></div>
+          <div class="about-row"><span class="about-key">notices</span><span class="about-val"><a class="about-link" href="/licenses/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">third-party licenses</a></span></div>
         </div>
       </div>
     </div>

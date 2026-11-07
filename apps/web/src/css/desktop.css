@@ -92,6 +92,22 @@
     var(--dk-wall) center / cover no-repeat,
     var(--desk, var(--bg));
 }
+.dk-walled .dk-field {
+  display: none;
+}
+/* the ascii wave field (desk/field.ts), under the icons */
+.dk-field {
+  position: absolute;
+  grid-area: w;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  font-family: var(--mono);
+  pointer-events: none;
+}
+.dk-field[hidden] {
+  display: none;
+}
 .dk-icons {
   position: absolute;
   grid-area: w;

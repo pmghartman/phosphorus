@@ -1,6 +1,7 @@
 // --- settings › appearance: light, dark or black; the wallpaper, a picture of the user's kept on
 // the mesh; how services open
 
+import { fieldOn, fieldSet } from '../desktop/desk/field.ts';
 import { dkPick, dkWallPaint, servicesInTabs, WALL_EVENT } from '../desktop/desk/wallpaper.ts';
 import { dkSay } from '../desktop/desk.ts';
 import { acctCall } from '../lib/api.ts';
@@ -116,6 +117,7 @@ export function appearanceSection(pane: HTMLElement): () => void {
         note('system follows the browser; black is for oled screens'),
         head('wallpaper'),
         can ? row('picture', wall) : note('log in to keep a wallpaper'),
+        check('field', 'moving text', fieldOn(), fieldSet, 'the wallpaper when no picture is up; a click ripples it'),
         head('windows'),
         check(
           'svctab',

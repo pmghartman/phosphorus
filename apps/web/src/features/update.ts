@@ -129,18 +129,6 @@ function renderVersions() {
   });
   if (!rows.length)
     rows.push(Object.assign(document.createElement('li'), { className: 'empty', textContent: 'no hosts in view' }));
-  // column heads in the rows' own grid, so they line up with them
-  const head = document.createElement('li');
-  head.className = 'update-row update-head';
-  const stateHead = updateChain || order.some(isQuiet) ? 'status' : '';
-  for (const [cls, text] of [
-    ['update-host', 'host'],
-    ['update-ver', 'version'],
-    ['update-state', stateHead],
-  ]) {
-    head.appendChild(Object.assign(document.createElement('span'), { className: cls, textContent: text }));
-  }
-  rows.unshift(head);
   const sig = rows.map((li) => `${li.className}|${li.textContent}|${li.querySelector('.is-self') ? 1 : 0}`).join('\n');
   if (sig === updateVersions.dataset.sig) return;
   updateVersions.dataset.sig = sig;

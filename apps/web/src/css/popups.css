@@ -81,12 +81,6 @@
   padding: 0.3rem 0.75rem;
   font-size: var(--fs-md);
 }
-.update-head {
-  padding: 0.45rem 0.75rem 0.1rem;
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-  font-weight: 500;
-}
 .update-host {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -97,11 +91,7 @@
   font-size: var(--fs-xs);
   white-space: nowrap;
 }
-.update-head .update-ver,
-.update-head .update-state {
-  font-size: inherit;
-}
-.update-row:not(.update-head)[class*=" "] .update-ver {
+.update-row[class*=" "] .update-ver {
   color: var(--muted);
 }
 
@@ -253,9 +243,21 @@
 .update-mesh .update-actions {
   padding: 0 0.75rem;
 }
+/* a section's one line: its name, the newest release, the button that takes it */
+.update-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1.5ch;
+  padding: 0.45rem 0.75rem;
+}
+.update-go {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+}
 /* the newest release, asked on opening: a turning ring until the feed answers */
 .update-latest {
-  margin: 0.15rem 0.75rem 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.6ch;
@@ -290,9 +292,8 @@
   }
 }
 
-/* the pane's two sections, phosphorus and afterglow, each named over its hosts */
+/* the pane's two sections, phosphorus and afterglow, each named beside its newest release */
 .update-section {
-  padding: 0.55rem 0.75rem 0.1rem;
   color: var(--fg);
   font-size: var(--fs-sm);
   font-weight: 500;

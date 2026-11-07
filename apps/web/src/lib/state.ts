@@ -45,6 +45,7 @@ export const PREF_LS: Record<string, string> = {
   shared: 'phosphorus-shared-apps',
   spaceicons: 'phosphorus-space-icons',
   spacewalls: 'phosphorus-space-walls',
+  deskfield: 'phosphorus-desk-field',
 };
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 

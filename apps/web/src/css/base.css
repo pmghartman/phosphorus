@@ -170,8 +170,8 @@ body {
 .update-pane .update-row {
   padding: 0.3rem 0;
 }
-.update-pane .update-head {
-  padding: 0.3rem 0 0.1rem;
+.update-pane .update-top {
+  padding: 0.3rem 0;
 }
 .update-pane .update-confirm {
   padding: 0.45rem 0;

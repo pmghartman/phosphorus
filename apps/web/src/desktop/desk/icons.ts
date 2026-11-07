@@ -39,6 +39,7 @@ import {
 } from '../spaces.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
+import { dkField } from './field.ts';
 import { hostInfo, type Item, iconSrc, itemKey } from './hosts.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
@@ -57,7 +58,7 @@ export function dkDesktop(): void {
   const status = [dkMeshQuick(), dkUpdateQuick(), dkMcpTray()];
   bar.append(...status.filter((x): x is HTMLElement => !!x), dkBellTray(), dk.clock!, dkControlTray());
   dkWallPaint();
-  desk.append(icons, wins, bar);
+  desk.append(dkDeskField(icons), icons, wins, bar);
   dkView.replaceChildren(desk);
   dkBand(icons);
   dkDeskMenu(icons);
@@ -92,6 +93,15 @@ export function dkDesktop(): void {
 mobileQuery.addEventListener('change', () => {
   if (isMobile()) for (const w of dk.wins.values()) dkSnap(w, 'max');
 });
+
+// the desk's moving field, a press on the bare layer over it rippling it
+function dkDeskField(over: HTMLElement): HTMLElement {
+  const field = dkField();
+  over.addEventListener('pointerdown', (e) => {
+    if (e.target === over) field.poke(e.clientX, e.clientY);
+  });
+  return field.el;
+}
 
 // on each minute's turn, not up to 5s after it
 (function dkClockTick() {

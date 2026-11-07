@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 /* the version tucked into the glyph's bottom right corner */
@@ -17,14 +17,24 @@
   position: relative;
 }
 
-/* the ascii mark: its shape the svg, its color the theme's glyph gradient */
+/* the ascii mark: its shape the svg, its color the theme's glyph gradient sliding as the svg's own;
+   mixed in oklch so the purple and orange meet bright, not through grey */
 .about-mark {
   display: block;
-  width: 16rem;
-  height: 16rem;
+  width: 11rem;
+  height: 11rem;
   max-width: 100%;
   user-select: none;
-  background: linear-gradient(150deg, var(--glyph-purple), var(--glyph-orange) 50%, var(--glyph-purple));
+  background: linear-gradient(
+    in oklch 150deg,
+    var(--glyph-purple),
+    var(--glyph-orange) 25%,
+    var(--glyph-purple) 50%,
+    var(--glyph-orange) 75%,
+    var(--glyph-purple)
+  );
+  background-size: 200% 200%;
+  animation: about-shift 6s ease-in-out infinite;
   -webkit-mask: url("../../static/phosphorus-ascii.svg") center / contain no-repeat;
   mask: url("../../static/phosphorus-ascii.svg") center / contain no-repeat;
 }
@@ -67,16 +77,18 @@
 .about-info {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 1.5ch;
+  align-items: baseline;
   position: relative;
   border: 1px solid var(--border);
-  padding: 0.9rem 0.75rem 0.75rem;
+  padding: 0.8rem 0.75rem 0.65rem;
   margin-top: 0.5rem;
 }
 .about-info::before {
   content: "about";
+  grid-column: 1 / -1;
   position: absolute;
   top: 0;
   left: 0.6rem;
@@ -88,10 +100,9 @@
   font-size: var(--fs-xs);
 }
 
+/* key and value on one line, the keys a column */
 .about-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  display: contents;
 }
 
 .about-key {
@@ -102,7 +113,7 @@
 
 .about-val {
   color: var(--muted);
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   line-height: 1.4;
 }
 

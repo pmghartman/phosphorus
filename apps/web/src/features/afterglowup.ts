@@ -72,8 +72,6 @@ export function agRender(): void {
   const names = hosts();
   const anyBehind = names.some(behind);
   onBehind(anyBehind && latest?.version ? latest.version : '');
-  const head = el('li', 'update-row update-head');
-  head.append(el('span', 'update-host', 'host'), el('span', 'update-ver', 'version'), el('span', 'update-state', ''));
   const rows = names.map((h) => {
     const s = statusOf(h);
     const up = updating(h);
@@ -92,11 +90,11 @@ export function agRender(): void {
   const sig = rows.map((r) => `${r.className}|${r.textContent}`).join('\n');
   if (sig !== rowsEl.dataset.sig) {
     rowsEl.dataset.sig = sig;
-    rowsEl.replaceChildren(head, ...rows);
+    rowsEl.replaceChildren(...rows);
   }
   goBtn.disabled = !anyBehind;
   goBtn.classList.toggle('primary', anyBehind);
-  goBtn.textContent = names.some(updating) ? 'updating afterglow' : 'update afterglow';
+  goBtn.textContent = names.some(updating) ? 'updating' : 'update';
   goBtn.title = anyBehind
     ? `afterglow v${latest!.version} on ${names.filter(behind).join(', ')}`
     : 'every host is on the latest afterglow';
