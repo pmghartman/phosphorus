@@ -315,6 +315,25 @@ test.skipIf(process.platform !== "linux")(
   },
 );
 
+test("net delta: a link first read counts nothing, a reset counts from zero", () => {
+  const G = 1e9;
+  // mulab-02's restart: tailscale0 newly read, 777 GB in since it came up
+  const last = { wlp3s0: { rx: 907.5 * G, tx: 364.3 * G }, enp2s0: { rx: 82.5 * G, tx: 21.5 * G } };
+  const cur = {
+    wlp3s0: { rx: 907.5 * G + 8e6, tx: 364.3 * G + 2e6 },
+    enp2s0: { rx: 82.5 * G + 1e6, tx: 21.5 * G },
+    tailscale0: { rx: 777 * G, tx: 238 * G },
+  };
+  expect(stats.netDelta(last, cur)).toEqual({ rx: 9e6, tx: 2e6 });
+  // its next reading counted
+  const next = { ...cur, tailscale0: { rx: 777 * G + 5e6, tx: 238 * G + 1e6 } };
+  expect(stats.netDelta(cur, next)).toEqual({ rx: 5e6, tx: 1e6 });
+  // a counter that fell (reboot, link remade) counted from zero
+  expect(stats.netDelta(last, { wlp3s0: { rx: 3e6, tx: 364.3 * G + 1 } })).toEqual({ rx: 3e6, tx: 1 });
+  // no earlier reading at all: a baseline
+  expect(stats.netDelta(undefined, cur)).toEqual({ rx: 0, tx: 0 });
+});
+
 test("day trend", () => {
   const H = 3600 * 1000;
   const M = 5 * 60 * 1000;

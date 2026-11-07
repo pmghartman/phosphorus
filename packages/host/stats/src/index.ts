@@ -42,17 +42,20 @@ function realLinks(): Record<string, RxTx> {
   return out;
 }
 
-// bytes since the last bucket: a counter that fell, or any after a reboot, counted from zero
-function netSince(cur: Record<string, RxTx>): RxTx {
+// bytes moved between two readings: a counter that fell (reboot, link remade) from zero;
+// a link with no earlier reading only its baseline, never its whole counter
+export function netDelta(last: Record<string, RxTx> | null | undefined, cur: Record<string, RxTx>): RxTx {
   const d = { rx: 0, tx: 0 };
-  const fresh = netDay.boot !== bootID;
   for (const [n, v] of Object.entries(cur)) {
-    const p = fresh ? undefined : netDay.last?.[n];
-    d.rx += p && v.rx >= p.rx ? v.rx - p.rx : v.rx;
-    d.tx += p && v.tx >= p.tx ? v.tx - p.tx : v.tx;
+    const p = last?.[n];
+    if (!p) continue;
+    d.rx += v.rx >= p.rx ? v.rx - p.rx : v.rx;
+    d.tx += v.tx >= p.tx ? v.tx - p.tx : v.tx;
   }
   return d;
 }
+
+const netSince = (cur: Record<string, RxTx>) => netDelta(netDay.last, cur);
 
 const pct1 = (f: number) => Math.round(f * 1000) / 10;
 
