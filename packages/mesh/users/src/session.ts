@@ -70,7 +70,7 @@ export const ClearCookie = (c: Req) => [Cookie + "=; Max-Age=0" + attrs(c)];
 export function IPOf(c: Req): string {
   const sock = c.ip;
   if (!isLoopbackAddr(sock) && !isTailnetAddr(sock)) return sock;
-  const v = c.req.headers.get("cf-connecting-ip") || c.req.headers.get("x-forwarded-for") || sock;
+  const v = c.req.headers.get("x-forwarded-for") || sock;
   return v.split(",")[0]!.trim();
 }
 
@@ -263,14 +263,21 @@ export function SetPrefs(s: Session | undefined, p: Record<string, any>): R {
 
 export const runes = (s: string) => [...s].length;
 
+let missPullAt = 0;
+const missPullMS = 5000;
+const dummySalt = randHex(16);
+
 // Login a user
 export const Login = async (p: Record<string, any>, c: Req): Promise<R> => (await SignIn(p, c))[0];
 
 // SignIn Login's answer and, on success, the session it made
 export async function SignIn(p: Record<string, any>, c: Req): Promise<[R, Session | undefined]> {
-  const name = str(p.user).trim().toLowerCase();
+  const name = clip(str(p.user).trim().toLowerCase(), 64);
   const pass = str(p.pass);
-  const keys = ["ip:" + IPOf(c), "user:" + name];
+  const ip = IPOf(c);
+  // a name's public failures never lock out its sign in from the mesh
+  const onMesh = isLoopbackAddr(ip) || isTailnetAddr(ip);
+  const keys = ["ip:" + ip, (onMesh ? "meshuser:" : "user:") + name];
   const until = locked(keys);
   if (until > 0)
     return [errR(429, `too many wrong passwords, try again in ${Math.ceil((until - now()) / 60000)} min`), undefined];
@@ -280,14 +287,20 @@ export async function SignIn(p: Record<string, any>, c: Req): Promise<[R, Sessio
     return [errR(401, "wrong user or password"), undefined];
   };
   if (runes(pass) > maxPass) return fail();
-  let u = live(name);
-  if (!u || !hashOK(await derive(pass, u.salt), u.hash)) {
-    // a user or new password this host hasn't pulled yet
+  // the name's hash once, again after a pull for a user or password this host hasn't seen yet
+  const check = async () => {
+    const u = live(name);
+    return u && { u, out: await derive(pass, u.salt) };
+  };
+  let got = await check();
+  if ((!got || !hashOK(got.out, got.u.hash)) && now() - missPullAt > missPullMS) {
+    missPullAt = now();
     await pull();
-    u = live(name);
+    got = await check();
   }
-  if (!u) return fail();
-  const out = await derive(pass, u.salt);
+  // an unknown name hashed as a known one is, no name told apart by timing
+  if (!got) return derive(pass, dummySalt).then(fail);
+  const { u, out } = got;
   if (!hashOK(out, u.hash)) return fail();
   const key = out.subarray(32);
   const s: Session = { user: name, admin: u.admin, key, token: "", e: 0 };

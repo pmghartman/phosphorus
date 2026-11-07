@@ -103,7 +103,17 @@ function zoneSpec(d: Domain): dns.ZoneSpec {
   const txt: Record<string, string[]> = {};
   for (const [n, v] of Object.entries(challenge()))
     txt[n === d.name ? "" : n.endsWith(`.${d.name}`) ? n.slice(0, -(d.name.length + 1)) : n] = v;
-  return { domain: d.name, edges: up.length ? up : all, hosts, txt, srv, records: dnsRecords(), serial: 0 };
+  const acmeAccount = str(obj(store.read(acmeRel))?.kid) || undefined;
+  return {
+    domain: d.name,
+    edges: up.length ? up : all,
+    hosts,
+    txt,
+    srv,
+    records: dnsRecords(),
+    acmeAccount,
+    serial: 0,
+  };
 }
 
 // the records phosphorus serves on its own, as settings › network lists them
@@ -128,7 +138,9 @@ export function builtInRecords(): ZoneRow[] {
       value: `${s.target}:${s.port}`,
       why: "a public port's service",
     });
-  rows.push({ name: "", type: "CAA", value: "letsencrypt.org", why: "the certificate's issuer alone" });
+  const caa = z.names.get("")?.find((r) => r.data.type === dns.Type.CAA)?.data;
+  const value = caa && "value" in caa ? caa.value : "letsencrypt.org";
+  rows.push({ name: "", type: "CAA", value, why: "the certificate's issuer and account alone" });
   return rows;
 }
 

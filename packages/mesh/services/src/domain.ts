@@ -2,7 +2,7 @@
 // the internet, the certificate over it, the ACME account and challenge, and
 // the public ports each host asks the edge to open
 import * as store from "@phosphorus/store";
-import { isIPv4, now, obj, SelfHost } from "@phosphorus/util";
+import { FrontendPort, isIPv4, now, obj, SelfHost } from "@phosphorus/util";
 
 export const domainRel = "etc/mesh/domain.json";
 export const tlsRel = "etc/mesh/tls.json";
@@ -89,6 +89,8 @@ const labelRe = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const srvRe = /^[a-z0-9]([a-z0-9-]{0,14})$/;
 // the edge's own ports, never handed to a service
 export const edgePorts = new Set([22, 53, 80, 443, 3478, 8090, 8791, 41641]);
+// services trusting any tailnet caller, the frontend and model server: never behind a public port
+const meshOnlyPorts = new Set([FrontendPort, 8791]);
 
 const validPort = (p: unknown): p is number => typeof p === "number" && Number.isInteger(p) && p >= 1 && p <= 65535;
 
@@ -100,6 +102,7 @@ export function ports(): PortRow[] {
     if (!host || !file) continue;
     const r = obj(store.read(`${portsDir}/${f}`));
     if (!r || !validPort(r.port) || !validPort(r.pub) || (r.proto !== "tcp" && r.proto !== "udp")) continue;
+    if (meshOnlyPorts.has(r.port)) continue;
     const row: PortRow = { host, name: file.replace(/\.json$/, ""), port: r.port, proto: r.proto, pub: r.pub };
     if (typeof r.srv === "string" && r.srv) row.srv = r.srv;
     out.push(row);
@@ -112,6 +115,7 @@ export function portError(p: Partial<PortRow>, existing = ports()): string {
   if (!p.host || !labelRe.test(p.host)) return "no host";
   if (!p.name || !labelRe.test(p.name)) return "a name is letters, digits and dashes, up to 63";
   if (!validPort(p.port)) return "the service's port must be 1 to 65535";
+  if (meshOnlyPorts.has(p.port)) return `${p.port} is phosphorus's own, for the mesh alone`;
   if (!validPort(p.pub)) return "the public port must be 1 to 65535";
   if (edgePorts.has(p.pub)) return `${p.pub} is phosphorus's own`;
   if (p.proto !== "tcp" && p.proto !== "udp") return "the protocol is tcp or udp";

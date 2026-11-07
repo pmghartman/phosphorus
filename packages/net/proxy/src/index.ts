@@ -553,7 +553,8 @@ export function serve(port: number, h: Handler, ingress: boolean, hostname?: str
     websocket,
     ...(tls ? { tls: { cert: tls.cert, key: tls.key } } : {}),
     async fetch(req, server) {
-      const ip = (tls && splitClient(server.requestIP(req))) || remoteIP(server, req);
+      // a TLS client the splitter can't name taken as public, never as this loopback
+      const ip = tls ? splitClient(server.requestIP(req)) || "0.0.0.0" : remoteIP(server, req);
       const c: Ctx = { req, url: new URL(req.url), ip, ingress, server };
       try {
         return await h(c);

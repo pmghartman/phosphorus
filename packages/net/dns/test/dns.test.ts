@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   answer,
   build,
+  limiter,
   parseQuery,
   parseReply,
   query,
@@ -47,7 +48,16 @@ test("the zone: apex, nameservers, wildcard, own names, texts and srv", () => {
   expect((srv.answer[0]!.data as any).port).toBe(25565);
   expect(srv.additional.map((r) => (r.data as any).ip).sort()).toEqual(["203.0.113.1", "203.0.113.2"]);
   const caa = answer(z, ask("example.com", Type.CAA));
-  expect((caa.answer[0]!.data as any).value).toBe("letsencrypt.org");
+  expect(caa.answer.map((r) => [(r.data as any).tag, (r.data as any).value])).toEqual([
+    ["issue", "letsencrypt.org"],
+    ["issuewild", "letsencrypt.org"],
+  ]);
+  // with the account known, issuance tied to it and to dns-01
+  const acct = "https://acme-v02.api.letsencrypt.org/acme/acct/123";
+  const bound = answer(build({ ...spec, acmeAccount: acct }), ask("example.com", Type.CAA));
+  expect(bound.answer.map((r) => (r.data as any).value)).toEqual(
+    Array(2).fill(`letsencrypt.org; accounturi=${acct}; validationmethods=dns-01`),
+  );
 });
 
 test("negative answers: NODATA with the SOA, REFUSED off the zone, FORMERR and NOTIMP", () => {
@@ -75,10 +85,16 @@ test("the wire round trip, EDNS echoed, truncation when the reply is over the UD
   const r = answer(z, q);
   const parsed = parseReply(writeReply(r));
   expect(parsed.aa).toBe(true);
-  expect(parsed.answer.map((x) => x.data.type).sort((a, b) => a - b)).toEqual([1, 1, 2, 2, 6, 257]);
-  const soa = parsed.answer.find((x) => x.data.type === Type.SOA)!.data as any;
+  // ANY: one record set, never the whole name
+  expect(parsed.answer.map((x) => x.data.type)).toEqual([1, 1]);
+  expect(answer(z, ask("_acme-challenge.example.com", Type.ANY)).answer.map((x) => x.data.type)).toEqual([16, 16]);
+  const soa = parseReply(writeReply(answer(z, ask("example.com", Type.SOA)))).answer[0]!.data as any;
   expect(soa.serial).toBe(7);
   expect(soa.mname).toBe("ns1.example.com");
+  // an asker's EDNS size held to 1232
+  const big = writeQuery(2, "example.com", Type.A);
+  big.set([0xff, 0xff], big.length - 8);
+  expect(parseQuery(big)!.edns).toBe(1232);
   const cut = parseReply(writeReply(r, 60));
   expect(cut.tc).toBe(true);
   expect(cut.answer).toHaveLength(0);
@@ -87,6 +103,20 @@ test("the wire round trip, EDNS echoed, truncation when the reply is over the UD
   const ptr = new Uint8Array(raw.length + 4);
   ptr.set(raw);
   expect(parseQuery(ptr)!.question!.name).toBe("a.example.com");
+  // a name past 255 bytes refused
+  const long = writeQuery(3, Array(5).fill("x".repeat(60)).join("."), Type.A);
+  expect(parseQuery(long)!.bad).toBe("malformed");
+});
+
+test("the UDP rate limit: a burst, then every other reply truncated and the rest dropped", () => {
+  const allow = limiter(10, 3, 2);
+  const at = 1000;
+  expect([1, 2, 3].map(() => allow("198.51.100.7", at))).toEqual(["send", "send", "send"]);
+  // the same /24 shares the bucket, another network has its own
+  expect([allow("198.51.100.9", at), allow("198.51.100.7", at)]).toEqual(["drop", "tc"]);
+  expect(allow("192.0.2.1", at)).toBe("send");
+  // refilled at the rate
+  expect(allow("198.51.100.7", at + 100)).toBe("send");
 });
 
 test("served over UDP and TCP on loopback, the client falling back to TCP on truncation", async () => {
@@ -102,6 +132,42 @@ test("served over UDP and TCP on loopback, the client falling back to TCP on tru
   zone = build({ ...spec, txt: { big: Array.from({ length: 30 }, (_, i) => "x".repeat(40) + i) } });
   const t = await query({ server: "127.0.0.1", port, name: "big.example.com", type: Type.TXT, timeoutMs: 2000 });
   expect(t.answer).toHaveLength(30);
+  // two queries pipelined in one TCP write, both answered
+  const replies = await new Promise<number[]>((done, fail) => {
+    const ids: number[] = [];
+    let got = new Uint8Array(0);
+    const frame = (q: Uint8Array) => new Uint8Array([q.length >> 8, q.length & 0xff, ...q]);
+    Bun.connect({
+      hostname: "127.0.0.1",
+      port,
+      socket: {
+        open(c) {
+          c.write(
+            new Uint8Array([
+              ...frame(writeQuery(11, "a.example.com", Type.A)),
+              ...frame(writeQuery(12, "b.example.com", Type.A)),
+            ]),
+          );
+        },
+        data(c, chunk) {
+          got = new Uint8Array([...got, ...chunk]);
+          while (got.length >= 2 && got.length >= 2 + ((got[0]! << 8) | got[1]!)) {
+            const n = (got[0]! << 8) | got[1]!;
+            ids.push(parseReply(got.subarray(2, 2 + n)).id);
+            got = got.slice(2 + n);
+          }
+          if (ids.length === 2) {
+            c.end();
+            done(ids);
+          }
+        },
+        error(_c, e) {
+          fail(e);
+        },
+      },
+    }).catch(fail);
+  });
+  expect(replies).toEqual([11, 12]);
   s.close();
 });
 

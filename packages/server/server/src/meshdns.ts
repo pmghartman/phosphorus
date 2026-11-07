@@ -57,6 +57,8 @@ async function tick() {
         port: dnsPort,
         zone: () => zone,
         forward: dns.forwarder(upstream(ip)),
+        // the mesh's devices all in one /24, and no one off the mesh to spoof them
+        limit: false,
         log: (m) => notes.note("serve", m),
       });
       notes.note("on", `${peers.control.meshZone()} served on ${ip}`);

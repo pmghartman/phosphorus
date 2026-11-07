@@ -19,12 +19,16 @@ export type ZoneSpec = {
   txt?: Record<string, string[]>;
   srv?: Srv[];
   records?: Custom[];
+  // the ACME account's URL, the one CAA lets issue
+  acmeAccount?: string;
   serial: number;
 };
 
 const ttlShort = 60;
 const ttlLong = 3600;
 const ttlTxt = 30;
+// short, a new ACME account soon past a cached CAA naming the old one
+const ttlCAA = 300;
 
 export type Zone = {
   domain: string;
@@ -75,7 +79,12 @@ export function build(spec: ZoneSpec): Zone {
   };
   add("", soa);
   a("", edges);
-  add("", { name: domain, ttl: ttlLong, data: { type: Type.CAA, flags: 0, tag: "issue", value: "letsencrypt.org" } });
+  // RFC 8657: issuance by this account alone, over DNS alone
+  const ca = spec.acmeAccount
+    ? `letsencrypt.org; accounturi=${spec.acmeAccount}; validationmethods=dns-01`
+    : "letsencrypt.org";
+  for (const tag of ["issue", "issuewild"])
+    add("", { name: domain, ttl: ttlCAA, data: { type: Type.CAA, flags: 0, tag, value: ca } });
   for (const [r, ips] of Object.entries(spec.hosts ?? {})) a(canon(r), ips);
   // a record per value: one record's strings read as one joined value
   for (const [r, texts] of Object.entries(spec.txt ?? {}))
@@ -106,6 +115,13 @@ export function build(spec: ZoneSpec): Zone {
 
 const inZone = (name: string, domain: string) => name === domain || name.endsWith(`.${domain}`);
 
+// ANY as RFC 8482 answers it: one record set, the A records when there are any,
+// never the whole name drawn back at a spoofed victim
+function anyOf(rrs: RR[]): RR[] {
+  const t = rrs.some((x) => x.data.type === Type.A) ? Type.A : rrs[0]!.data.type;
+  return rrs.filter((x) => x.data.type === t);
+}
+
 // the records at name of type, the wildcard's for a name with none of its own
 function lookup(z: Zone, name: string, type: number): { rrs: RR[]; exists: boolean } {
   const r = rel(name, z.domain);
@@ -114,7 +130,7 @@ function lookup(z: Zone, name: string, type: number): { rrs: RR[]; exists: boole
     // a CNAME stands for every type but its own
     const alias = own.filter((x) => x.data.type === Type.CNAME);
     if (alias.length && type !== Type.CNAME) return { rrs: alias, exists: true };
-    return { rrs: type === Type.ANY ? own : own.filter((x) => x.data.type === type), exists: true };
+    return { rrs: type === Type.ANY ? anyOf(own) : own.filter((x) => x.data.type === type), exists: true };
   }
   // every other name is the wildcard's, so it exists while there are edges
   const synth = type === Type.A || type === Type.ANY ? z.wildcard.map((x) => ({ ...x, name })) : [];

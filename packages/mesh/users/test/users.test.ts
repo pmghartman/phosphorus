@@ -321,3 +321,21 @@ test("oauth: a registered agent's code traded once for the user's mcp key", asyn
   U.MCPRevoke(s);
   expect(U.CheckMCPKey(t.body.access_token)[1]).toBe("revoked or replaced by a newer key");
 });
+
+test("a name's public failures lock its public sign in, never its sign in from the mesh", async () => {
+  await Promise.all(
+    Array.from({ length: 20 }, (_, i) =>
+      U.Login({ user: "pmh", pass: "nope" }, req({}, "https://mesh.example/", `198.51.100.${i}`)),
+    ),
+  );
+  expect(
+    (await U.Login({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/", "198.51.100.99"))).status,
+  ).toBe(429);
+  expect((await U.Login({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/", "100.64.0.5"))).status).toBe(
+    200,
+  );
+  // an unknown name answered as a wrong password
+  expect((await U.Login({ user: "nobody", pass: "x" }, req({}, "https://mesh.example/", "100.64.0.6"))).status).toBe(
+    401,
+  );
+}, 30_000);

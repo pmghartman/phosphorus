@@ -2,7 +2,7 @@
 // hosts, and the questions phosphorus asks to check it
 export { type Ask, query } from "./client.ts";
 export { type Forward, forwarder } from "./forward.ts";
-export { type Served, serve } from "./server.ts";
+export { limiter, netOf, type Served, serve } from "./server.ts";
 export {
   canon,
   type Parsed,

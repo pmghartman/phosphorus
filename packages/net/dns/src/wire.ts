@@ -82,6 +82,7 @@ export function readName(b: Uint8Array, off: number): [string, number] {
   const parts: string[] = [];
   let end = -1;
   let hops = 0;
+  let size = 0;
   let p = off;
   for (;;) {
     if (p >= b.length) throw new Error("name past the end");
@@ -99,6 +100,8 @@ export function readName(b: Uint8Array, off: number): [string, number] {
     }
     if (len > 63) throw new Error("label too long");
     if (p + 1 + len > b.length) throw new Error("label past the end");
+    // 255 on the wire at most, as RFC 1035 caps a name
+    if ((size += 1 + len) > 254) throw new Error("name too long");
     parts.push(latin1.decode(b.subarray(p + 1, p + 1 + len)));
     p += 1 + len;
   }
@@ -134,7 +137,8 @@ export function parseQuery(b: Uint8Array): Query | undefined {
       const [, np] = readName(b, p);
       if (np + 10 > b.length) break;
       const type = u16at(b, np);
-      if (type === Type.OPT && i >= an + ns) q.edns = Math.max(MinUDP, u16at(b, np + 2));
+      // the asker's size held to MaxUDP, no reply fragmenting or amplifying past it
+      if (type === Type.OPT && i >= an + ns) q.edns = Math.min(MaxUDP, Math.max(MinUDP, u16at(b, np + 2)));
       p = np + 10 + u16at(b, np + 8);
     }
   } catch {
