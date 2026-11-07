@@ -65,9 +65,17 @@
   width: 100%;
   height: 100%;
   display: block;
+  --mesh-halo: var(--bg);
 }
-.mesh-svg .mesh-hub {
-  fill: var(--accent);
+.dk-mesh-pop .mesh-svg {
+  --mesh-halo: var(--card);
+}
+/* names cut out of the lines behind them in the pane's own colour */
+.mesh-svg :is(.mesh-label, .mesh-hub-dns) {
+  paint-order: stroke;
+  stroke: var(--mesh-halo);
+  stroke-width: 2px;
+  stroke-linejoin: round;
 }
 .mesh-svg .mesh-hub-dns {
   fill: var(--sky);
@@ -75,21 +83,18 @@
   font-family: inherit;
 }
 
+/* a spoke to the hub's host: udp solid sky, the relay over wss dashed sand,
+   one not on the hub faint and dotted */
 .mesh-svg .mesh-line-hub {
   stroke: var(--sky);
   stroke-width: 1;
   opacity: 0.45;
-}
-.mesh-svg .mesh-hub.down {
-  fill: var(--dim);
-}
-/* the hub's own host tied to it, the relay dashed, a peer not on the hub faint and dotted */
-.mesh-svg .mesh-line-hub.home {
-  stroke-width: 1.6;
-  opacity: 0.6;
+  fill: none;
 }
 .mesh-svg .mesh-line-hub.relay {
+  stroke: var(--sand);
   stroke-dasharray: 3 2;
+  opacity: 0.7;
 }
 .mesh-svg .mesh-line-hub.down {
   stroke: var(--dim);
@@ -118,7 +123,7 @@
   opacity: 0.8;
 }
 
-/* host-to-service stem, below the host row */
+/* host-to-service stem, out on its arc */
 .mesh-svg .mesh-line-stem {
   stroke: var(--sage);
   stroke-width: 0.5;
@@ -148,6 +153,15 @@
 }
 .mesh-svg .mesh-node.outside.down {
   fill: var(--dim);
+}
+/* a guest's 3-day config: the square hollow */
+.mesh-svg .mesh-node.outside.guest {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 0.8;
+}
+.mesh-svg .mesh-node.outside.guest.down {
+  stroke: var(--dim);
 }
 .mesh-svg .mesh-node.svc.touched {
   fill: var(--accent);

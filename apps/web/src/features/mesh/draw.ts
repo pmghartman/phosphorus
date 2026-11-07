@@ -4,12 +4,11 @@ import type { NetInfo, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { svgEl } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
 import { hostSwitch, NODE_HALF } from './hosts.ts';
-import { lerp } from './ping.ts';
+import { reheat, type SimLink, setGraph, settle, simNodes, tick } from './layout.ts';
 import { activeConnections, hostPlatform, serviceKey } from './routes.ts';
 import { renderMeshStats } from './stats.ts';
 import {
   type Dims,
-  LIFT,
   meshAnimFrame,
   meshCount,
   meshDimsNow,
@@ -17,12 +16,12 @@ import {
   meshStats,
   meshSvg,
   meshT,
-  OTHERS_AXIS,
   uiVars,
 } from './ui.ts';
 
-// one square plus its name, the rest in the tooltip, opts: size (half-width), scale (depth),
-// opacity, noLabel, host (a host to switch to), desk (a computer to open), all optional
+// one square plus its name, the rest in the tooltip, opts: size (half-width), labelDy
+// (name's offset, above when negative), sub (a second line: the hub's domain),
+// noLabel, host (a host to switch to), desk (a computer to open)
 
 export function drawNode(
   x: number,
@@ -30,12 +29,20 @@ export function drawNode(
   name: string,
   cls: string,
   tooltip: string,
-  opts?: { size?: number; scale?: number; opacity?: number; noLabel?: boolean; host?: string; desk?: string },
+  opts?: {
+    size?: number;
+    opacity?: number;
+    labelDy?: number;
+    sub?: string;
+    noLabel?: boolean;
+    host?: string;
+    desk?: string;
+  },
 ) {
   const o = opts || {};
-  const scale = o.scale || 1;
-  const size = o.size || NODE_HALF * scale;
+  const size = o.size || NODE_HALF;
   const opacity = o.opacity === undefined ? 1 : o.opacity;
+  const dy = o.labelDy ?? 13;
   // a host: square, name and a wider hit area as one target
   const attrs: Record<string, string> = { class: o.host ? 'mesh-host mesh-desk' : 'mesh-desk' };
   if (o.host) attrs['data-host'] = o.host;
@@ -43,7 +50,10 @@ export function drawNode(
   const parent: SVGElement = o.host || o.desk ? meshSvg.appendChild(svgEl('g', attrs)) : meshSvg;
   if (o.host || o.desk) {
     const w = Math.max(18, name.length * 4.3 + 6);
-    parent.appendChild(svgEl('rect', { x: x - w / 2, y: y - 8, width: w, height: 24, class: 'mesh-hit' }));
+    const top = Math.min(-8, dy - 8);
+    parent.appendChild(
+      svgEl('rect', { x: x - w / 2, y: y + top, width: w, height: Math.max(8, dy + 4) - top, class: 'mesh-hit' }),
+    );
   }
   const node = svgEl('rect', {
     x: x - size,
@@ -59,19 +69,24 @@ export function drawNode(
   parent.appendChild(node);
 
   if (o.noLabel) return;
-  // kept inside the frame, ~4.3 units a 7px monospace char
-  const textScale = Math.sqrt(scale);
-  const half = name.length * 2.15 * textScale;
-  const frame = meshSvg.viewBox.baseVal;
   const label = svgEl('text', {
-    x: Math.max(half, Math.min(frame.width - half, x)),
-    y: Math.min(frame.height - 1.5, y + 10 * scale + 3),
+    x,
+    y: y + dy,
     'text-anchor': 'middle',
     class: 'mesh-label',
-    style: `opacity:${opacity};font-size:${7 * textScale}px`,
+    style: `opacity:${opacity}`,
   });
   label.textContent = name;
   parent.appendChild(label);
+  if (!o.sub) return;
+  const sub = svgEl('text', {
+    x,
+    y: y + dy + (dy < 0 ? -7.5 : 7),
+    'text-anchor': 'middle',
+    class: 'mesh-hub-dns',
+  });
+  sub.textContent = o.sub;
+  parent.appendChild(sub);
 }
 
 // the gradient sliding by smil, out of the stylesheet's reduced-motion
@@ -91,13 +106,12 @@ export interface MeshModel {
 
 // left of a model host: how many agents ask it, in
 // the glyph's colours, dimmed while not loaded
-export function drawModelMarker(x: number, y: number, mm: MeshModel, scale = 1, opacity = 1) {
+export function drawModelMarker(x: number, y: number, mm: MeshModel) {
   const mark = svgEl('text', {
-    x: x - 4.5 * scale,
-    y: y - 1.2 * scale,
+    x: x - 4.5,
+    y: y - 1.2,
     'text-anchor': 'end',
     class: `mesh-model-mark${mm.ready ? '' : ' down'}`,
-    style: `font-size:${7 * scale}px;opacity:${opacity}`,
   });
   mark.textContent = String(mm.agents.length || 'm');
   const title = svgEl('title', {});
@@ -151,7 +165,7 @@ export function directPairs(): Set<string> {
 const pathWord: Record<HubPath, string> = {
   home: 'runs the hub',
   udp: 'on the hub over udp',
-  relay: 'on the hub through the relay over https',
+  relay: 'on the hub through the relay over wss',
   down: 'not on the hub now',
 };
 
@@ -161,8 +175,9 @@ export function renderMesh(routes: Route[], tailnet: TailnetDevice[]): void {
   // nothing redrawn for a poll changing nothing drawn (a full rebuild at 10/s grew the tab)
   const sig = JSON.stringify([
     st.selfHost,
+    st.meshDomain,
     routes.map((r) => [r.host, r.name]),
-    tailnet.map((d) => [d.name, !!d.phosphorus, d.os || '']),
+    tailnet.map((d) => [d.name, !!d.phosphorus, !!d.phosphorusSeen, !!d.guest, d.os || '']),
     Object.entries(st.hostsInfo).map(([h, i]) => [h, i.net ?? null]),
   ]);
   if (sig === drawVars.meshSig) return;
@@ -181,17 +196,14 @@ export function meshModelsFrom(state: State): void {
   if (modelChanged && !meshAnimFrame) drawMesh();
 }
 
-// the touched elements drawMesh() drew (hub spokes, a direct arc, service stem)
-// via getPointAtLength(), so the pulse rides the real path: in from the hub to
-// this host, then to the target directly or back through the hub
+// --- the pulse along a touched path -------------------------------------------------
+
+// per touched host, the drawn edges a request rides as [id, reversed]: in from
+// the hub's host to this one, then on directly or back through the hub
+const pulseRoutes = new Map<string, [string, boolean][]>();
 
 export function pulsePoint(key: string, host: string, distFrac: number): DOMPoint | null {
-  const ids: [string, boolean][] = [['mesh-hub-self', false]];
-  if (host !== st.selfHost) {
-    if (document.getElementById(`peer-${host}`)) ids.push([`peer-${host}`, false]);
-    else ids.push(['mesh-hub-self', true], [`spoke-${host}`, false]);
-  }
-  ids.push([`stem-${key}`, false]);
+  const ids: [string, boolean][] = [...(pulseRoutes.get(host) ?? []), [`stem-${key}`, false]];
   const segs = ids
     .map(([id, rev]) => ({ el: document.getElementById(id) as unknown as SVGGeometryElement | null, rev }))
     .filter((s): s is { el: SVGGeometryElement; rev: boolean } => !!s.el);
@@ -248,8 +260,86 @@ export function startPulseLoop(): void {
   pulseAnimFrame = requestAnimationFrame(tick);
 }
 
-// pure function of last-fetched data + meshT, called per data poll and per
-// animation frame, so layout restructures/rescales instead of a CSS transform
+// --- the layout, live -----------------------------------------------------------------
+
+// an edge as the tunnels have it: a spoke to the hub's host, or a direct session
+interface Edge {
+  a: string;
+  b: string;
+  kind: 'spoke' | 'direct';
+  path: HubPath;
+}
+const edgeId = (e: { a: string; b: string; kind: string }) => `me-${e.kind}-${[e.a, e.b].sort().join('~')}`;
+
+// a host's services on an arc away from the hub, sized to fit them
+const SVC_STEP = 8;
+function svcRing(n: number): { r: number; step: number } {
+  const r = Math.max(12, ((n - 1) * SVC_STEP) / (1.5 * Math.PI));
+  return { r, step: SVC_STEP / r };
+}
+const labelHalf = (name: string) => name.length * 2.15 + 3;
+
+let simSig = '';
+let simFrame = 0;
+let simAspect = 1;
+const aspectNow = () => {
+  const d = meshDimsNow().expanded;
+  return d.width / Math.max(1, d.height);
+};
+// cooled a frame at a time while on screen, at once when off it or for reduced motion
+function runSim() {
+  if (simFrame) return;
+  const step = () => {
+    simFrame = 0;
+    if (!meshPanel.offsetParent || reduceMotion.matches) {
+      settle(aspectNow());
+      drawMesh();
+      return;
+    }
+    if (!tick(aspectNow())) return;
+    drawMesh();
+    simFrame = requestAnimationFrame(step);
+  };
+  simFrame = requestAnimationFrame(step);
+}
+
+// the layout's graph from the live links, reheated only when they change
+function syncSim(hosts: string[], others: string[], grouped: Map<string, Route[]>, hub: string, edges: Edge[]) {
+  const n = hosts.length + others.length;
+  const L = Math.max(46, 6.5 * n);
+  const nodes = [
+    ...hosts.map((h) => {
+      const svc = grouped.get(h)?.length ?? 0;
+      return { id: h, r: Math.max(labelHalf(h) + 3, 10, svc ? svcRing(svc).r + 4 : 0) };
+    }),
+    ...others.map((d) => ({ id: d, r: labelHalf(d) + 2 })),
+  ];
+  const links: SimLink[] = edges.map((e) =>
+    e.kind === 'direct'
+      ? { a: e.a, b: e.b, len: L * 1.1, k: 0.12 }
+      : e.path === 'down'
+        ? { a: e.a, b: e.b, len: L * 1.4, k: 0.15 }
+        : { a: e.a, b: e.b, len: L, k: 0.5 },
+  );
+  const sig = JSON.stringify([nodes, links, hub]);
+  // a pane of another shape (shown at last, resized, moved to the popup): laid out again for it
+  const aspect = aspectNow();
+  if (sig === simSig) {
+    if (Math.abs(Math.log(aspect / simAspect)) < 0.15) return;
+    simAspect = aspect;
+    reheat(0.5);
+    return runSim();
+  }
+  simAspect = aspect;
+  const first = !simSig;
+  simSig = sig;
+  setGraph(nodes, links, hub, first ? 1 : 0.6);
+  if (first) settle(aspectNow());
+  else runSim();
+}
+
+// pure function of last-fetched data and the layout's positions, called per
+// data change and per layout frame
 export function drawMesh(): void {
   const t = meshT;
 
@@ -271,7 +361,7 @@ export function drawMesh(): void {
   // devices without phosphorus (phones, laptops on the WireGuard app): no routes
   const outside = new Map<string, TailnetDevice>();
   for (const d of tailnet) {
-    if (d.phosphorus) {
+    if (d.phosphorus || d.phosphorusSeen) {
       hostPlatform.set(d.name, d.os || '');
       if (!grouped.has(d.name)) grouped.set(d.name, []);
     } else if (!grouped.has(d.name)) {
@@ -280,23 +370,22 @@ export function drawMesh(): void {
   }
   const hosts = [...grouped.keys()].sort();
   const others = [...outside.keys()].sort();
+  const hub = hosts.includes(hubHost()) ? hubHost() : '';
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   meshCount.textContent = [
     hosts.length ? plural(hosts.length, 'host') : '',
     others.length ? plural(others.length, 'device') : '',
+    hosts.length && !hub ? 'no hub' : '',
   ]
     .filter(Boolean)
     .join(' · ');
   // stats table first, room for its height reserved by meshLayoutParams(),
-  // rebuilt only on real change, never per tween frame
+  // rebuilt only on real change, never per layout frame
   if (uiVars.meshStatsDirty) {
     renderMeshStats(hosts, grouped);
     uiVars.meshStatsDirty = false;
   }
-
-  // tied to meshT, not the .expanded class, max-height reclaiming space at
-  // the rate opacity fades, neither in one jump
   if (t > 0) {
     meshStats.style.display = 'flex';
     meshStats.style.opacity = String(t);
@@ -307,35 +396,13 @@ export function drawMesh(): void {
     meshStats.style.display = 'none';
   }
 
-  const { collapsed, expanded } = meshDimsNow();
-
-  // service squares fanned out in a row below their host once t>0, the frame
-  // grown by a fixed drop to clear that row, not per extra service
-  const maxSvc = Math.max(0, ...hosts.map((m) => grouped.get(m)!.length));
-  const CHILD_BASE = 26;
-  // crowded hosts staggered into lanes for clear labels: side by side collapsed,
-  // stacked rows expanded, each row with room for its services
-  const labelW = Math.max(0, ...hosts.map((m) => m.length)) * 4.3 + 6;
-  const lanesFor = (span: number, need: number, most: number) =>
-    Math.min(most, Math.ceil(need / (span / (hosts.length + 1))));
-  const lanesC = lanesFor(collapsed.height, 22, 3);
-  const lanesE = lanesFor(expanded.width, labelW, 5);
-  const LANE_C = Math.min(labelW, 34);
-  const LANE_E = CHILD_BASE + 10;
-  const expandedH = expanded.height + (maxSvc ? CHILD_BASE : 0);
-
-  const width = lerp(collapsed.width, expanded.width, t);
-  const height = lerp(collapsed.height, expandedH, t);
-  // expanded lanes stacked downward, the frame grown only by what the room
-  // below the host row (0.4 to 0.84 of the height) can't take
-  const span = (lanesE - 1) * LANE_E;
-  const grow = t * Math.max(0, span + CHILD_BASE + 22 - (OTHERS_AXIS + LIFT) * expandedH);
-
+  const dims = meshDimsNow().expanded;
+  const { width, height } = dims;
   meshSvg.innerHTML = '';
-  meshSvg.setAttribute('viewBox', `0 0 ${width} ${height + grow}`);
+  meshSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   // every edge in the first layer, so nodes always sit on top of them
-  const edges = svgEl('g', { class: 'mesh-edges' });
-  meshSvg.appendChild(edges);
+  const edgeLayer = svgEl('g', { class: 'mesh-edges' });
+  meshSvg.appendChild(edgeLayer);
 
   if (!hosts.length && !others.length) {
     const text = svgEl('text', { x: width / 2, y: height / 2, 'text-anchor': 'middle', class: 'mesh-label' });
@@ -344,199 +411,110 @@ export function drawMesh(): void {
     return;
   }
 
-  // collapsed: hub|hosts|others as columns, expanded: rows, a rigid 90deg
-  // spin (not a mirror), hub and hosts lifted for service room
-  const margin = 0.12;
-  const angle = t * (Math.PI / 2);
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const rotate = (x: number, y: number) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
-
-  const lift = t * LIFT;
-  const centerX = width / 2;
-  const centerY = height / 2;
-
-  // a floor tilted back from the viewer, lower nearer, side lanes stepping in
-  // depth too, s the perspective scale, fog the depth fade
-  const TILT = 0.5;
-  const tiltSin = Math.sin(TILT);
-  const tiltCos = Math.cos(TILT);
-  const PERSP = 0.38;
-  const floorH = (height + grow) / 2;
-  const floorY = centerY + grow / 2;
-  const fitY = tiltCos / (1 - tiltSin * PERSP);
-  interface Projected {
-    x: number;
-    y: number;
-    s: number;
-    fog: number;
+  // the links as they stand: each host and device's spoke to the hub's host, and
+  // direct sessions between hosts; with no hub up, only the direct ones
+  const edges: Edge[] = [];
+  if (hub) {
+    for (const h of hosts) if (h !== hub) edges.push({ a: h, b: hub, kind: 'spoke', path: hubPath(h, true) });
+    for (const d of others) edges.push({ a: d, b: hub, kind: 'spoke', path: hubPath(d, false) });
   }
-  const project = (x: number, y: number, depth = 0): Projected => {
-    const u = (y - floorY) / floorH;
-    const z = -u * tiltSin + depth;
-    const s = 1 / (1 + z * PERSP);
-    return {
-      x: centerX + (x - centerX) * s,
-      y: floorY + ((u * tiltCos * s) / fitY) * floorH,
-      s,
-      fog: Math.max(0.35, Math.min(1, 1 - 0.55 * z)),
-    };
+  const isHost = new Set(hosts);
+  for (const pair of directPairs()) {
+    const [a, b] = pair.split(' ') as [string, string];
+    if (isHost.has(a) && isHost.has(b)) edges.push({ a, b, kind: 'direct', path: 'udp' });
+  }
+  syncSim(hosts, others, grouped, hub, edges);
+
+  const cx = width / 2;
+  const cy = height / 2;
+  const pos = (id: string) => {
+    const n = simNodes.get(id);
+    return { x: cx + (n?.x ?? 0), y: cy + (n?.y ?? 0) };
   };
+  const center = hub ? pos(hub) : { x: cx, y: cy };
 
-  const hubRel = rotate(margin - 0.5, 0);
-  const hub = project(centerX + hubRel.x * width, centerY + (hubRel.y - lift) * height);
-  const hubX = hub.x;
-  const hubY = hub.y;
-
-  const fracAlong = (i: number, n: number) => (i + 1) / (n + 1);
-  const hostSpread = new Map(hosts.map((n, i) => [n, fracAlong(i, hosts.length)]));
-  const otherSpread = new Map(others.map((n, i) => [n, fracAlong(i, others.length)]));
-  // across the host axis, turning with the layout
-  const laneOff = new Map(
-    hosts.map((n, i) => [n, lerp(((i % lanesC) - (lanesC - 1) / 2) * LANE_C, (i % lanesE) * LANE_E, t)]),
-  );
-  // collapsed lanes side by side, so depth apart, expanded ones, depth from the tilt
-  const laneDepth = new Map(hosts.map((n, i) => [n, (1 - t) * 0.7 * ((i % lanesC) - (lanesC - 1) / 2)]));
-
-  // flat layout position, before the tilt
-  const flatOf = (name: string, isHost: boolean) => {
-    const frac = (isHost ? hostSpread : otherSpread).get(name)!;
-    const axisFrac = isHost ? 0 : OTHERS_AXIS;
-    const rel = rotate(axisFrac, frac - 0.5);
-    const off = isHost ? laneOff.get(name)! : grow;
-    return {
-      x: centerX + rel.x * width + off * cos,
-      y: centerY + (rel.y - (isHost ? lift : 0)) * height + off * sin,
-      depth: isHost ? laneDepth.get(name)! : 0,
-    };
-  };
-  const posOf = (name: string, isHost: boolean) => {
-    const f = flatOf(name, isHost);
-    return project(f.x, f.y, f.depth);
-  };
-  const edgeFog = (a: Projected, b: Projected) => `stroke-opacity:${((a.fog + b.fog) / 2).toFixed(3)}`;
-
-  // a direct session between two hosts, an arc beside their spokes: traffic
-  // between them skips the hub; the bulge turning with the layout
-  const direct = directPairs();
-  meshSvg.style.setProperty('--fade', Math.min(1, Math.sqrt(6 / Math.max(1, direct.size))).toFixed(3));
-  const zoom = width / 232;
-  const bulgeAngle = t * (Math.PI / 2);
-  for (let i = 0; i < hosts.length; i++)
-    for (let j = i + 1; j < hosts.length; j++) {
-      const a = hosts[i]!;
-      const b = hosts[j]!;
-      if (!direct.has([a, b].sort().join(' '))) continue;
-      const p1 = posOf(a, true);
-      const p2 = posOf(b, true);
-      const bulge = 12 * zoom + (j - i - 1) * zoom * Math.min(7, 60 / Math.max(1, hosts.length - 2));
-      const cx = (p1.x + p2.x) / 2 + bulge * Math.cos(bulgeAngle);
-      const cy = (p1.y + p2.y) / 2 + bulge * Math.sin(bulgeAngle);
-      const other = a === st.selfHost ? b : b === st.selfHost ? a : null;
-      const touched = !!other && touchedHosts.has(other);
-      // flipped when self is p2, so the pulse runs self->target
-      const [start, end] = touched && b === st.selfHost ? [p2, p1] : [p1, p2];
-      const attrs: Record<string, string> = {
-        d: `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`,
-        class: touched ? 'mesh-line-peer direct touched' : 'mesh-line-peer direct',
-        style: edgeFog(p1, p2),
-      };
-      if (touched) attrs.id = `peer-${other}`;
-      const title = svgEl('title', {});
-      title.textContent = `${a} and ${b} direct, past the hub`;
-      const arc = svgEl('path', attrs);
-      arc.appendChild(title);
-      edges.appendChild(arc);
+  // a request's way: in at the hub's host (the domain's edge), to this host,
+  // then direct to the target or through the hub
+  const has = new Set(edges.map(edgeId));
+  const hop = (from: string, to: string): [string, boolean][] => {
+    for (const kind of ['direct', 'spoke']) {
+      const id = edgeId({ a: from, b: to, kind });
+      if (has.has(id)) return [[id, [from, to].sort()[0] !== from]];
     }
-
-  // the hub: the mesh's domain, where every host and device meets, run by one host
-  const runBy = hubHost();
-  const hubR = 4 * hub.s;
-  const hubSq = svgEl('rect', {
-    x: hubX - hubR,
-    y: hubY - hubR,
-    width: hubR * 2,
-    height: hubR * 2,
-    class: runBy ? 'mesh-hub' : 'mesh-hub down',
-  });
-  const hubTitle = svgEl('title', {});
-  hubTitle.textContent = runBy
-    ? `the hub on ${runBy}: every host and device meets here, over udp or the relay at ${st.meshDomain || 'the domain'}`
-    : 'no hub answering';
-  hubSq.appendChild(hubTitle);
-  meshSvg.appendChild(hubSq);
-  const hubDns = svgEl('text', {
-    x: hubX,
-    y: hubY + 12 * hub.s + 4,
-    'text-anchor': 'middle',
-    class: 'mesh-hub-dns',
-    style: `font-size:${6 * hub.s}px`,
-  });
-  hubDns.textContent = st.meshDomain || 'mesh';
-  meshSvg.appendChild(hubDns);
-
-  // a spoke to the hub per host and device, drawn by how it gets there; this
-  // host's runs host to hub, the rest hub out, so a pulse rides them in order
-  const spoke = (name: string, isHost: boolean, p: Projected) => {
-    const path = hubPath(name, isHost);
-    const isSelf = isHost && name === st.selfHost;
-    const touched = isHost && touchedHosts.has(name) && !isSelf;
-    const [a, b] = isSelf ? [p, hub] : [hub, p];
-    const line: Record<string, string | number> = {
-      x1: a.x,
-      y1: a.y,
-      x2: b.x,
-      y2: b.y,
-      class: `mesh-line-hub ${path}${isSelf ? ' self' : ''}${touched ? ' touched' : ''}`,
-      style: edgeFog(hub, p),
-    };
-    if (isSelf) line.id = 'mesh-hub-self';
-    else if (touched) line.id = `spoke-${name}`;
-    const el = svgEl('line', line);
-    const title = svgEl('title', {});
-    title.textContent = `${name} ${pathWord[path]}`;
-    el.appendChild(title);
-    edges.appendChild(el);
+    return [];
   };
-  for (const m of hosts) spoke(m, true, posOf(m, true));
-  for (const name of others) spoke(name, false, posOf(name, false));
+  const self = st.selfHost;
+  const onRoute = new Set<string>();
+  pulseRoutes.clear();
+  for (const target of touchedHosts) {
+    const route: [string, boolean][] = [];
+    if (hub && self !== hub) route.push(...hop(hub, self));
+    if (target !== self) {
+      const straight = hop(self, target);
+      if (straight.length) route.push(...straight);
+      else if (hub) route.push(...hop(self, hub), ...hop(hub, target));
+    }
+    pulseRoutes.set(target, route);
+    for (const [id] of route) onRoute.add(id);
+  }
 
-  // far to near, so nearer squares overlap farther ones
-  const byDepth = hosts.map((m): [string, Projected] => [m, posOf(m, true)]).sort((a, b) => a[1].s - b[1].s);
-  byDepth.forEach(([m, p]) => {
+  // drawn from the sorted first end, so a pulse knows which way it runs
+  const direct = edges.filter((e) => e.kind === 'direct').length;
+  meshSvg.style.setProperty('--fade', Math.min(1, Math.sqrt(6 / Math.max(1, direct))).toFixed(3));
+  for (const e of edges) {
+    const [a, b] = [e.a, e.b].sort() as [string, string];
+    const p = pos(a);
+    const q = pos(b);
+    const id = edgeId(e);
+    const touched = onRoute.has(id);
+    let d = `M ${p.x} ${p.y} L ${q.x} ${q.y}`;
+    let cls = `mesh-line-hub ${e.path}`;
+    let tip = `${e.a} ${pathWord[e.path]}`;
+    if (e.kind === 'direct') {
+      // bowed off the straight line, clear of spokes running the same way
+      const bow = 0.08;
+      const mx = (p.x + q.x) / 2 - (q.y - p.y) * bow;
+      const my = (p.y + q.y) / 2 + (q.x - p.x) * bow;
+      d = `M ${p.x} ${p.y} Q ${mx} ${my} ${q.x} ${q.y}`;
+      cls = 'mesh-line-peer direct';
+      tip = `${a} and ${b} direct over udp, past the hub`;
+    } else if (e.a === self) cls += ' self';
+    const attrs: Record<string, string> = { d, class: touched ? `${cls} touched` : cls };
+    if (touched) attrs.id = id;
+    const el = svgEl('path', attrs);
+    const title = svgEl('title', {});
+    title.textContent = tip;
+    el.appendChild(title);
+    edgeLayer.appendChild(el);
+  }
+
+  // a host: its square, its services on an arc pointing out from the hub,
+  // its name on the side the arc leaves free
+  for (const m of hosts) {
+    const p = pos(m);
     const own = grouped.get(m)!;
-    const isSelf = m === st.selfHost;
-    // the new self pulsing until a switch is answered
-    const cls = isSelf ? (hostSwitch ? 'self pending' : 'self') : own.length ? 'active' : 'idle';
-    const os = hostPlatform.get(m);
-    const via = pathWord[hubPath(m, true)];
-    drawNode(
-      p.x,
-      p.y,
-      m,
-      cls,
-      `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}, ${via}`,
-      {
-        host: isSelf ? '' : m,
-        desk: m,
-        scale: p.s,
-        opacity: p.fog,
-      },
-    );
-    if (meshModels.has(m)) drawModelMarker(p.x, p.y, meshModels.get(m)!, p.s, p.fog);
-    const flat = flatOf(m, true);
+    const isSelf = m === self;
+    const isHub = m === hub;
+    let away: number;
+    if (isHub || !hub) {
+      // the hub's host: toward the widest room its spokes leave
+      let sx = 0;
+      let sy = 0;
+      for (const e of edges)
+        if (e.a === m || e.b === m) {
+          const o = pos(e.a === m ? e.b : e.a);
+          const l = Math.hypot(o.x - p.x, o.y - p.y) || 1;
+          sx += (o.x - p.x) / l;
+          sy += (o.y - p.y) / l;
+        }
+      away = Math.hypot(sx, sy) > 0.3 ? Math.atan2(-sy, -sx) : Math.PI / 2;
+    } else away = Math.atan2(p.y - center.y, p.x - center.x);
+    const below = !own.length || Math.sin(away) < 0.45;
 
-    // a row below their host as the panel expands, on it (invisible) at t=0,
-    // so a pulse always has a target
-    const rowZoom = width / 232;
-    const gapMax = 20 * rowZoom;
-    // no wider than the space to the next host in its lane
-    const rowMax = Math.min(45 * rowZoom, 0.7 * lanesE * (width / (hosts.length + 1)));
-    const gap = own.length > 1 ? Math.min(gapMax, rowMax / (own.length - 1)) : 0;
-    const rowWidth = (own.length - 1) * gap;
-    const dropY = flat.y + CHILD_BASE;
+    const ring = svcRing(own.length);
     own.forEach((r, i) => {
-      const c = project(lerp(flat.x, flat.x - rowWidth / 2 + i * gap, t), lerp(flat.y, dropY, t), flat.depth);
+      const ang = away + (i - (own.length - 1) / 2) * ring.step;
+      const c = { x: p.x + ring.r * Math.cos(ang), y: p.y + ring.r * Math.sin(ang) };
       const key = serviceKey(r);
       const svcTouched = touchedServices.has(key);
       const stem: Record<string, string | number> = {
@@ -545,40 +523,56 @@ export function drawMesh(): void {
         x2: c.x,
         y2: c.y,
         class: svcTouched ? 'mesh-line-stem touched' : 'mesh-line-stem',
-        style: `opacity:${t};${edgeFog(p, c)}`,
       };
       if (svcTouched) stem.id = `stem-${key}`;
-      edges.appendChild(svgEl('line', stem));
+      edgeLayer.appendChild(svgEl('line', stem));
       drawNode(
         c.x,
         c.y,
         r.name,
         svcTouched ? 'svc touched' : 'svc',
         r.public || r.master !== undefined ? `${r.name} (public, no phosphorus login)` : r.name,
-        { size: 1.8 * c.s, opacity: t * c.fog, noLabel: true },
+        { size: 1.8, noLabel: true },
       );
     });
-  });
 
-  // a device on the WireGuard app: its spoke alone, no services
-  others.forEach((name) => {
-    const { os } = outside.get(name)!;
-    const p = posOf(name, false);
+    // the new self pulsing until a switch is answered
+    const cls = isSelf ? (hostSwitch ? 'self pending' : 'self') : own.length ? 'active' : 'idle';
+    const os = hostPlatform.get(m);
+    const via = pathWord[hubPath(m, true)];
+    const dom = st.meshDomain;
+    drawNode(
+      p.x,
+      p.y,
+      m,
+      cls,
+      `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}, ${via}${isHub ? `; every host and device meets here, the relay at ${dom || 'the domain'}` : ''}`,
+      {
+        host: isSelf ? '' : m,
+        desk: m,
+        labelDy: below ? 13 : -7,
+        sub: isHub && dom ? dom : undefined,
+      },
+    );
+    if (meshModels.has(m)) drawModelMarker(p.x, p.y, meshModels.get(m)!);
+  }
+
+  // a device on the WireGuard app: its spoke alone, no services; a guest hollow
+  for (const name of others) {
+    const { os, guest } = outside.get(name)!;
+    const p = pos(name);
     const path = hubPath(name, false);
+    const below = Math.sin(Math.atan2(p.y - center.y, p.x - center.x)) > -0.45;
     drawNode(
       p.x,
       p.y,
       name,
-      path === 'down' ? 'outside down' : 'outside',
-      `${name}${os ? ` (${os})` : ''}: a device, ${pathWord[path]}`,
-      {
-        scale: p.s,
-        opacity: p.fog,
-        desk: name,
-      },
+      `outside${guest ? ' guest' : ''}${path === 'down' ? ' down' : ''}`,
+      `${name}${os ? ` (${os})` : ''}: ${guest ? 'a guest' : 'a device'}, ${pathWord[path]}`,
+      { size: 2.4, desk: name, labelDy: below ? 11 : -6 },
     );
-  });
-  fitMesh(width, height + grow, t ? expanded : collapsed);
+  }
+  fitMesh(width, height, dims);
 }
 
 // viewBox zoomed onto what was drawn, clear of the legend band, at most MESH_ZOOM_MAX

@@ -59,10 +59,6 @@ export function meshLayoutParams(expanded: boolean): Dims {
   };
 }
 
-// host row to the non-phosphorus devices, a frame fraction, LIFT the
-// expanded host row's rise
-export const OTHERS_AXIS = 0.34;
-export const LIFT = 0.1;
 export function meshDimsNow() {
   if (!uiVars.meshDims || !meshAnimFrame)
     uiVars.meshDims = { collapsed: meshLayoutParams(false), expanded: meshLayoutParams(true) };

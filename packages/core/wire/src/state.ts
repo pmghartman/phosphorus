@@ -10,6 +10,8 @@ export interface TailnetDevice {
   // ever answered as a phosphorus host: quiet now, not just a phone
   phosphorusSeen?: boolean;
   version?: string;
+  // a device on a 3-day guest config
+  guest?: boolean;
 }
 
 // a served destination: a host's service (packages/services rows, with host put in)

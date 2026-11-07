@@ -173,16 +173,26 @@
     gap: 0.2rem;
   }
   .dk-bar .dk-task {
+    position: relative;
     height: 1.85rem;
     padding: 0 0.6rem;
     color: var(--muted);
   }
-  /* the focused window's: lit, a short line of the accent under it */
+  /* the focused window's: a neutral lift, a short flat bar of the accent centred under it */
   .dk-bar .dk-task.active {
     color: var(--fg);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
     border-color: transparent;
-    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .dk-bar .dk-task.active::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 1rem;
+    height: 2px;
+    background: var(--accent);
+    transform: translateX(-50%);
   }
   /* the status icons: even squares, one ink */
   .dk-bar .dk-tray:not(.dk-profile, .dk-apps-btn) {

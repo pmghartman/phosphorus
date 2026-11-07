@@ -151,7 +151,14 @@ export function stackServing(id: string): boolean {
 let lastStateFp = "";
 
 function stateFp(s: Record<string, any>): string {
-  const tn = (s.tailnet as Record<string, any>[]).map((d) => [d.name, d.os, d.phosphorus, d.phosphorusSeen, d.version]);
+  const tn = (s.tailnet as Record<string, any>[]).map((d) => [
+    d.name,
+    d.os,
+    d.phosphorus,
+    d.phosphorusSeen,
+    d.version,
+    d.guest,
+  ]);
   const m = s.model as Record<string, any>;
   return marshal([s.self, s.routes, s.lock, s.chain, tn, m.agents, m.keys, s.hosts, s.apps, s.home, s.stacks]);
 }

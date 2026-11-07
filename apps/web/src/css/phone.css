@@ -99,7 +99,7 @@
     border-color: var(--border);
   }
   .dk-task.active {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
   }
   .dk-bar .dk-tray {
     padding: 0 0.75rem;

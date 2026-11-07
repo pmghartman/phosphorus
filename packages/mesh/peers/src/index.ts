@@ -546,7 +546,14 @@ function rebuildDevices(peers: Peer[]) {
   }
   const listed = new Set(next.map((d) => d.name));
   for (const d of deviceRecs())
-    if (!listed.has(d.name)) next.push({ name: d.name, os: "", phosphorus: false, phosphorusSeen: false });
+    if (!listed.has(d.name))
+      next.push({
+        name: d.name,
+        os: "",
+        phosphorus: false,
+        phosphorusSeen: false,
+        ...(d.guest ? { guest: true } : {}),
+      });
   devices = next;
   pinTargets(peerIPs());
 }
