@@ -506,7 +506,9 @@ export function handler(app: Handler, gate: Gate): Handler {
     const h = resolve(c);
     if (isUpgrade(c.req)) {
       const pin = h.frontend ? pinRoute(c.req) : undefined;
-      if (gated(h) && !pin && !gate.pass(c)) {
+      // the hub's relay: WireGuard's own keys the gate, a host off the mesh has no login
+      const relay = !!h.frontend && c.url.pathname === "/mesh/relay";
+      if (gated(h) && !pin && !relay && !gate.pass(c)) {
         const via = issuerRoute(c);
         return via ? forward(via, c, requestURI(c)) : new Response(null, { status: 401 });
       }

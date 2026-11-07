@@ -111,6 +111,30 @@ test("ingress forwards http and websockets", async () => {
   back.stop(true);
 });
 
+test("the hub's relay upgrades with no login, other frontend upgrades still gated", async () => {
+  const { serve, handler } = await import("@phosphorus/proxy");
+  const front = serve(
+    0,
+    handler((c) => new Response(`app ${c.url.pathname}`), { pass: () => false, issuers: () => [] }),
+    true,
+  );
+  const up = (path: string) =>
+    fetch(`http://127.0.0.1:${front.port}${path}`, {
+      headers: {
+        Connection: "Upgrade",
+        Upgrade: "websocket",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+      },
+    });
+  const r = await up("/mesh/relay");
+  expect(r.status).toBe(200);
+  expect(await r.text()).toBe("app /mesh/relay");
+  expect((await up("/api/terminal")).status).toBe(401);
+  expect((await up("/mesh/relay/x")).status).toBe(401);
+  front.stop(true);
+});
+
 test("a path link to a service now on a subdomain is sent there", async () => {
   const { serve, handler, swap } = await import("@phosphorus/proxy");
   swap([{ host: "box", name: "media", port: 1, scheme: "http", mode: "subdomain", public: true }], () => "127.0.0.1");
