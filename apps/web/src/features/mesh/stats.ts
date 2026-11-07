@@ -63,7 +63,6 @@ export function renderMeshStats(hosts: string[], grouped: Map<string, Route[]>) 
 
   // scrollHeight: the natural height, whatever max-height drawMesh() animates
   uiVars.lastStatsHeight = meshStats.scrollHeight;
-  uiVars.meshDims = null;
   meshStats.style.display = prevDisplay;
   meshStats.style.maxHeight = prevMaxHeight;
 }

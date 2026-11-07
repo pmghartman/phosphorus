@@ -111,13 +111,10 @@ function graphPart(pane: HTMLElement): () => void {
   const mesh = el('div', 'set-mesh set-mesh-full');
   mesh.append(meshPanel);
   pane.append(mesh);
-  // measured while stashed, 0 tall: measured again now it shows
-  uiVars.meshDims = null;
   uiVars.meshStatsDirty = true;
   drawMesh();
   pingHosts();
   const fit = new ResizeObserver(() => {
-    uiVars.meshDims = null;
     if (!meshAnimFrame) drawMesh();
   });
   fit.observe(mesh);

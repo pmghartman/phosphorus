@@ -20,50 +20,9 @@ export const uiVars = {
   // expand/collapse frame
   meshStatsDirty: true,
   // the stats table's unclipped height, cached whenever renderMeshStats() runs,
-  // reserved by meshLayoutParams() when expanded
+  // left out of the graph's room when expanded
   lastStatsHeight: 0,
-  // both ends of the tween, measured once per animation or static draw,
-  // no per-frame read forcing a reflow
-  meshDims: null as { collapsed: Dims; expanded: Dims } | null,
 };
-
-export interface Dims {
-  width: number;
-  height: number;
-  widthPx: number;
-  legendPx: number;
-}
-
-// the graph's height over its width, at least and at most
-const MESH_RATIO_MIN = 1;
-const MESH_RATIO_MAX = 1.7;
-
-// expanded: fewer logical units per pixel width, a real zoom, the popup's
-// height whatever the stats table leaves
-export function meshLayoutParams(expanded: boolean): Dims {
-  const width = expanded ? 200 : 232;
-  const box = meshPanel.parentElement;
-  const bodyH = (box?.clientHeight || 240) - meshHeader.clientHeight - (expanded ? uiVars.lastStatsHeight : 0);
-  const widthPx = meshGraphWrap.clientWidth || width;
-  // the legend expanded only, hidden, not gone, so still measured
-  const legend = meshGraphWrap.querySelector('.mesh-legend') as HTMLElement;
-  const legendOn = expanded && meshPanel.classList.contains('legend-on');
-  // the frame's shape held near the bar popup's: a wide pane spreads the hosts out
-  // rather than flattening the rows, a tall one centers the graph rather than stretching it
-  const r = Math.max(60, bodyH) / widthPx;
-  return {
-    width: r < MESH_RATIO_MIN ? (width * MESH_RATIO_MIN) / r : width,
-    height: width * Math.min(MESH_RATIO_MAX, Math.max(MESH_RATIO_MIN, r)),
-    widthPx,
-    legendPx: legendOn ? legend.offsetTop + legend.offsetHeight : 0,
-  };
-}
-
-export function meshDimsNow() {
-  if (!uiVars.meshDims || !meshAnimFrame)
-    uiVars.meshDims = { collapsed: meshLayoutParams(false), expanded: meshLayoutParams(true) };
-  return uiVars.meshDims;
-}
 
 // meshT: 0 = base (hub | hosts | others columns, 25% height), 1 = expanded
 // (hub-on-top rows, 50% height), lerped by drawMesh() each frame
@@ -72,7 +31,6 @@ export let meshAnimFrame: number | null = null;
 
 function animateMeshT(target: number) {
   if (meshAnimFrame) cancelAnimationFrame(meshAnimFrame);
-  uiVars.meshDims = null;
   // quick, and fastest at the start, so the click answers at once
   const duration = 200;
   const start = performance.now();
@@ -125,7 +83,6 @@ meshLegendBtn.addEventListener('click', () => {
   meshUi.legend = !meshUi.legend;
   saveMeshUi();
   paintMeshUi();
-  uiVars.meshDims = null;
   if (!meshAnimFrame) drawMesh();
 });
 for (const b of meshPanel.querySelectorAll<HTMLElement>('.mesh-fold')) {

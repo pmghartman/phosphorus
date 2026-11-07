@@ -3,8 +3,8 @@
 .about-wrap {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
-  gap: 1rem;
+  align-items: center;
+  gap: 1.5rem;
 }
 
 /* the version tucked into the glyph's bottom right corner */
@@ -21,8 +21,8 @@
    mixed in oklch so the purple and orange meet bright, not through grey */
 .about-mark {
   display: block;
-  width: 11rem;
-  height: 11rem;
+  width: 16rem;
+  height: 16rem;
   max-width: 100%;
   user-select: none;
   background: linear-gradient(

@@ -343,12 +343,17 @@
   font-size: var(--fs-sm);
 }
 
-/* the update's hosts and their releases */
+/* the update's hosts and their releases: one line a host, its columns shared */
+.set-body .update-versions {
+  display: grid;
+  gap: 0;
+  padding-block: 0.3rem;
+}
 .set-body .update-versions:empty {
   display: none;
 }
 .set-body .update-pane .update-row {
-  padding: 0.3rem 0;
+  padding: 0.2rem 0;
 }
 .set-body .update-pane .update-row + .update-row {
   border-top: 1px solid var(--border);
@@ -371,8 +376,10 @@
 .set-body > #view-about {
   padding-top: 0;
 }
-/* about: its card named inside like the rest, no title cut through its edge */
+/* about: its card named inside like the rest, no title cut through its edge; key and value one line */
 .set-body .about-info {
+  display: grid;
+  gap: 0.4rem 2ch;
   margin: 0;
 }
 .set-body .about-info::before {

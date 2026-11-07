@@ -65,7 +65,6 @@ function giveBack(view: HTMLElement, home: string, prepend = false) {
 export function dkMeshQuick(): HTMLElement {
   const size = meshUi.size || { w: 320, h: 540 };
   const fit = new ResizeObserver(() => {
-    uiVars.meshDims = null;
     if (!meshAnimFrame) drawMesh();
   });
   const grip = Object.assign(el('span', 'dk-mesh-grip'), { title: 'resize' });
@@ -78,8 +77,6 @@ export function dkMeshQuick(): HTMLElement {
     open: (pop) => {
       pop.replaceChildren(grip, meshPanel);
       fit.observe(pop);
-      // measured while stashed, 0 tall: measured again now it shows
-      uiVars.meshDims = null;
       uiVars.meshStatsDirty = true;
       drawMesh();
       pingHosts();

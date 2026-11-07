@@ -70,80 +70,85 @@
 .dk-mesh-pop .mesh-svg {
   --mesh-halo: var(--card);
 }
-/* names cut out of the lines behind them in the pane's own colour */
-.mesh-svg :is(.mesh-label, .mesh-hub-dns) {
-  paint-order: stroke;
-  stroke: var(--mesh-halo);
-  stroke-width: 2px;
-  stroke-linejoin: round;
-}
-.mesh-svg .mesh-hub-dns {
-  fill: var(--sky);
-  font-size: 6px;
-  font-family: inherit;
-}
-
-/* a spoke to the hub's host: udp solid sky, the relay over wss dashed sand,
-   one not on the hub faint and dotted */
-.mesh-svg .mesh-line-hub {
-  stroke: var(--sky);
-  stroke-width: 1;
-  opacity: 0.45;
+/* a link: udp a quiet hairline, the relay over wss dashed sand, one off the hub
+   dotted and dim, this host's own in the accent */
+.mesh-svg :is(.mesh-line-hub, .mesh-line-peer) {
   fill: none;
+  stroke-width: 1;
+}
+.mesh-svg .mesh-line-hub {
+  stroke: var(--muted);
+  opacity: 0.45;
 }
 .mesh-svg .mesh-line-hub.relay {
   stroke: var(--sand);
-  stroke-dasharray: 3 2;
-  opacity: 0.7;
+  stroke-dasharray: 4 3;
+  opacity: 0.75;
 }
 .mesh-svg .mesh-line-hub.down {
   stroke: var(--dim);
-  stroke-dasharray: 1 2;
-  opacity: 0.35;
+  stroke-dasharray: 1 3;
+  opacity: 0.6;
 }
 .mesh-svg .mesh-line-hub.self {
   stroke: var(--accent);
-  opacity: 0.7;
+  opacity: 0.6;
 }
-.mesh-svg .mesh-line-hub.touched {
-  stroke: var(--accent);
-  opacity: 0.8;
-}
-
-/* a direct session between two hosts, past the hub */
+/* a direct session between two hosts, bowed past the hub */
 .mesh-svg .mesh-line-peer {
   stroke: var(--teal);
-  stroke-width: 0.7;
-  opacity: calc(0.6 * var(--fade, 1));
-  fill: none;
+  opacity: 0.55;
 }
-.mesh-svg .mesh-line-peer.touched {
+.mesh-svg :is(.mesh-line-hub, .mesh-line-peer).touched {
   stroke: var(--accent);
-  stroke-width: 0.8;
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
-/* host-to-service stem, out on its arc */
-.mesh-svg .mesh-line-stem {
-  stroke: var(--sage);
-  stroke-width: 0.5;
-  opacity: 0.5;
+/* a computer: a flat chip in the pane's own colour, a hairline round it */
+.mesh-svg .mesh-chip {
+  fill: var(--mesh-halo);
+  stroke: var(--border);
+  stroke-width: 1;
 }
-.mesh-svg .mesh-line-stem.touched {
+.mesh-svg .mesh-chip.hub {
+  stroke: color-mix(in srgb, var(--sky) 55%, var(--border));
+}
+.mesh-svg .mesh-chip.self,
+.mesh-svg .mesh-chip.touched {
   stroke: var(--accent);
-  opacity: 0.85;
+}
+.mesh-svg .mesh-chip.guest {
+  stroke-dasharray: 3 2;
+}
+.mesh-svg .mesh-chip.down {
+  stroke-dasharray: 1 2;
+}
+.mesh-svg .mesh-label {
+  fill: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  dominant-baseline: central;
+}
+.mesh-svg .mesh-label.dev {
+  fill: var(--muted);
+  font-size: var(--fs-2xs);
+}
+.mesh-svg .mesh-chip-g:has(.mesh-chip.down) .mesh-label {
+  fill: var(--dim);
+}
+.mesh-svg .mesh-hub-dns {
+  fill: color-mix(in srgb, var(--sky) 70%, var(--muted));
+  font-family: inherit;
+  font-size: var(--fs-3xs);
+  dominant-baseline: central;
 }
 
-/* purple the active path (self, a live request's path and target), green a serving
-   host, grey an idle one, sky services, teal devices on the hub, dark grey ones off it */
+/* the status square: purple this host, green one serving, grey idle, teal a device */
 .mesh-svg .mesh-node.active {
   fill: var(--mesh-active);
 }
 .mesh-svg .mesh-node.idle {
   fill: var(--muted);
-}
-.mesh-svg .mesh-node.svc {
-  fill: var(--sky);
 }
 .mesh-svg .mesh-node.self {
   fill: var(--mesh-self);
@@ -154,22 +159,14 @@
 .mesh-svg .mesh-node.outside.down {
   fill: var(--dim);
 }
-/* a guest's 3-day config: the square hollow */
-.mesh-svg .mesh-node.outside.guest {
-  fill: none;
-  stroke: var(--teal);
-  stroke-width: 0.8;
+/* one pip a service, lit while a request rides to it */
+.mesh-svg .mesh-pip {
+  fill: var(--sky);
+  opacity: 0.8;
 }
-.mesh-svg .mesh-node.outside.guest.down {
-  stroke: var(--dim);
-}
-.mesh-svg .mesh-node.svc.touched {
+.mesh-svg .mesh-pip.touched {
   fill: var(--accent);
-}
-.mesh-svg .mesh-label {
-  fill: var(--muted);
-  font-size: 7px;
-  font-family: inherit;
+  opacity: 1;
 }
 /* what the marks mean, stacked in the graph's top-right corner */
 .mesh-legend {
@@ -197,12 +194,24 @@
 .mesh-legend > span {
   display: flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.4rem;
 }
-/* a model host's role letters and their legend, in the glyph's shifting purple and orange */
+/* a link's look, a short stretch of it */
+.mesh-key {
+  width: 1rem;
+  border-top: 1px solid var(--muted);
+}
+.mesh-key.relay {
+  border-top: 1px dashed var(--sand);
+}
+.mesh-key.direct {
+  border-top-color: var(--teal);
+}
+.mesh-key.down {
+  border-top: 1px dotted var(--dim);
+}
+/* the model tag in the glyph's purple and orange */
 .mesh-legend-model {
-  width: 0.5rem;
-  text-align: center;
   font-weight: 500;
   color: transparent;
   background: linear-gradient(90deg, var(--glyph-purple), var(--glyph-orange));
@@ -212,7 +221,9 @@
 .mesh-svg .mesh-model-mark {
   fill: url(#phosphorus-grad);
   font-family: inherit;
+  font-size: var(--fs-3xs);
   font-weight: 500;
+  dominant-baseline: central;
 }
 .mesh-svg .mesh-model-mark.down {
   fill: var(--dim);
@@ -322,22 +333,12 @@
 .mesh-panel.expanded [data-host] {
   cursor: pointer;
 }
-.mesh-svg .mesh-hit {
-  fill: transparent;
-}
 .mesh-panel.expanded .mesh-host,
 .mesh-stat-row[data-host] {
   cursor: pointer;
 }
-.mesh-panel:not(.expanded) .mesh-svg .mesh-hit {
-  pointer-events: none;
-}
-.mesh-panel.expanded .mesh-host:hover .mesh-node {
+.mesh-panel.expanded .mesh-host:hover .mesh-chip {
   stroke: var(--accent);
-  stroke-width: 1;
-}
-.mesh-panel.expanded .mesh-host:hover .mesh-label {
-  fill: var(--fg);
 }
 .mesh-panel.expanded .mesh-stat-row[data-host]:active {
   background: color-mix(in srgb, var(--fg) 10%, transparent);
@@ -460,7 +461,7 @@
     flex-direction: column;
   }
   .about-mark {
-    width: 8rem;
-    height: 8rem;
+    width: 12rem;
+    height: 12rem;
   }
 }

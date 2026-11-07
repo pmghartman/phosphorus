@@ -59,6 +59,3 @@ export function settleHost(served: string): string {
   hostSwitch = null;
   return served;
 }
-
-// a node's half-width before the depth scale
-export const NODE_HALF = 3;
