@@ -122,8 +122,10 @@ export function ffmpegArgs(o: EncodeOpts): string[] {
   switch (o.enc) {
     case "nvenc":
       a.push("-c:v", "h264_nvenc", "-preset", "p1", "-tune", "ull", "-zerolatency", "1", "-delay", "0");
-      a.push("-rc", "cbr", "-b:v", `${o.kbps}k`, "-maxrate", `${o.kbps}k`, "-bufsize", `${vbv}k`, "-forced-idr", "1");
-      a.push("-pix_fmt", "yuv420p", ...gop);
+      // a quality target under the rate cap, not a constant rate: a still screen costs
+      // next to nothing, a moving one up to kbps
+      a.push("-rc", "vbr", "-cq", "23", "-b:v", "0", "-maxrate", `${o.kbps}k`, "-bufsize", `${vbv}k`);
+      a.push("-forced-idr", "1", "-pix_fmt", "yuv420p", ...gop);
       break;
     case "vaapi":
       a.push("-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-rc_mode", "CBR");

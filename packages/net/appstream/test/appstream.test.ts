@@ -107,6 +107,20 @@ describe("encode", () => {
     expect(s).toContain("-draw_mouse 0");
     expect(s).toEndWith("-f flv -");
   });
+  test("nvenc: a quality target under the cap, never a constant rate", () => {
+    const s = ffmpegArgs({
+      display: ":1",
+      auth: "/x",
+      w: 1280,
+      h: 720,
+      fps: 60,
+      kbps: 12000,
+      enc: "nvenc",
+      full: false,
+    }).join(" ");
+    expect(s).toContain("-rc vbr -cq 23 -b:v 0 -maxrate 12000k");
+    expect(s).not.toContain("cbr");
+  });
   test("shell quoting", () => {
     expect(shq("abc")).toBe("abc");
     expect(shq("it's")).toBe(`'it'\\''s'`);
