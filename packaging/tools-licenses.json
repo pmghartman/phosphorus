@@ -2,20 +2,6 @@
   "_": "programs a host fetches that aren't npm packages: their version pin and license text, merged into THIRD_PARTY_NOTICES.txt by scripts/licenses.ts",
   "fetched": [
     {
-      "name": "Tailscale",
-      "spdx": "BSD-3-Clause",
-      "pin": ["packages/host/host/src/tools.ts", "Tailscale\\s*=\\s*\"([^\"]+)\""],
-      "source": "https://github.com/tailscale/tailscale",
-      "license": "https://raw.githubusercontent.com/tailscale/tailscale/v{v}/LICENSE"
-    },
-    {
-      "name": "headscale",
-      "spdx": "BSD-3-Clause",
-      "pin": ["packages/host/host/src/tools.ts", "Headscale\\s*=\\s*\"([^\"]+)\""],
-      "source": "https://github.com/juanfont/headscale",
-      "license": "https://raw.githubusercontent.com/juanfont/headscale/v{v}/LICENSE"
-    },
-    {
       "name": "Wintun",
       "spdx": "LicenseRef-Wintun-Prebuilt-Binaries",
       "pin": ["packages/host/host/src/tools.ts", "Wintun\\s*=\\s*\"([^\"]+)\""],

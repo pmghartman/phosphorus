@@ -4,7 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import * as store from "@phosphorus/store";
-import { DataDir, errText, marshal, Notes, obj, SelfHost } from "@phosphorus/util";
+import { DataDir, errText, lanIPv4s, marshal, Notes, obj, publicIPv4, SelfHost } from "@phosphorus/util";
 import { validHost } from "./names.ts";
 
 const notes = new Notes("mesh");
@@ -14,16 +14,32 @@ export const devicesDir = "etc/mesh/devices";
 export const hostRel = (h: string) => `${hostsDir}/${h}.json`;
 export const deviceRel = (n: string) => `${devicesDir}/${n}.json`;
 
-// a host as it records itself; removed: its key refused until it joins again
-export type HostRec = { ip: string; os: string; key: string; removed?: boolean };
-// a device the control host recorded: a phone, a laptop, a guest
-export type DeviceRec = { ip: string; guest: boolean };
+// a host as it records itself; endpoint its ip:port on a public address, lan
+// its own networks', for direct paths; removed: its key refused until it joins again
+export type HostRec = { ip: string; os: string; key: string; endpoint?: string; lan?: string[]; removed?: boolean };
+// a device the control host recorded: a phone, a laptop, a guest; key blank
+// until a config is made for it, a guest's gone at expires
+export type DeviceRec = { ip: string; key: string; guest: boolean; expires?: number };
 
 export type Host = HostRec & { host: string };
 export type Device = DeviceRec & { name: string };
 
+// the UDP port every host's WireGuard listens on
+export const WGPort = 41641;
+
 const nameOf = (f: string) => f.replace(/\.json$/, "");
 const str = (v: unknown) => (typeof v === "string" ? v : "");
+const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : []);
+
+// a stored host record read
+const hostRec = (r: Record<string, any>): HostRec => ({
+  ip: str(r.ip),
+  os: str(r.os),
+  key: str(r.key),
+  ...(str(r.endpoint) ? { endpoint: str(r.endpoint) } : {}),
+  ...(strs(r.lan).length ? { lan: strs(r.lan) } : {}),
+  ...(r.removed === true ? { removed: true } : {}),
+});
 
 // every host's record, removed ones too
 export function allHosts(): Host[] {
@@ -32,7 +48,7 @@ export function allHosts(): Host[] {
     const host = nameOf(f);
     const r = obj(store.read(hostRel(host)));
     if (!r || !validHost(host)) continue;
-    out.push({ host, ip: str(r.ip), os: str(r.os), key: str(r.key), ...(r.removed === true ? { removed: true } : {}) });
+    out.push({ host, ...hostRec(r) });
   }
   return out;
 }
@@ -45,7 +61,14 @@ export function devices(): Device[] {
   for (const f of store.list(devicesDir)) {
     const name = nameOf(f);
     const r = obj(store.read(deviceRel(name)));
-    if (r && validHost(name)) out.push({ name, ip: str(r.ip), guest: r.guest === true });
+    if (r && validHost(name))
+      out.push({
+        name,
+        ip: str(r.ip),
+        key: str(r.key),
+        guest: r.guest === true,
+        ...(typeof r.expires === "number" ? { expires: r.expires } : {}),
+      });
   }
   return out;
 }
@@ -72,6 +95,21 @@ export function publicKey(): string {
   return (pub = pair.public);
 }
 
+// what this host's join answered: its address and the hub, the first peer it
+// links to before the store has synced
+export type Joined = { name: string; ip: string; hub: { name: string; ip: string } };
+
+export function joined(): Joined | undefined {
+  try {
+    const j = obj(JSON.parse(readFileSync(join(DataDir, "mesh", "joined.json"), "utf8")));
+    const hub = obj(j?.hub);
+    if (!j || typeof j.ip !== "string" || !hub) return;
+    return { name: str(j.name), ip: j.ip, hub: { name: str(hub.name), ip: str(hub.ip) } };
+  } catch {
+    return;
+  }
+}
+
 // --- this host's record ----------------------------------------------------------------
 
 // this host's record kept current; false while the mesh has removed its key
@@ -91,7 +129,15 @@ export function registerSelf(ip: string, os: string): boolean {
     return false;
   }
   notes.clear("removed");
-  const want: HostRec = { ip, os, key };
+  const pub = publicIPv4();
+  const lan = lanIPv4s().map((a) => `${a}:${WGPort}`);
+  const want: HostRec = {
+    ip,
+    os,
+    key,
+    ...(pub ? { endpoint: `${pub}:${WGPort}` } : {}),
+    ...(lan.length ? { lan } : {}),
+  };
   if (marshal(cur) !== marshal(want)) store.write(hostRel(SelfHost), want);
   return true;
 }
@@ -100,18 +146,6 @@ export function registerSelf(ip: string, os: string): boolean {
 export function removeHost(host: string): boolean {
   const cur = obj(store.read(hostRel(host)));
   if (!cur || cur.removed === true) return false;
-  store.write(hostRel(host), { ip: str(cur.ip), os: str(cur.os), key: str(cur.key), removed: true });
+  store.write(hostRel(host), { ...hostRec(cur), removed: true });
   return true;
-}
-
-// the control host's devices written to match what it lists, the rest removed
-export function setDevices(list: Device[]) {
-  const want = new Map(list.filter((d) => validHost(d.name)).map((d) => [d.name, d]));
-  for (const d of devices()) if (!want.has(d.name)) store.remove(deviceRel(d.name));
-  const have = new Map(devices().map((d) => [d.name, d]));
-  for (const [name, d] of want) {
-    const rec: DeviceRec = { ip: d.ip, guest: d.guest };
-    const h = have.get(name);
-    if (!h || h.ip !== rec.ip || h.guest !== rec.guest) store.write(deviceRel(name), rec);
-  }
 }

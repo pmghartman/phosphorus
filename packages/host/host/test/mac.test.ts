@@ -103,8 +103,8 @@ test("the owner's requests handled", async () => {
 });
 
 test("the socket sets the form's keys alone, never root's env", () => {
-  const text = ["MESH_KEY=phos1.x", "PATH=/tmp/evil", "DYLD_INSERT_LIBRARIES=/tmp/x.dylib", "BASE_DOMAIN=example.org"];
-  expect(knownKeys(text.join("\n"))).toEqual({ MESH_KEY: "phos1.x", BASE_DOMAIN: "example.org" });
+  const text = ["MESH_KEY=phos.x", "PATH=/tmp/evil", "DYLD_INSERT_LIBRARIES=/tmp/x.dylib", "BASE_DOMAIN=example.org"];
+  expect(knownKeys(text.join("\n"))).toEqual({ MESH_KEY: "phos.x" });
   expect(knownKeys("")).toEqual({});
 });
 

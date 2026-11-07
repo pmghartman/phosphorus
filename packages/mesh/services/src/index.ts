@@ -14,9 +14,14 @@ export {
   acmeRel,
   acmeState,
   acmeStateRel,
+  addDnsRecord,
   challenge,
   challengeRel,
+  type DNSRecord,
+  type DNSRecordType,
   type Domain,
+  dnsRecordError,
+  dnsRecords,
   domain,
   domainRe,
   domainRel,
@@ -26,6 +31,8 @@ export {
   portError,
   ports,
   publicUp,
+  recordsRel,
+  removeDnsRecord,
   removePort,
   selfPorts,
   setPort,
@@ -207,7 +214,7 @@ export function nameFrom(title: string): string {
 }
 
 // a page's title, redirects followed; "" for anything not an HTML page with one,
-// an API or tailscale's own peer listener among them, and for an error page:
+// an API among them, and for an error page:
 // Windows' HTTP.sys answers :5357 (WSDAPI) with a titled "Service Unavailable" 503
 async function titleOf(scheme: string, host: string, port: number): Promise<string> {
   try {

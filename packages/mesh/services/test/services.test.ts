@@ -206,3 +206,19 @@ test("found pages written in, a removed one left alone", async () => {
   expect(adopt([jelly])).toEqual([]);
   expect(store.read("etc/services/a/jelly.json")).toBeUndefined();
 });
+
+test("an admin's dns records: checked before they're served", async () => {
+  const { dnsRecordError } = await import("../src/domain.ts");
+  type R = Parameters<typeof dnsRecordError>[0];
+  const why = (r: R, others: Parameters<typeof dnsRecordError>[1] = []) => dnsRecordError(r, others);
+  expect(why({ name: "", type: "MX", value: "mail.example.com", priority: 10 })).toBe("");
+  expect(why({ name: "www", type: "CNAME", value: "example.net" })).toBe("");
+  expect(why({ name: "mail", type: "A", value: "203.0.113.7" })).toBe("");
+  expect(why({ name: "_dmarc", type: "TXT", value: "v=DMARC1; p=none" })).toBe("");
+  expect(why({ name: "", type: "CNAME", value: "example.net" })).toMatch(/can't be a CNAME/);
+  expect(why({ name: "ns1", type: "A", value: "203.0.113.7" })).toMatch(/phosphorus's own/);
+  expect(why({ name: "mail", type: "A", value: "mail.example.com" })).toMatch(/IPv4/);
+  const alias = [{ id: "a", name: "www", type: "CNAME" as const, value: "x.net" }];
+  expect(why({ name: "www", type: "A", value: "203.0.113.7" }, alias)).toMatch(/stands alone/);
+  expect(why({ name: "Bad Name", type: "A", value: "203.0.113.7" })).toMatch(/label/);
+});

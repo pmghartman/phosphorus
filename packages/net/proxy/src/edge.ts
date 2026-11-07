@@ -1,5 +1,5 @@
-// the edge host's 443: TLS split by server name, the control server's bytes
-// to headscale, everything else to the ingress's own TLS server on loopback
+// the edge host's 443: each connection passed to the ingress's own TLS server
+// on loopback once its hello is in, the client behind it remembered
 
 import { logf } from "@phosphorus/util";
 import type { Socket, TCPSocketListener } from "bun";
@@ -59,19 +59,15 @@ export type Split = {
   port: number;
   // the loopback port the ingress's TLS server is on now
   setIngress(port: number): void;
-  // the control server's name and loopback port, none when it isn't behind this edge
-  setControl(name: string, port: number): void;
   stop(): void;
 };
 
 const helloMax = 16 * 1024 + 5;
 const helloWaitS = 5;
 
-// 443 split: a listener whose targets can change while it runs
+// 443 split: a listener whose target can change while it runs
 export function split(port: number, hostname?: string): Split {
   let ingress = 0;
-  let control = { name: "", port: 0 };
-  const target = (sni: string) => (sni && sni === control.name && control.port ? control.port : ingress);
   const listener: TCPSocketListener<Side> = Bun.listen<Side>({
     hostname: hostname ?? "0.0.0.0",
     port,
@@ -90,7 +86,7 @@ export function split(port: number, hostname?: string): Split {
         const all = joined(d.buf);
         const sni = sniOf(all);
         if (sni === undefined && all.length < helloMax) return;
-        const to = sni === undefined || sni === null ? ingress : target(sni);
+        const to = ingress;
         if (!to) {
           s.end();
           return;
@@ -118,7 +114,6 @@ export function split(port: number, hostname?: string): Split {
   return {
     port: listener.port,
     setIngress: (p) => void (ingress = p),
-    setControl: (name, p) => void (control = { name: name.toLowerCase(), port: p }),
     stop: () => listener.stop(true),
   };
 }

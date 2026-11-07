@@ -2,7 +2,7 @@
 // the internet, the certificate over it, the ACME account and challenge, and
 // the public ports each host asks the edge to open
 import * as store from "@phosphorus/store";
-import { now, obj, SelfHost } from "@phosphorus/util";
+import { isIPv4, now, obj, SelfHost } from "@phosphorus/util";
 
 export const domainRel = "etc/mesh/domain.json";
 export const tlsRel = "etc/mesh/tls.json";
@@ -133,3 +133,71 @@ export function setPort(p: PortRow) {
 export const removePort = (host: string, name: string) => store.remove(portRel(host, name));
 
 export const selfPorts = () => ports().filter((p) => p.host === SelfHost);
+
+// --- an admin's own records ---------------------------------------------------------
+
+export const recordsRel = "etc/mesh/records.json";
+export type DNSRecordType = "A" | "AAAA" | "CNAME" | "MX" | "TXT";
+// name relative to the domain, "" the domain itself
+export type DNSRecord = {
+  id: string;
+  name: string;
+  type: DNSRecordType;
+  value: string;
+  priority?: number;
+  ttl?: number;
+};
+
+const recordTypes = new Set<string>(["A", "AAAA", "CNAME", "MX", "TXT"]);
+const relNameRe = /^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9])?(\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9])?)*$/;
+const hostNameRe = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+export function dnsRecords(): DNSRecord[] {
+  const list = obj(store.read(recordsRel))?.list;
+  if (!Array.isArray(list)) return [];
+  const out: DNSRecord[] = [];
+  for (const x of list) {
+    const r = obj(x);
+    if (!r || typeof r.id !== "string" || !recordTypes.has(r.type)) continue;
+    out.push({
+      id: r.id,
+      name: String(r.name ?? ""),
+      type: r.type as DNSRecordType,
+      value: String(r.value ?? ""),
+      ...(typeof r.priority === "number" ? { priority: r.priority } : {}),
+      ...(typeof r.ttl === "number" ? { ttl: r.ttl } : {}),
+    });
+  }
+  return out;
+}
+
+// why a record can't be served, "" when it can
+export function dnsRecordError(r: Omit<DNSRecord, "id">, others = dnsRecords()): string {
+  if (!recordTypes.has(r.type)) return "the type is A, AAAA, CNAME, MX or TXT";
+  if (r.name && !relNameRe.test(r.name))
+    return "the name is a label under the domain, www say, or blank for the domain";
+  if (/^ns\d+$/.test(r.name) || r.name.startsWith("_acme-challenge")) return `${r.name} is phosphorus's own`;
+  const v = r.value.trim();
+  if (r.type === "A" && !isIPv4(v)) return "an A record's value is an IPv4 address";
+  if (r.type === "AAAA" && !/^[0-9a-f:]+$/i.test(v)) return "an AAAA record's value is an IPv6 address";
+  if ((r.type === "CNAME" || r.type === "MX") && !hostNameRe.test(v.replace(/\.$/, "").toLowerCase()))
+    return `a ${r.type} record's value is a host name, mail.example.com say`;
+  if (r.type === "TXT" && (!v || v.length > 1000)) return "a TXT record's value is up to 1000 characters";
+  const p = r.priority;
+  if (r.type === "MX" && p !== undefined && !(Number.isInteger(p) && p >= 0 && p <= 65535))
+    return "an MX priority is 0 to 65535";
+  if (r.type === "CNAME" && !r.name) return "the domain itself can't be a CNAME";
+  const same = others.filter((o) => o.name === r.name);
+  if (r.type === "CNAME" && same.length) return `${r.name} has records already; a CNAME stands alone`;
+  if (same.some((o) => o.type === "CNAME")) return `${r.name} is a CNAME; it stands alone`;
+  return "";
+}
+
+export function addDnsRecord(r: Omit<DNSRecord, "id">): DNSRecord {
+  const rec: DNSRecord = { ...r, value: r.value.trim(), id: crypto.randomUUID().slice(0, 8) };
+  store.write(recordsRel, { list: [...dnsRecords(), rec] }, true);
+  return rec;
+}
+
+export const removeDnsRecord = (id: string) =>
+  store.write(recordsRel, { list: dnsRecords().filter((r) => r.id !== id) }, true);

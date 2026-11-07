@@ -5,17 +5,17 @@ import * as envfile from "@phosphorus/envfile";
 import { FrontendPort } from "@phosphorus/util";
 import { at, fail, keysMissing, println } from "./base.ts";
 import { readPassword } from "./ctl.ts";
+import { meshName } from "./net/name.ts";
 import { os } from "./os.ts";
-import { keptName, labelOf, tailscaleStatus } from "./tailnet.ts";
 
 // the desktop's addresses: the mesh's domain first when there is one, then
-// this host's name on the tailnet
+// this host's name on the mesh
 export function desktopURLs(domain: string, host: string): string[] {
   const tail = `http://${host || "localhost"}/`;
   return domain ? [`https://${domain}/`, tail] : [tail];
 }
 
-// meshDomain the mesh's domain as run last served it, "" on the tailnet alone
+// meshDomain the mesh's domain as run last served it, "" on the mesh alone
 export function meshDomain(): string {
   try {
     return readFileSync(at("state", "run", "base-domain"), "utf8").trim();
@@ -26,7 +26,7 @@ export function meshDomain(): string {
 
 // desktopLinks this host's desktop addresses as it knows them now
 export async function desktopLinks(): Promise<string[]> {
-  return desktopURLs(meshDomain(), await tailnetHost());
+  return desktopURLs(meshDomain(), meshName());
 }
 
 export type Front = {
@@ -34,7 +34,7 @@ export type Front = {
   running: boolean;
   host: string;
   domain: string;
-  // phosphorus hosts answering and every one the tailnet has seen, while running
+  // phosphorus hosts answering and every one the mesh has seen, while running
   up?: number;
   seen?: number;
 };
@@ -66,7 +66,7 @@ export function frontPage(f: Front, tty: boolean): string {
     "",
     "  every app is on the desktop, open it in a browser:",
     `    ${url(link(first!, tty))}`,
-    ...rest.map((u) => `    ${url(link(u, tty))}  ${dim("on the tailnet")}`),
+    ...rest.map((u) => `    ${url(link(u, tty))}  ${dim("on the mesh")}`),
     "",
     dim("  phos help lists the commands"),
     "",
@@ -94,22 +94,11 @@ async function meshState(): Promise<{ host: string; up: number; seen: number } |
   }
 }
 
-// this host's name on the mesh, as run names it
-export async function tailnetHost(): Promise<string> {
-  const kept = keptName();
-  if (kept) return kept;
-  try {
-    return labelOf(String(JSON.parse(await tailscaleStatus())?.Self?.DNSName ?? ""));
-  } catch {
-    return "";
-  }
-}
-
 // front the page printed from what this host knows now
 export async function front(version: string) {
   const running = await os.svcActive();
   const mesh = running ? await meshState() : undefined;
-  const host = mesh?.host || (await tailnetHost());
+  const host = mesh?.host || meshName();
   println(
     frontPage({ version, running, host, domain: meshDomain(), up: mesh?.up, seen: mesh?.seen }, !!process.stdout.isTTY),
   );

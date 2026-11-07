@@ -13,27 +13,6 @@ export const LogDir = join(stateDir(), "log");
 export const CacheDir = join(stateDir(), "cache");
 export const DataDir = join(stateDir(), "data");
 
-// the control server: headscale's database, keys and the config written for it
-export const ControlDir = join(DataDir, "control");
-// what the frontend wants the control role to serve, absent when this host isn't control
-export const ControlSpecFile = join(RunDir, "control.json");
-// headscale's CLI socket, root's alone
-export const ControlSocket = join(RunDir, "headscale.sock");
-export const HeadscaleBin = join(CacheDir, "tools", "headscale");
-
-// the control role as the frontend asks for it; relay: the embedded DERP and STUN;
-// behind: this host is an edge too, 443 split there, headscale on loopback
-export type ControlSpec = {
-  url: string;
-  baseDomain: string;
-  relay: boolean;
-  behind: boolean;
-  ipv4?: string;
-  ipv6?: string;
-};
-// where headscale listens behind the edge's splitter
-export const ControlBehindPort = 8443;
-
 // each kind's folder there before anything writes into it; a login without the
 // rights to state/ only reads
 for (const d of [RunDir, LogDir, CacheDir, DataDir])

@@ -1,5 +1,4 @@
-// what differs by OS: the service manager, Tailscale's install, the admin
-// setup, run's children and the update agent; each platform's in its own file
+// what differs by OS: the service manager, the admin setup, run's children and the update agent; each platform's in its own file
 import type { Subprocess } from "bun";
 import { darwin } from "./darwin.ts";
 import { linux } from "./linux.ts";
@@ -42,8 +41,6 @@ export type OS = {
   elevateUninstall(): Promise<void>;
   // tools.ts's fetched tools
   libexec(): string;
-  // phosphorus's own tailscale wanted, none of the machine's
-  ownTailscale(): boolean;
   logHint(): string;
   svcInstall(): Promise<void>;
   svcActive(): Promise<boolean>;
@@ -52,14 +49,6 @@ export type OS = {
   svcStop(): Promise<void>;
   svcRestart(noBlock: boolean): Promise<void>;
   svcRemove(): void;
-  tailscaleDirs(): string[];
-  tailscaleCLI(): string;
-  tailscaleInstalled(): boolean;
-  tailscaleInstall(): Promise<void>;
-  tailscaleKeepUp(): Promise<void>;
-  tailscaleReady(): Promise<void>;
-  tailscaleStart(): Promise<void>;
-  tailscaleUpFlags(): string[];
   missingDeps(): Promise<string[]>;
   aptInstall(pkgs: string[]): Promise<void>;
   deferRebuild(): Promise<void>;

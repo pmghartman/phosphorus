@@ -5,12 +5,12 @@ Root-causes a broken, slow, full or silent host, service or game server from its
 1. Resolve the target from `mesh_hosts` and `services`, in parallel. Ask only if it stays ambiguous.
 2. Gather in parallel, as they apply:
    - host slow or full: `host_stats` on it (cpu, memory, disk with percents, parts, top processes), `host_logs` `level: warn` `since: 2h`
-   - host not answering: `mesh_hosts` `health: true` (answering? still on the tailnet?), then from another host `terminal_run` `tailscale ping -c 3 <host>`
+   - host not answering: `mesh_hosts` `health: true` (answering? its tunnel up?), then `host_logs` `source: net` `since: 2h` on it and on the control host, the hub every host reaches the mesh through
    - service: `services` `host` `name`, `host_config` (its entry in `services`), `host_logs` `match: <name>` `since: 2h`
    - game (the Games app installed): `games`, `game_log`
-   - tailscale or headscale missing or failing to start: each host fetches its pinned copies into `state/cache/tools` on every start and update; `host_logs` `match: fetch` `since: 2h` shows a `couldn't fetch` line, fixed by `host_power` `restart` once the host reaches GitHub and pkgs.tailscale.com
+   - the mesh's tunnel down or waiting: `host_logs` `source: net` `since: 2h` says on what (the hub's answer, the tunnel device); a host whose UDP never reaches the hub on port 41641 falls back to the relay over https at the mesh's domain; on Windows the tunnel's driver, wintun, is fetched into `state/cache/tools`, and a `couldn't fetch` line clears with `host_power` `restart` once the host reaches wintun.net
    - the domain or a public URL: `mesh_hosts` `health: true` `edge` on each edge host (its dns, https and public ports), `host_logs` `match: edge` `since: 2h` there; a domain still pointing elsewhere is fixed at the registrar with the nameservers settings › network shows, a certificate not issued waits on that delegation
-   - control server (the mesh's own headscale, in settings › network): `mesh_hosts` `health: true` `control` (`url` and `host` the mesh's choice, `serving` on its host), `host_logs` `source: control` `since: 2h` on the control host; a host off the mesh joins again with `MESH_KEY` in its `.env` on its next start
+   - the hub (settings › network): `mesh_hosts` `health: true` `control` (`url` the mesh's domain, `host` the hub's, `serving` on it), `host_logs` `source: net` `since: 2h` there; a host off the mesh joins again with a new `MESH_KEY` in its `.env` on its next start
    - git (Forgejo): `services` with host and name `git`, `host_logs` `match: git` `since: 2h`
 3. Narrow with more `host_logs` (`match` on the first error, an earlier `since`) or a read-only `terminal_run`: `systemctl status`, `ss -ltnp`, `journalctl -u ...`, and for a full Linux disk `df -h; du -xh --max-depth=2 / 2>/dev/null | sort -h | tail -20`.
 4. Confirm a past error still matters before calling it the cause: a later success line, or the current `services` check or `mesh_hosts` health.

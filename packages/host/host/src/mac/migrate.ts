@@ -157,7 +157,7 @@ export async function daemonSetup(f: Flags) {
   ownHome(home, shares);
   envfile.ensure(envPath());
 
-  // the admin setup (ssh, PATH, Tailscale) here, the prompt already given
+  // the admin setup (ssh, PATH) here, the prompt already given
   try {
     if (await os.needSetup()) await os.setupOS();
   } catch (e) {

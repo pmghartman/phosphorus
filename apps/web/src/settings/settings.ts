@@ -11,7 +11,7 @@ import { dk, st } from '../lib/state.ts';
 import { agentsSection } from './agents.ts';
 import { appearanceSection } from './appearance.ts';
 import { HOST_SUBS, hostsSection, hostsSub } from './hosts.ts';
-import { networkSection } from './network.ts';
+import { NET_SUBS, netSub, networkSection } from './network.ts';
 import { PROFILE_SUBS, profileSection, profileSub } from './profile.ts';
 import { usersSection } from './users.ts';
 
@@ -94,9 +94,11 @@ const SECTIONS: Section[] = [
     label: 'network',
     glyph: () => DK_GLYPHS.lock!,
     group: 'mesh',
-    blurb: 'domain, public ports, control server, relay, join keys',
+    blurb: 'the mesh and its devices, dns, the domain',
     admin: true,
-    draw: networkSection,
+    subs: () => NET_SUBS,
+    sub: netSub,
+    draw: (body, sub) => networkSection(body, sub),
   },
   {
     id: 'update',

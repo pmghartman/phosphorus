@@ -1,12 +1,12 @@
 #!/bin/sh
 # remove: the cli links; purge: /var/lib/phosphorus (installed services' data,
-# shares, the tailnet identity)
+# shares, the mesh identity)
 set -e
 case "$1" in
 remove | purge)
-    for l in phosphorus phos tailscale; do
+    for l in phosphorus phos; do
         case "$(readlink /usr/local/bin/$l 2>/dev/null)" in
-        /var/lib/phosphorus/bin/phosphorus | /var/lib/phosphorus/state/cache/tools/tailscale) rm -f /usr/local/bin/$l ;;
+        /var/lib/phosphorus/bin/phosphorus) rm -f /usr/local/bin/$l ;;
         esac
     done
     rm -f /etc/ssh/ssh_config.d/phosphorus.conf

@@ -128,7 +128,7 @@ test("phos alone: the front page, linked to the desktop", () => {
       "",
       "  every app is on the desktop, open it in a browser:",
       "    https://mesh.example/",
-      "    http://box/  on the tailnet",
+      "    http://box/  on the mesh",
       "",
       "  phos help lists the commands",
       "",
@@ -240,52 +240,40 @@ test("small helpers", () => {
 });
 
 test("the tools pinned per OS, fetched only when a pin moves or a file is gone", async () => {
-  const { ensurePin, pins, Tailscale } = await import("../src/tools.ts");
+  const { ensurePin, pins, Wintun } = await import("../src/tools.ts");
   const { os } = await import("../src/os.ts");
   const names = (p: { files: Record<string, string> }[]) => p.flatMap((x) => Object.keys(x.files));
-  expect(names(pins("linux", "x64"))).toEqual(["tailscale", "tailscaled"]);
-  expect(names(pins("linux", "arm64", false))).toEqual([]);
+  expect(names(pins("linux", "x64"))).toEqual([]);
   expect(names(pins("darwin", "arm64"))).toEqual([]);
   expect(names(pins("win32", "x64"))).toEqual(["wintun.dll"]);
   expect(pins("win32", "arm64")[0]!.files).toEqual({ "wintun.dll": "wintun/bin/arm64/wintun.dll" });
-  expect(pins("linux", "arm64")[0]!.url).toContain(`tailscale_${Tailscale}_arm64.tgz`);
+  expect(pins("win32", "x64")[0]!.url).toContain(`wintun-${Wintun}.zip`);
 
   // the pin's file here at its version: nothing fetched
   const lib = os.libexec();
   mkdirSync(lib, { recursive: true });
-  const pin = pins("linux", "x64")[0]!;
+  const pin = pins("win32", "x64")[0]!;
   for (const f of Object.keys(pin.files)) writeFileSync(join(lib, f), "x");
   writeFileSync(join(lib, "versions.json"), JSON.stringify({ [pin.name]: pin.ver }));
   const real = globalThis.fetch;
   let asked = 0;
   globalThis.fetch = (async () => {
     asked++;
-    return new Response("not tailscale");
+    return new Response("not wintun");
   }) as unknown as typeof fetch;
   try {
     await ensurePin(pin);
     expect(asked).toBe(0);
     // a moved pin fetched, the wrong bytes refused
-    writeFileSync(join(lib, "versions.json"), JSON.stringify({ tailscale: "old" }));
+    writeFileSync(join(lib, "versions.json"), JSON.stringify({ wintun: "old" }));
     await expect(ensurePin(pin)).rejects.toThrow(/checksum mismatch/);
     expect(asked).toBeGreaterThan(0);
-    expect(JSON.parse(readFileSync(join(lib, "versions.json"), "utf8")).tailscale).toBe("old");
+    expect(JSON.parse(readFileSync(join(lib, "versions.json"), "utf8")).wintun).toBe("old");
   } finally {
     globalThis.fetch = real;
   }
-  expect(Tailscale).toMatch(/^\d+\.\d+\.\d+$/);
+  expect(Wintun).toMatch(/^\d+\.\d+\.\d+$/);
 }, 30_000);
-
-test("headscale pinned apart from every host's tools", async () => {
-  const { headscalePin, Headscale, pins } = await import("../src/tools.ts");
-  expect(pins("linux", "x64").some((p) => p.name === "headscale")).toBe(false);
-  const p = headscalePin("arm64");
-  expect(p.url).toBe(
-    `https://github.com/juanfont/headscale/releases/download/v${Headscale}/headscale_${Headscale}_linux_arm64`,
-  );
-  expect(p.files).toEqual({ headscale: "" });
-  expect(headscalePin("x64").sha256).toMatch(/^[0-9a-f]{64}$/);
-});
 
 // a zip of stored entries, enough for the .zip branch
 function storedZip(files: [string, Uint8Array][]): Uint8Array {
@@ -351,35 +339,64 @@ test("a zip pin's member taken out of it", async () => {
 
 test("a mesh join key round-trips, anything else refused", async () => {
   const envfile = await import("@phosphorus/envfile");
-  const k = envfile.formatMeshKey({ url: "https://hs.mulab.dev", key: "hskey-auth-abc" });
-  expect(k.startsWith("phos1.")).toBe(true);
-  expect(envfile.parseMeshKey(` "${k}"\n`)).toEqual({ url: "https://hs.mulab.dev", key: "hskey-auth-abc" });
+  const token = "0a1b2c3d.abcdefghijklmnopqrstuvwxyz012345";
+  const k = envfile.formatMeshKey({ url: "https://philab.io", token });
+  expect(k.startsWith("phos.")).toBe(true);
+  expect(envfile.parseMeshKey(` "${k}"\n`)).toEqual({ url: "https://philab.io", token });
   expect(envfile.parseMeshKey("tskey-auth-abc")).toBeUndefined();
-  expect(envfile.parseMeshKey("phos1.notbase64json")).toBeUndefined();
-  const http = envfile.formatMeshKey({ url: "http://hs.mulab.dev", key: "k" });
-  expect(envfile.parseMeshKey(http)).toBeUndefined();
+  expect(envfile.parseMeshKey("phos.notbase64json")).toBeUndefined();
+  // the old headscale key and a plain http url, refused
+  expect(
+    envfile.parseMeshKey("phos1." + Buffer.from('{"u":"https://hs.x","k":"k"}').toString("base64url")),
+  ).toBeUndefined();
+  expect(envfile.parseMeshKey(envfile.formatMeshKey({ url: "http://philab.io", token }))).toBeUndefined();
+  expect(envfile.parseMeshKey(envfile.formatMeshKey({ url: "https://philab.io", token: "short" }))).toBeUndefined();
 });
 
-test("headscale's config from the frontend's ask", async () => {
-  const { controlConfig, controlPolicy, readSpec } = await import("../src/control.ts");
-  const spec = { url: "https://hs.mulab.dev", baseDomain: "mesh.mulab.dev", relay: false, behind: false };
-  const c = controlConfig(spec, "/d", "/s.sock");
-  expect(c.server_url).toBe("https://hs.mulab.dev");
-  expect(c.listen_addr).toBe(":443");
-  // an edge host too: 443 is the splitter's, headscale behind it on loopback
-  expect(controlConfig({ ...spec, behind: true }).listen_addr).toBe("127.0.0.1:8443");
-  expect(c.tls_letsencrypt_hostname).toBe("hs.mulab.dev");
-  expect(c.tls_letsencrypt_challenge_type).toBe("TLS-ALPN-01");
-  expect(c.derp.server.enabled).toBe(false);
-  expect(c.derp.urls).toEqual(["https://controlplane.tailscale.com/derpmap/default"]);
-  expect(c.dns.base_domain).toBe("mesh.mulab.dev");
-  expect(c.node.expiry).toBe(0);
-  expect(c.policy.path).toBe(join("/d", "policy.json"));
-  expect(controlConfig({ ...spec, relay: true }).derp.server.enabled).toBe(true);
-  expect(Object.keys(controlPolicy().tagOwners)).toEqual(["tag:host", "tag:guest"]);
-  const f = join(dir, "spec.json");
-  writeFileSync(f, JSON.stringify({ url: "http://plain", baseDomain: "x" }));
-  expect(readSpec(f)).toBeUndefined();
-  writeFileSync(f, JSON.stringify({ ...spec, relay: "yes" }));
-  expect(readSpec(f)).toEqual({ ...spec, relay: false, behind: false, ipv4: undefined, ipv6: undefined });
+test("the net child's plan: the hub carries every host and device, a host the hub and direct paths", async () => {
+  const { plan } = await import("../src/net/plan.ts");
+  const hosts = new Map([
+    ["vps", { ip: "100.64.0.1", key: "H".repeat(43) + "=", endpoint: "203.0.113.5:41641" }],
+    ["alpha", { ip: "100.64.0.2", key: "A".repeat(43) + "=", lan: ["192.168.1.2:41641"] }],
+    ["bravo", { ip: "100.64.0.3", key: "B".repeat(43) + "=" }],
+    ["gone", { ip: "100.64.0.9", key: "G".repeat(43) + "=", removed: true }],
+  ]);
+  const devices = new Map([
+    ["phone", { ip: "100.64.0.4", key: "P".repeat(43) + "=" }],
+    ["old-phone", { ip: "100.64.0.5", key: "" }],
+  ]);
+  const view = { hosts, devices, control: "vps", domain: "philab.io", seen: { bravo: "198.51.100.7:5555" } };
+  const hub = plan({ ...view, self: "vps" });
+  expect(hub.hub).toBe(true);
+  expect(hub.ip).toBe("100.64.0.1");
+  expect(hub.peers.map((p) => p.allowed[0])).toEqual(["100.64.0.2/32", "100.64.0.3/32", "100.64.0.4/32"]);
+  const a = plan({ ...view, self: "alpha" });
+  expect(a.hub).toBe(false);
+  expect(a.hubIP).toBe("100.64.0.1");
+  expect(a.peers[0]).toEqual({
+    key: "H".repeat(43) + "=",
+    allowed: ["100.64.0.0/10"],
+    endpoints: ["203.0.113.5:41641", "relay"],
+    keepalive: 25,
+  });
+  // bravo direct at the address the hub saw
+  expect(a.peers.slice(1)).toEqual([
+    { key: "B".repeat(43) + "=", allowed: ["100.64.0.3/32"], endpoints: ["198.51.100.7:5555"], direct: true },
+  ]);
+  // a host just joined, the store not synced yet: its join's word
+  const fresh = plan({
+    ...view,
+    hosts: new Map(),
+    control: "",
+    self: "charlie",
+    joined: {
+      name: "charlie",
+      ip: "100.64.0.6",
+      hub: { name: "vps", ip: "100.64.0.1", key: "H".repeat(43) + "=", endpoint: "203.0.113.5:41641" },
+      domain: "philab.io",
+    },
+  });
+  expect(fresh.ip).toBe("100.64.0.6");
+  expect(fresh.hubIP).toBe("100.64.0.1");
+  expect(fresh.peers[0]!.endpoints).toEqual(["203.0.113.5:41641", "relay"]);
 });

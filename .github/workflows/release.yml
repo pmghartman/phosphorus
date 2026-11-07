@@ -205,8 +205,7 @@ jobs:
           tar -xzf "$DL/$TGZ" -C "$APP/payload/afterglow"
           [ "$(cat "$APP/payload/afterglow/VERSION")" = "$AG" ] || { echo "::error::$TGZ isn't afterglow $AG"; exit 1; }
           chmod 755 "$APP/payload/afterglow/afterglow"
-      # the release hosts receive: what the binary reads off disk, nothing it embeds;
-      # tailscale fetched by each Linux host at its pin, headscale by the control host
+      # the release hosts receive: what the binary reads off disk, nothing it embeds
       - name: host binary
         shell: bash
         # the release key baked in, the one first-party apps' bundles are checked against

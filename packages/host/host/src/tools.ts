@@ -1,53 +1,22 @@
-// the tools run beside phosphorus, pinned and checked: tailscale on Linux, wintun on
-// Windows, headscale on the control host; fetched into state/cache/tools when a pin moves
+// the tools run beside phosphorus, pinned and checked: wintun on Windows, the
+// tunnel's driver; fetched into state/cache/tools when a pin moves
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { untar, unzip } from "@phosphorus/tools";
-import { errText, fail, fileExists, isLinux, isWindows, say, sleep } from "./base.ts";
+import { errText, fail, fileExists, isWindows, say, sleep } from "./base.ts";
 import { replace } from "./install.ts";
 import { os } from "./os.ts";
 
-export const Tailscale = "1.104.1";
-export const Headscale = "0.29.7";
 export const Wintun = "0.14.1";
 
 // one pinned download: its files, out of a .tgz or .zip when members names them
 export type Pin = { name: string; ver: string; url: string; sha256: string; files: Record<string, string> };
 
-// headscale, the mesh's control server, fetched on Linux only by the host running it
-export function headscalePin(arch = process.arch): Pin {
-  const a = arch === "arm64" ? "arm64" : "amd64";
-  return {
-    name: "headscale",
-    ver: Headscale,
-    url: `https://github.com/juanfont/headscale/releases/download/v${Headscale}/headscale_${Headscale}_linux_${a}`,
-    sha256:
-      a === "arm64"
-        ? "4357b38ac63c1e425f190819fd2ee078f13e01a6d7559b15811154e2475df5e4"
-        : "e827fc9b12d958bc95b081c4401dd63f8e0471d025b45b508535a920532150a8",
-    files: { headscale: "" },
-  };
-}
-
-// the pins for this OS and arch: tailscale on Linux where phosphorus runs its own
-// (the Tailscale app's own node elsewhere), wintun on Windows
-export function pins(platform = process.platform, arch = process.arch, ownTailscale = true): Pin[] {
+// the pins for this OS and arch: wintun on Windows
+export function pins(platform = process.platform, arch = process.arch): Pin[] {
   const a = arch === "arm64" ? "arm64" : "amd64";
   const out: Pin[] = [];
-  if (platform === "linux" && ownTailscale) {
-    const d = `tailscale_${Tailscale}_${a}`;
-    out.push({
-      name: "tailscale",
-      ver: Tailscale,
-      url: `https://pkgs.tailscale.com/stable/${d}.tgz`,
-      sha256:
-        a === "arm64"
-          ? "f60294374967f3dfd8cf57bbbd474d6cfce32d123e3a8ddeab82a87940daa806"
-          : "108d1d96ecf410d305571e173516f27038f870919a9b89c914a167c6d33a4528",
-      files: { tailscale: `${d}/tailscale`, tailscaled: `${d}/tailscaled` },
-    });
-  }
   if (platform === "win32") {
     // the tunnel's driver, signed by WireGuard LLC; one zip for every arch
     out.push({
@@ -118,8 +87,7 @@ async function install(p: Pin, dir: string) {
 // the names fetched
 export async function ensureTools(): Promise<string[]> {
   const got: string[] = [];
-  for (const p of pins(process.platform, process.arch, !isLinux || os.ownTailscale()))
-    if (await ensurePin(p)) got.push(p.name);
+  for (const p of pins(process.platform, process.arch)) if (await ensurePin(p)) got.push(p.name);
   return got;
 }
 

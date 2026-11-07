@@ -104,3 +104,52 @@ test("served over UDP and TCP on loopback, the client falling back to TCP on tru
   expect(t.answer).toHaveLength(30);
   s.close();
 });
+
+test("an admin's records: A, AAAA, MX, TXT, and a CNAME standing for its name, followed in the zone", () => {
+  const z = build({
+    ...spec,
+    records: [
+      { name: "", type: "MX", value: "mail.example.com", priority: 5 },
+      { name: "", type: "TXT", value: "v=spf1 mx -all" },
+      { name: "mail", type: "A", value: "198.51.100.25" },
+      { name: "mail", type: "AAAA", value: "2001:db8::25" },
+      { name: "www", type: "CNAME", value: "mail.example.com" },
+      { name: "shop", type: "CNAME", value: "shops.example.net" },
+    ],
+  });
+  const mx = answer(z, ask("example.com", Type.MX));
+  expect(mx.answer.map((r) => [(r.data as any).priority, (r.data as any).target])).toEqual([[5, "mail.example.com"]]);
+  expect(mx.additional.map((r) => (r.data as any).ip)).toEqual(["198.51.100.25"]);
+  // the custom name's own records, the wildcard's never
+  expect(answer(z, ask("mail.example.com", Type.A)).answer.map((r) => (r.data as any).ip)).toEqual(["198.51.100.25"]);
+  expect(answer(z, ask("mail.example.com", Type.AAAA)).answer).toHaveLength(1);
+  expect(answer(z, ask("www.example.com", Type.A)).answer.map((r) => r.data.type)).toEqual([Type.CNAME, Type.A]);
+  const shop = answer(z, ask("shop.example.com", Type.A));
+  expect(shop.answer.map((r) => (r.data as any).target)).toEqual(["shops.example.net"]);
+  // over the wire and back
+  expect(parseReply(writeReply(mx)).answer[0]!.data).toEqual({
+    type: Type.MX,
+    priority: 5,
+    target: "mail.example.com",
+  });
+  const www = answer(z, ask("www.example.com", Type.A));
+  expect(parseReply(writeReply(www)).answer[0]!.data).toEqual({ type: Type.CNAME, target: "mail.example.com" });
+});
+
+test("a question outside the zone forwarded, the answer handed back whole", async () => {
+  const other = build({ ...spec, domain: "other.test" });
+  const s = await serve({
+    addrs: ["127.0.0.1"],
+    port: 0,
+    zone: () => build(spec),
+    forward: async (q) => writeReply(answer(other, parseQuery(q)!)),
+  });
+  try {
+    const r = await query({ server: "127.0.0.1", port: s.port, name: "x.other.test", type: Type.A, timeoutMs: 2000 });
+    expect(r.answer).toHaveLength(2);
+    const own = await query({ server: "127.0.0.1", port: s.port, name: "example.com", type: Type.A, timeoutMs: 2000 });
+    expect(own.aa).toBe(true);
+  } finally {
+    s.close();
+  }
+});

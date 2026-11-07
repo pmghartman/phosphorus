@@ -4,8 +4,6 @@
 # runtime state, regenerated per host, not shipped
 /state/
 
-# the bundled tailscaled's identity
-/tailscale/
 
 .DS_Store
 *.bak

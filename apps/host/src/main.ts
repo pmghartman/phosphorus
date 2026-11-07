@@ -1,24 +1,20 @@
-// phosphorus: one binary for every role, run's children (serve | model | control),
+// phosphorus: one binary for every role, run's children (serve | model),
 // the host's commands (phos and the rest, @phosphorus/host's usageText) and, on
 // macOS and Windows, the menu bar or tray app (tray)
-import { commands, controlMain, main as hostMain, usageText } from "@phosphorus/host";
-import { main as modeldMain } from "@phosphorus/modeld";
-import { serve } from "@phosphorus/server";
+import { commands, main as hostMain, usageText } from "@phosphorus/host";
 import { setLogStamps } from "@phosphorus/util";
 
 const [cmd = "", ...args] = process.argv.slice(2);
 
-// role run's children: the frontend, the model, the control server
+// role run's children: the frontend and the model, each loading its own code alone
 async function role(cmd: string): Promise<number | undefined> {
   // each line timed where the log is run's file, journald timing it on Linux
   setLogStamps(process.platform !== "linux");
   switch (cmd) {
     case "serve":
-      return serve();
+      return (await import("@phosphorus/server")).serve();
     case "model":
-      return modeldMain();
-    case "control":
-      return controlMain();
+      return (await import("@phosphorus/modeld")).main();
   }
   return undefined;
 }

@@ -17,6 +17,7 @@ import { onHost } from "./hostops.ts";
 import type { Res } from "./http.ts";
 import { decode, num, obj, str, utf8 } from "./js.ts";
 import { execMax, shellExec } from "./mcpshell.ts";
+import { netInfo } from "./server.ts";
 
 // opOn op here when host is this one, else on the peer, the grant sealed for it
 export async function opOn(host: string, op: string, p: Record<string, any> | undefined, waitMs: number): Promise<Res> {
@@ -79,19 +80,13 @@ async function localOp(op: string, p: Record<string, any>): Promise<Res> {
 
 const started = now();
 
-// localHealth this host's part of the domain's edge, its control server, and its frontend
+// localHealth this host's part of the domain's edge, the hub, its tunnel and its frontend
 async function localHealth(): Promise<Record<string, any>> {
-  // the mesh's control server, and headscale here when this is its host
+  // the mesh's hub, and its tunnel here when this is its host
   const c = peers.control.control();
   const control: Record<string, any> = { url: c?.url ?? "", host: c?.host ?? "" };
-  if (c?.host === selfHost) {
-    try {
-      const res = await fetch(c.url + "/health", { signal: AbortSignal.timeout(3000) });
-      control.serving = res.ok ? "up" : `down: ${c.url}/health said ${res.status}`;
-    } catch (e) {
-      control.serving = `down: ${c.url} not answering: ${e instanceof Error ? e.message : e}`;
-    }
-  }
+  const n = netInfo();
+  if (c?.host === selfHost) control.serving = n.up && n.hub ? "up" : `down: ${n.waiting || "the tunnel isn't the hub"}`;
   return {
     host: selfHost,
     version: Version(),

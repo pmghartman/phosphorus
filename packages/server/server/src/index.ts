@@ -48,6 +48,7 @@ import { num } from "./js.ts";
 import { chainHistory, meshHealth, opOn, rememberChain } from "./mcpops.ts";
 import { reapShells } from "./mcpshell.ts";
 import { appsOp, stacksOp } from "./mcpstacks.ts";
+import { startMeshDNS, stopMeshDNS } from "./meshdns.ts";
 import { appHandler } from "./routes.ts";
 import { buildState, chainAction, hostServices, hostsInfo, ownState, publishHost, stackHosts } from "./server.ts";
 import { filesCall } from "./shares.ts";
@@ -111,6 +112,7 @@ export async function start(): Promise<Server<WSData>> {
   });
   startHA();
   startEdge();
+  startMeshDNS();
   // the domain this frontend was started with changed: run starts it again with the
   // new one, a moment later so the answer to the page that set it gets out
   let restarting = false;
@@ -122,6 +124,7 @@ export async function start(): Promise<Server<WSData>> {
     logf("[frontend] the domain is now %s, restarting with it", name || "unset");
     setTimeout(() => {
       stopEdge();
+      stopMeshDNS();
       process.exit(RestartExit);
     }, 1500);
   });
@@ -145,6 +148,7 @@ export async function serve(): Promise<number> {
     process.once("SIGINT", () => r());
   });
   stopEdge();
+  stopMeshDNS();
   // each stack this host runs handed over while its final pull can still be served
   await stopHA();
   await stopApps();

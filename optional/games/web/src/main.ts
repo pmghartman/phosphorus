@@ -126,7 +126,7 @@ function card(g: Row): HTMLLIElement {
 
   const detail = el("div", "game-detail");
   const addr = el("span", "game-addr", g.address);
-  addr.title = "join at this address, on the tailnet";
+  addr.title = "join at this address, on the mesh";
   const cp = el("button", "game-copy");
   cp.type = "button";
   cp.title = cp.ariaLabel = "copy";

@@ -176,7 +176,9 @@
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/procs": "workspace:*",
         "@phosphorus/tools": "workspace:*",
+        "@phosphorus/tun": "workspace:*",
         "@phosphorus/util": "workspace:*",
+        "@phosphorus/wg": "workspace:*",
       },
     },
     "packages/host/procs": {

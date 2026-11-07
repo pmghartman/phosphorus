@@ -17,7 +17,7 @@
 
 ---
 
-Install Phosphorus on each of your machines. They find each other over WireGuard, with [Tailscale](https://tailscale.com) clients coordinated by the mesh's own [headscale](https://github.com/juanfont/headscale) server, and share one web desktop, from which you install apps, open terminals and files, and manage every host.
+Install Phosphorus on each of your machines. They find each other over WireGuard, phosphorus's own, with every host meeting at a hub on the mesh's domain, and share one web desktop, from which you install apps, open terminals and files, and manage every host.
 
 ## Get started
 

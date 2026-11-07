@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { at, fail, home, output, quiet, say, selfArgv, sshdUp, sshInclude } from "../base.ts";
 import { ensureAfterglow } from "./afterglow.ts";
-import { createService, svcInstalled, tailscaleInstall, tailscaleInstalled } from "./service.ts";
+import { createService, svcInstalled } from "./service.ts";
 
 export const svcName = "phosphorus";
 
@@ -130,7 +130,6 @@ export async function needSetup(): Promise<string> {
   if (!(await sshdUp())) return "OpenSSH Server";
   if (!readFile(sshConfig()).includes(sshInclude())) return "ssh to hosts by name";
   if (!(await svcInstalled())) return "the phosphorus service";
-  if (!tailscaleInstalled()) return "Tailscale";
   return "";
 }
 
@@ -164,7 +163,6 @@ export async function setupOS() {
     mkdirSync(dirname(sshConfig()), { recursive: true });
     writeFileSync(sshConfig(), sshInclude() + "\r\n" + b, { mode: 0o644 });
   }
-  if (!tailscaleInstalled()) await tailscaleInstall();
   await createService();
   // afterglow: the streaming host this release carries, its service and display driver
   await ensureAfterglow();

@@ -45,8 +45,9 @@ import {
 } from "./http.ts";
 import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
+import { meshRelay } from "./meshrelay.ts";
 import { oauthRoute, Unauthorized } from "./oauth.ts";
-import { buildState, chainAction, mintGuestKey, noteState, stackServing } from "./server.ts";
+import { buildState, chainAction, mintGuest, noteState, stackServing } from "./server.ts";
 import { filesHere, forwardFiles, homeWho, openShare, pingPeer, sendFile, serveRun, withHop } from "./shares.ts";
 import { copyTree } from "./transfer.ts";
 import { onUpgrade } from "./ws.ts";
@@ -107,6 +108,10 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const r = await appwebRoute(c, pathname);
     if (r) return r;
   }
+  // a new host's join and the relay, open to the internet at the mesh's domain
+  if (pathname === "/mesh/join" && method === "POST")
+    return onJSON(c, 4096, true, (p) => peers.control.controlOp("join", p));
+  if (pathname === "/mesh/relay" && isUpgrade(c.req)) return meshRelay(c);
   if (crossSite(c)) return forbidden();
   if (isUpgrade(c.req)) return onUpgrade(c, pathname, q);
 
@@ -416,7 +421,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!(await isTailnet(c))) return forbidden();
     return webapps.Serve(m[1]!, m[2]!);
   }
-  // settings › network: the mesh's control server, for admins
+  // settings › network: the mesh's domain, hub and devices, for admins
   if (pathname === "/api/control" && (method === "GET" || method === "POST")) {
     const s = users.Of(c);
     if (!isBrowser(c) || !sameOrigin(c) || !(!!s && s.admin)) return forbidden();
@@ -426,11 +431,10 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     }
     return onJSON(c, maxJSONBody, true, controlAction);
   }
-  if (pathname === "/api/join-key" && method === "POST") {
+  if (pathname === "/api/guest" && method === "POST") {
     const s = users.Of(c);
-    if (!isBrowser(c) || !(!!s && s.admin)) return forbidden();
-    const [st, b] = await mintGuestKey();
-    return sendJSON(st, b);
+    if (!isBrowser(c) || !sameOrigin(c) || !(!!s && s.admin)) return forbidden();
+    return onJSON(c, 4096, true, (p) => mintGuest(str(p.name)));
   }
 
   // a host's shares and model, read and written for an admin (settings › hosts)
@@ -551,7 +555,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     });
   }
 
-  // a peer's ask of this host as the mesh's control server: keys, approvals
+  // a peer's ask of this host as the mesh's control host: joins, keys, devices
   if (pathname.startsWith("/internal/control/") && method === "POST") {
     if (!(await isTailnet(c))) return forbidden();
     const op = pathname.slice("/internal/control/".length);

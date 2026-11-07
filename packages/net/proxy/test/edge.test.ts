@@ -100,16 +100,14 @@ async function through(port: number, bytes: Uint8Array): Promise<Uint8Array> {
   });
 }
 
-test("443 split by server name: the control's bytes to it, the rest to the ingress, the client remembered", async () => {
+test("443 split: every connection to the ingress once its hello is in, the client remembered", async () => {
   const ingress = echo("I:");
-  const control = echo("C:");
   const sp = split(0, "127.0.0.1");
   sp.setIngress(ingress.port);
-  sp.setControl("Control.Example.com", control.port);
   try {
     const text = (b: Uint8Array) => new TextDecoder("latin1").decode(b);
-    const a = await through(sp.port, hello("control.example.com"));
-    expect(text(a).startsWith("C:\x16")).toBe(true);
+    const a = await through(sp.port, hello("example.com"));
+    expect(text(a).startsWith("I:\x16")).toBe(true);
     const b = await through(sp.port, hello("app.example.com"));
     expect(text(b).startsWith("I:\x16")).toBe(true);
     const c = await through(sp.port, new TextEncoder().encode("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
@@ -118,7 +116,7 @@ test("443 split by server name: the control's bytes to it, the rest to the ingre
     expect(ingress.seen()!.address).toBe("127.0.0.1");
     expect(splitClient(null)).toBe("");
     // a hello cut short arrives in two writes and still routes
-    const h = hello("control.example.com");
+    const h = hello("example.com");
     const d = await new Promise<string>((res) => {
       let got = "";
       Bun.connect({
@@ -139,11 +137,10 @@ test("443 split by server name: the control's bytes to it, the rest to the ingre
         },
       });
     });
-    expect(d.startsWith("C:")).toBe(true);
+    expect(d.startsWith("I:")).toBe(true);
   } finally {
     sp.stop();
     ingress.stop();
-    control.stop();
   }
 });
 

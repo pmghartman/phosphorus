@@ -27,8 +27,6 @@ import { keys, overview, setup, start, status } from "./start.ts";
 import { uninstall } from "./uninstall.ts";
 import { upgrade } from "./upgrade.ts";
 
-export { controlMain } from "./control.ts";
-
 // commands the ones main takes, everything else run's children's roles
 export const commands = new Set([
   "",
@@ -57,7 +55,7 @@ export const usageText = `usage: phos            this host's state and the link 
        phos start      start phosphorus on this host
        phos stop       stop it
        phos restart    restart it
-       phos status     whether phosphorus and Tailscale are up, and the address
+       phos status     whether phosphorus and the mesh tunnel are up, and the address
        phos update     update this host (the desktop updates every host)
        phos uninstall  remove phosphorus and its data from this host
        phos version    the installed release

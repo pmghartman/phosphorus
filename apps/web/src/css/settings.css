@@ -267,6 +267,22 @@
 .set-body .join-key-out:empty {
   display: none;
 }
+/* a WireGuard config: its lines kept, the QR code on white whatever the theme */
+.set-body .join-key-cmd code {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.set-body .net-qr {
+  width: 13rem;
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+.set-body .net-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
 
 /* lists: the hosts, the page logins, the users, the shares, the devices; rows parted by hairlines,
    a small muted header row where the columns want names */
@@ -529,12 +545,53 @@
   font-size: var(--fs-2xs);
 }
 
-/* settings › network: headscale's devices, one row each, the actions' column one width so the
-   columns hold whatever a row offers */
+/* settings › network: the mesh's hosts and devices, one row each, the actions' column one
+   width so the columns hold whatever a row offers */
 .net-dev {
-  grid-template-columns: minmax(0, 1.4fr) 4.5rem minmax(0, 1fr) 5.5rem 8.5rem;
+  grid-template-columns: minmax(0, 1.4fr) 4.5rem minmax(0, 1fr) 7.5rem 14rem;
   padding: 0.3rem 0;
   border-top: 1px solid var(--border);
+}
+/* settings › network: a status line, a record row, a bar that adds one thing */
+.net-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+.net-stat .dk-ap-k {
+  min-width: 6rem;
+}
+.net-rec {
+  grid-template-columns: minmax(0, 1.3fr) 3.5rem minmax(0, 1.4fr) minmax(0, 1fr) 6rem;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--border);
+}
+.net-rec.net-head {
+  min-height: 0;
+  padding: 0 0 0.25rem;
+  border-top: 0;
+  color: var(--dim);
+  font-size: var(--fs-xs);
+}
+.net-rec.builtin {
+  color: var(--muted);
+}
+.net-rec > span {
+  overflow-wrap: anywhere;
+}
+.net-addbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.net-addbar .dk-ap-in {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+.net-addbar select.dk-ap-in {
+  flex: 0 1 auto;
 }
 .net-dev.net-head {
   min-height: 0;

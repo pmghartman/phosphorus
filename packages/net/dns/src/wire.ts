@@ -1,7 +1,19 @@
 // DNS messages on the wire: the header and question read, answers written;
 // names read with compression pointers, written plain
 
-export const Type = { A: 1, NS: 2, SOA: 6, TXT: 16, AAAA: 28, SRV: 33, OPT: 41, CAA: 257, ANY: 255 } as const;
+export const Type = {
+  A: 1,
+  NS: 2,
+  CNAME: 5,
+  SOA: 6,
+  MX: 15,
+  TXT: 16,
+  AAAA: 28,
+  SRV: 33,
+  OPT: 41,
+  CAA: 257,
+  ANY: 255,
+} as const;
 export const Rcode = { NOERROR: 0, FORMERR: 1, SERVFAIL: 2, NXDOMAIN: 3, NOTIMP: 4, REFUSED: 5 } as const;
 export const ClassIN = 1;
 // the UDP payload every resolver takes without fragmenting
@@ -25,6 +37,8 @@ export type RData =
   | { type: 1; ip: string }
   | { type: 28; ip: string }
   | { type: 2; target: string }
+  | { type: 5; target: string }
+  | { type: 15; priority: number; target: string }
   | { type: 16; texts: string[] }
   | {
       type: 6;
@@ -212,6 +226,11 @@ function rdata(o: Out, d: RData) {
       o.bytes(ip6(d.ip));
       return;
     case Type.NS:
+    case Type.CNAME:
+      o.name(d.target);
+      return;
+    case Type.MX:
+      o.u16(d.priority);
       o.name(d.target);
       return;
     case Type.TXT:
@@ -338,7 +357,11 @@ function readRR(b: Uint8Array, p: number): [RR | undefined, number] {
       }
       break;
     case Type.NS:
+    case Type.CNAME:
       data = { type, target: canon(readName(b, s)[0]) };
+      break;
+    case Type.MX:
+      data = { type, priority: u16at(b, s), target: canon(readName(b, s + 2)[0]) };
       break;
     case Type.TXT: {
       const texts: string[] = [];

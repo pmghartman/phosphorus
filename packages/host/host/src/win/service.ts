@@ -4,7 +4,6 @@ import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { which } from "@phosphorus/util";
 import { at, binPath, fail, fileExists, home, output, quiet, run, say, sleep, sshInclude } from "../base.ts";
-import { installTailscale } from "../tailnet.ts";
 import { removeAfterglow } from "./afterglow.ts";
 import { escapeArg, kernel32, ps, psq, readFile, sshConfig, svcName, wstr } from "./setup.ts";
 
@@ -77,27 +76,6 @@ export async function svcStop() {
   await quiet("sc", "stop", svcName);
   await svcWait(STOPPED, 150_000);
 }
-
-export const tailscaleDirs = () => [join(process.env.ProgramFiles ?? "", "Tailscale")];
-
-// tailscaleCLI Program Files', else one on PATH
-export function tailscaleCLI(): string {
-  const p = join(tailscaleDirs()[0]!, "tailscale.exe");
-  if (!fileExists(p)) {
-    const l = which("tailscale");
-    if (l) return l;
-  }
-  return p;
-}
-export const tailscaleInstalled = () => fileExists(tailscaleCLI());
-
-// silent, unattended so it stays up signed out of Windows
-export const tailscaleInstall = () =>
-  installTailscale(
-    "tailscale-setup-1.104.1-amd64.msi",
-    "6da8bcdb0d45a214cae0e8a88c2987ad48dec134bf04dffb9c05f1354c02b0b4",
-    (msi) => run("msiexec", "/i", msi, "/quiet", "/norestart", "TS_UNATTENDEDMODE=always"),
-  );
 
 export const INVALID = 0xffffffffffffffffn;
 

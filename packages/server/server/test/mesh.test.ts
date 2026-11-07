@@ -1,5 +1,6 @@
 // three real hosts on loopback: links, the store converging over them, clock
-// skew, tombstones, a dropped link, a host stopping and a host removed
+// skew, tombstones, a dropped link, the hub's joins and devices, a host stopping
+// and a host removed
 import { afterAll, beforeAll, test as bunTest, expect } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -194,6 +195,54 @@ test("a home file written on one host is on every other within the moment, follo
   );
   expect((await m.call("charlie", "home.read", { rel: "shared/.trash/note.txt" })).text).toBe("from bravo, on top");
 }, 90_000);
+
+test("the hub's control: a host joins at /mesh/join with a one-use key, a device gets its config", async () => {
+  const { createHash, generateKeyPairSync } = await import("node:crypto");
+  const pub = () =>
+    Buffer.from(String(generateKeyPairSync("x25519").publicKey.export({ format: "jwk" }).x), "base64url").toString(
+      "base64",
+    );
+  await m.call("alpha", "store.write", { rel: "etc/mesh/control.json", data: { host: "alpha" } });
+  const secret = "s".repeat(32);
+  const hash = createHash("sha256").update(secret).digest("hex");
+  await m.call("alpha", "store.write", {
+    rel: "etc/mesh/joins/0a1b2c3d.json",
+    data: { hash, expires: Date.now() + 60_000, reusable: false },
+  });
+  const join = (token: string, name: string) =>
+    fetch(`http://${m.ipOf("alpha")}:${m.port}/mesh/join`, {
+      method: "POST",
+      body: JSON.stringify({ token, name, key: pub(), os: "linux" }),
+    }).then(async (r) => ({ status: r.status, body: (await r.json()) as any }));
+  expect((await join(`0a1b2c3d.${"x".repeat(32)}`, "delta")).status).toBe(400);
+  const ok = await join(`0a1b2c3d.${secret}`, "delta");
+  expect(ok.status).toBe(200);
+  expect(ok.body.ip).toBe("100.64.0.1");
+  expect(ok.body.hub.name).toBe("alpha");
+  expect(ok.body.hub.key).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+  // one use: spent
+  expect((await join(`0a1b2c3d.${secret}`, "echo")).status).toBe(400);
+  await m.until(
+    async () => (await m.call("bravo", "store.read", { rel: "etc/mesh/hosts/delta.json" })).data?.ip === "100.64.0.1",
+    "delta's record on bravo",
+  );
+  // a phone's config made on the hub, its public key in the store and never its private one
+  const dev = await m.call("alpha", "control", { name: "device-add", body: { name: "phone", guest: false } });
+  expect(dev.status).toBe(200);
+  expect(dev.body.ip).toBe("100.64.0.2");
+  expect(dev.body.config).toContain("Address = 100.64.0.2/32");
+  expect(dev.body.config).toContain("AllowedIPs = 100.64.0.0/10");
+  const rec = (await m.call("alpha", "store.read", { rel: "etc/mesh/devices/phone.json" })).data;
+  expect(rec.key).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+  expect(dev.body.config).not.toContain(rec.key);
+  const guest = await m.call("alpha", "control", { name: "device-add", body: { name: "sam", guest: true } });
+  expect(guest.body.expires).toBeGreaterThan(Date.now());
+  expect((await m.call("alpha", "control", { name: "remove", body: { name: "alpha" } })).status).toBe(400);
+  expect((await m.call("alpha", "control", { name: "remove", body: { name: "delta" } })).status).toBe(200);
+  expect((await m.call("alpha", "store.read", { rel: "etc/mesh/hosts/delta.json" })).data.removed).toBe(true);
+  for (const rel of ["etc/mesh/devices/phone.json", "etc/mesh/devices/sam.json", "etc/mesh/control.json"])
+    await m.call("alpha", "store.remove", { rel });
+}, 60_000);
 
 test("a host stopped is unheard mesh wide; removed, it is let go and stays out", async () => {
   await m.until(() => linked("alpha", "bravo", "charlie"), "alpha's links");

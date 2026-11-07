@@ -211,7 +211,7 @@ export function reverseLocation(loc: string, prefix: string, ...hosts: string[])
   return head + prefix + rest;
 }
 
-// an address, a bare name or a name under the tailnet's MagicDNS suffix
+// an address, a bare name or a name under the mesh's DNS zone
 export function unrebindable(host: string): boolean {
   let h = host;
   const m = /^\[([^\]]*)\](?::\d+)?$/.exec(h) ?? /^([^:]*):\d+$/.exec(h);

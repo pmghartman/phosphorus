@@ -115,6 +115,20 @@ export interface HostInfo {
   docker?: DockerInfo;
   // the afterglow this host runs and its own afterglow update's last word (server afterglow.ts)
   afterglow?: AfterglowStatus;
+  // its mesh tunnel (server server.ts netInfo)
+  net?: NetInfo;
+}
+
+// a host's tunnel: up, the hub, its way to the hub, and the paths up from it; on
+// the hub every peer it carries, hosts and devices alike
+export interface NetInfo {
+  ip: string;
+  up: boolean;
+  hub: boolean;
+  relay: boolean;
+  waiting: string;
+  direct: string[];
+  spokes: string[];
 }
 
 export interface AfterglowStatus {

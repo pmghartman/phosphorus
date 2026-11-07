@@ -1,5 +1,8 @@
 // this host for the mesh: its state published to peers and built for the
-// page, the update chain and guest keys
+// page, the update chain and guest devices
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as catalog from "@phosphorus/catalog";
 import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
@@ -8,7 +11,7 @@ import * as stacks from "@phosphorus/stacks";
 import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
-import { markHot, marshal, publicIPv4 } from "@phosphorus/util";
+import { markHot, marshal, publicIPv4, RunDir } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import * as afterglow from "./afterglow.ts";
 import { baseDomain, getPlatform, selfHost, selfInfo, Version } from "./config.ts";
@@ -38,6 +41,7 @@ export function publishHost() {
     apps: webapps.installed(),
     found: unpublished(),
     edge: edgeInfo(),
+    net: netInfo(),
     stacks: stacks.statuses(),
     docker: stacks.dockerInfo(),
     afterglow: afterglow.status(),
@@ -45,7 +49,43 @@ export function publishHost() {
   });
 }
 
-// every phosphorus host as a place to install an app: its tailnet os and its info
+// this host's tunnel as the net child last wrote it: its paths up, not their counters
+export function netInfo() {
+  let st: any;
+  try {
+    st = JSON.parse(readFileSync(join(RunDir, "net.json"), "utf8"));
+  } catch {}
+  const off = {
+    ip: "",
+    up: false,
+    hub: false,
+    relay: false,
+    waiting: "the tunnel isn't running",
+    direct: [],
+    spokes: [],
+  };
+  if (typeof st?.at !== "number" || Date.now() - st.at > 30_000) return off;
+  const ps: any[] = Array.isArray(st.peers) ? st.peers : [];
+  const upNames = (f: (p: any) => boolean) =>
+    ps
+      .filter((p) => p?.up && f(p))
+      .map((p) => String(p.name ?? ""))
+      .filter(Boolean)
+      .sort();
+  const hub = st.hub === true;
+  const toHub = ps.find((p) => !p?.direct);
+  return {
+    ip: String(st.ip ?? ""),
+    up: !!st.tun,
+    hub,
+    relay: !hub && !!toHub?.up && toHub.endpoint === "relay",
+    waiting: String(st.waiting ?? ""),
+    direct: hub ? [] : upNames((p) => p.direct === true),
+    spokes: hub ? upNames(() => true) : [],
+  };
+}
+
+// every phosphorus host as a place to install an app: its os and its info
 export function stackHosts(): catalog.HostFacts[] {
   const os = new Map(peers.tailnet().map((d) => [d.name.toLowerCase(), d.os]));
   return Object.entries(hostsInfo()).map(([host, i]) => ({
@@ -153,9 +193,9 @@ export function chainAction(action: string, admin: boolean, only: string[] = [])
   return [400, { error: "action must be start or cancel" }];
 }
 
-// --- guest keys --------------------------------------------------------------
+// --- guest devices ---------------------------------------------------------------
 
-// a guest device's key, from the mesh's control server with its URL to log in to
-export const mintGuestKey = (): Promise<Res> => peers.control.controlOp("guest-key");
+// a guest device's WireGuard config, made on the control host, gone after three days
+export const mintGuest = (name: string): Promise<Res> => peers.control.controlOp("device-add", { name, guest: true });
 
 // --- startup -----------------------------------------------------------------

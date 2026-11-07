@@ -80,16 +80,36 @@
   stroke-width: 1;
   opacity: 0.45;
 }
+.mesh-svg .mesh-hub.down {
+  fill: var(--dim);
+}
+/* the hub's own host tied to it, the relay dashed, a peer not on the hub faint and dotted */
+.mesh-svg .mesh-line-hub.home {
+  stroke-width: 1.6;
+  opacity: 0.6;
+}
+.mesh-svg .mesh-line-hub.relay {
+  stroke-dasharray: 3 2;
+}
+.mesh-svg .mesh-line-hub.down {
+  stroke: var(--dim);
+  stroke-dasharray: 1 2;
+  opacity: 0.35;
+}
 .mesh-svg .mesh-line-hub.self {
   stroke: var(--accent);
   opacity: 0.7;
 }
+.mesh-svg .mesh-line-hub.touched {
+  stroke: var(--accent);
+  opacity: 0.8;
+}
 
-/* fainter than even an inactive spoke */
+/* a direct session between two hosts, past the hub */
 .mesh-svg .mesh-line-peer {
   stroke: var(--teal);
-  stroke-width: 0.5;
-  opacity: calc(0.35 * var(--fade, 1));
+  stroke-width: 0.7;
+  opacity: calc(0.6 * var(--fade, 1));
   fill: none;
 }
 .mesh-svg .mesh-line-peer.touched {
@@ -110,7 +130,7 @@
 }
 
 /* purple the active path (self, a live request's path and target), green a serving
-   host, grey an idle one, sky services, dark grey non-phosphorus devices */
+   host, grey an idle one, sky services, teal devices on the hub, dark grey ones off it */
 .mesh-svg .mesh-node.active {
   fill: var(--mesh-active);
 }
@@ -124,6 +144,9 @@
   fill: var(--mesh-self);
 }
 .mesh-svg .mesh-node.outside {
+  fill: var(--teal);
+}
+.mesh-svg .mesh-node.outside.down {
   fill: var(--dim);
 }
 .mesh-svg .mesh-node.svc.touched {

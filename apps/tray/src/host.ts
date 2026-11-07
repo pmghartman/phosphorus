@@ -70,7 +70,7 @@ export async function setKeys(body: string): Promise<RunResult> {
   return hostCmd(["keys", "--stdin"], body);
 }
 
-// whether the service and Tailscale are up, both false when the host can't say
+// whether the service and the mesh tunnel are up, both false when the host can't say
 export async function hostState(): Promise<{ running: boolean; vpn: boolean }> {
   if (darwin) {
     const r = await call({ op: "status" });

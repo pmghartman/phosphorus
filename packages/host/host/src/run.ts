@@ -1,9 +1,11 @@
-// phosphorus run, the service's main process: tailscale checked, the frontend,
-// the model daemon and the control server as labelled children, all down with
-// a core one; the frontend started again when the mesh's domain changes
+// phosphorus run, the service's main process: this host on the mesh (joined
+// first when new), the mesh's tunnel in this process, then the frontend and the
+// model daemon as labelled children, all down with a core one; the frontend started again when
+// the mesh's domain changes
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import * as envfile from "@phosphorus/envfile";
 import { writeRoles } from "@phosphorus/procs";
 import { RestartExit } from "@phosphorus/util";
 import type { Subprocess } from "bun";
@@ -12,11 +14,11 @@ import {
   binPath,
   durText,
   ExitCode,
+  envPath,
   errText,
   fail,
   fileExists,
   home,
-  isLinux,
   isModelHost,
   print,
   say,
@@ -26,8 +28,12 @@ import {
   stdio,
 } from "./base.ts";
 import { nativeEnvFile, runEnv, withPath } from "./native.ts";
+import { joinMesh } from "./net/join.ts";
+import { meshKey, readJoined } from "./net/key.ts";
+import { type Net, startNet } from "./net/main.ts";
+import { keepName, meshName } from "./net/name.ts";
+import { readView } from "./net/plan.ts";
 import { os, type Stop } from "./os.ts";
-import { keepName, keptName, labelOf, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
 import { ensureTools } from "./tools.ts";
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
@@ -109,29 +115,24 @@ async function prefixed(role: string, s: ReadableStream<Uint8Array>) {
   if (rest) print(`${stamp()}[${role}] ${rest}\n`);
 }
 
-// tailnetSelf this node's DNS name, on the mesh's tailnet first
-async function tailnetSelf(): Promise<string> {
-  type Status = { BackendState?: string; Self?: { DNSName?: string } };
-  const read = async (): Promise<Status | undefined> => {
-    const out = await tailscaleStatus();
-    try {
-      return out ? JSON.parse(out) : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  let st: Status | undefined;
-  for (let i = 0; i < 60; i++) {
-    st = await read();
-    const s = st?.BackendState ?? "";
-    if (s && s !== "NoState" && s !== "Starting") break;
-    await sleep(500);
-  }
-  if (!st?.BackendState) throw fail("tailscale isn't answering");
-  await tailnetJoin(st.BackendState);
-  st = await read();
-  if (!st) throw fail("tailscale isn't answering");
-  return (st.Self?.DNSName ?? "").replace(/\.$/, "");
+// onMesh this host on the mesh under its name: its own record in the store with
+// its key, or a join just answered; a new or removed host joins with MESH_KEY
+async function onMesh(name: string): Promise<string> {
+  const pub = meshKey().pub;
+  const me = readView(process.env.PHOSPHORUS_SYS_DIR || at("sys"), name).hosts.get(name);
+  const joined = readJoined();
+  const removed = me?.removed === true && me.key === pub;
+  if (me && !me.removed && me.key === pub) return name;
+  if (!removed && joined?.name === name && (!me || me.key === pub)) return name;
+  const mk = envfile.parseMeshKey(envfile.read(envPath()).MESH_KEY);
+  if (!mk)
+    throw fail("this host isn't on the mesh: make a join key in settings, network on a mesh host, then phos keys");
+  if (removed && joined?.token === mk.token.split(".")[0])
+    throw fail(`${name} was removed from the mesh: make a new join key in settings, network, then phos keys`);
+  say(`joining the mesh at ${mk.url} as ${name}...`);
+  const j = await joinMesh(mk, name, process.platform);
+  say(`joined as ${j.name} at ${j.ip}`);
+  return j.name;
 }
 
 // meshDomain the mesh's domain as the store on disk has it, the frontend's
@@ -182,36 +183,23 @@ export async function runMain(stop: Stop): Promise<number> {
   noteRole(process.pid, "run");
   for (const [k, v] of Object.entries(runEnv())) process.env[k] = v;
   if (!fileExists(nativeEnvFile())) throw fail(`no ${nativeEnvFile()}, run: phos start`);
-  // the pinned tools fetched again when state/cache/ was cleared, tailscaled back up
+  // the pinned tools fetched again when state/cache/ was cleared
   try {
-    if ((await ensureTools()).includes("tailscale")) await os.tailscaleStart();
+    await ensureTools();
   } catch (e) {
     say(errText(e));
   }
-  // the control server up before the join, this host's own tailscale among its clients
-  const control = isLinux
-    ? child({ role: "control", graceMs: 15_000, prefix: true, argv: [binPath("phosphorus"), "control"], env: runEnv() })
-    : undefined;
-  if (control) start(control);
-  let dns: string;
-  try {
-    dns = await tailnetSelf();
-  } catch (e) {
-    if (control) await stopChild(control);
-    throw e;
-  }
-  // phosphorus's name for this host, the transport's first label on the first run
-  const name = keptName() || labelOf(dns);
+  const name = await onMesh(meshName());
   keepName(name);
-  say(`on the tailnet as ${dns}, on the mesh as ${name}`);
+  say(`on the mesh as ${name}`);
   process.env.SELF_HOST = name;
   process.env.HOST_SSH_PORT = "22";
-  // the mesh's domain from the store, the frontend's BASE_DOMAIN; the tailnet alone without one
+  // the mesh's domain from the store, the frontend's BASE_DOMAIN; the mesh alone without one
   const withDomain = () => {
     const domain = meshDomain();
     process.env.BASE_DOMAIN = domain;
     writeFileSync(at("state", "run", "base-domain"), domain + "\n", { mode: 0o644 });
-    say(domain ? `serving ${domain}` : "no domain yet, served on the tailnet only");
+    say(domain ? `serving ${domain}` : "no domain yet, served on the mesh only");
     return withPath(
       Object.fromEntries(Object.entries(process.env).filter((kv): kv is [string, string] => kv[1] !== undefined)),
     );
@@ -219,6 +207,13 @@ export async function runMain(stop: Stop): Promise<number> {
   const env = withDomain();
   const bin = binPath("phosphorus");
 
+  // the tunnel up before the frontend, the mesh's links riding it
+  let net: Net | undefined;
+  try {
+    net = await startNet();
+  } catch (e) {
+    say(`couldn't start the mesh's tunnel: ${errText(e)}`);
+  }
   const frontend = child({ role: "frontend", core: true, graceMs: 15_000, argv: [bin, "serve"], env });
   const kids = [frontend];
   const extra: Child[] = [];
@@ -227,7 +222,7 @@ export async function runMain(stop: Stop): Promise<number> {
   try {
     start(frontend);
   } catch (e) {
-    if (control) await stopChild(control);
+    await net?.stop();
     throw fail(`couldn't start the frontend: ${errText(e)}`);
   }
   await waitHealthz();
@@ -238,18 +233,19 @@ export async function runMain(stop: Stop): Promise<number> {
       say(`couldn't start ${c.role}: ${errText(e)}`);
     }
   }
-  const all = [...kids, ...extra, ...(control ? [control] : [])];
+  const all = [...kids, ...extra];
   say(`all up: ${all.map((c) => c.role).join(" ")}`);
   os.watchUpdateRequests(stop);
 
   const ex = exits();
   const watch = (c: Child) => void c.done?.then(() => ex.push(c));
   for (const c of all) watch(c);
-  // the model and control at once, the frontend last so its services hand off
-  // while the mesh can still see it
+  // the model first, then the frontend so its services hand off while the mesh
+  // can still see it, the tunnel last
   const shutdown = async () => {
-    await Promise.all(all.filter((c) => c !== frontend).map(stopChild));
+    await Promise.all(extra.map(stopChild));
     await stopChild(frontend);
+    await net?.stop();
   };
   const backoff = new Map<string, number>();
   for (;;) {

@@ -219,8 +219,8 @@ runtime from llama.cpp's releases, under the NVIDIA CUDA EULA
 (https://docs.nvidia.com/cuda/eula/). phosphorus ships no model; a model's
 weights come under its own license.
 
-Tailscale is a trademark of its owner; phosphorus is not affiliated with or
-endorsed by it. Certificates come from Let's Encrypt (https://letsencrypt.org).
+WireGuard is a registered trademark of Jason A. Donenfeld; phosphorus's own
+implementation is not affiliated with or endorsed by him. Certificates come from Let's Encrypt (https://letsencrypt.org).
 `;
 for (const g of groups) {
   out += `\n\n== ${g} ==\n\n`;

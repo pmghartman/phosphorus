@@ -1,11 +1,10 @@
 // a mesh of real hosts for the tests, each a node.ts process on its own loopback
-// address; a fake tailscale on PATH the transport listing them to one another
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+// address, each joined with the first as its hub, the store telling them the rest
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "../../../..");
-const win = process.platform === "win32";
 
 // 127.0.0.2 and up: every loopback address on Linux and Windows, only 127.0.0.1 on
 // a Mac until lo0 is given aliases
@@ -55,41 +54,35 @@ export class Mesh {
     private env: Record<string, string> = {},
   ) {
     [this.port, this.ctlPort] = pickPorts(names.map((n) => this.ipOf(n)));
-    mkdirSync(join(this.dir, "bin"));
-    if (win)
-      writeFileSync(
-        join(this.dir, "bin", "tailscale.cmd"),
-        '@echo off\r\nif not exist "%TS_STATUS_FILE%" exit /b 1\r\ntype "%TS_STATUS_FILE%"\r\n',
-      );
-    else {
-      writeFileSync(
-        join(this.dir, "bin", "tailscale"),
-        '#!/bin/sh\n[ -f "$TS_STATUS_FILE" ] || exit 1\ncat "$TS_STATUS_FILE"\n',
-      );
-      chmodSync(join(this.dir, "bin", "tailscale"), 0o755);
-    }
   }
 
   ipOf = (name: string) => ipAt(this.names.indexOf(name));
-  statusFile = (name: string) => join(this.dir, `${name}.status.json`);
+  // what a host's join would have answered: its address, the first host the hub
+  writeJoined(name: string) {
+    const hub = this.names[0]!;
+    const dir = join(this.dir, name, "state", "data", "mesh");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "joined.json"),
+      JSON.stringify({ name, ip: this.ipOf(name), hub: { name: hub, ip: this.ipOf(hub), key: "", endpoint: "" } }),
+    );
+  }
 
-  // every host's status file written as tailscale would answer it there
-  writeStatus() {
-    for (const self of this.names) {
-      const Peer: Record<string, unknown> = {};
-      for (const n of this.names) {
-        if (n === self) continue;
-        Peer[`node-${n}`] = { DNSName: `${n}.mesh.example.`, TailscaleIPs: [this.ipOf(n)] };
-      }
+  // the hub's own record of every host it let join, as its join would have written
+  writeHubRecords() {
+    const hub = this.names[0]!;
+    const dir = join(this.dir, hub, "sys", "etc", "mesh", "hosts");
+    mkdirSync(dir, { recursive: true });
+    for (const n of this.names.slice(1))
       writeFileSync(
-        this.statusFile(self),
-        JSON.stringify({ Self: { DNSName: `${self}.mesh.example.`, TailscaleIPs: [this.ipOf(self)] }, Peer }),
+        join(dir, `${n}.json`),
+        JSON.stringify({ t: Date.now() - 60_000, h: hub, data: { ip: this.ipOf(n), os: "", key: "" } }),
       );
-    }
   }
 
   async start() {
-    this.writeStatus();
+    for (const n of this.names) this.writeJoined(n);
+    this.writeHubRecords();
     await Promise.all(this.names.map((n) => this.startHost(n)));
   }
 
@@ -98,8 +91,6 @@ export class Mesh {
     for (const d of ["state"]) mkdirSync(join(home, d), { recursive: true });
     const env: Record<string, string | undefined> = {
       ...process.env,
-      PATH: `${join(this.dir, "bin")}${delimiter}${process.env.PATH ?? ""}`,
-      TS_STATUS_FILE: this.statusFile(name),
       PHOSPHORUS_HOME: home,
       STATE_DIR: join(home, "state"),
       SERVICES_FILE: join(home, "none.export"),

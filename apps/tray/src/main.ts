@@ -89,7 +89,7 @@ async function statusTip(running: boolean, vpn: boolean): Promise<string> {
   const v = installedVersion();
   if (!v) return "Phosphorus not set up";
   if (await keysMissing()) return `Phosphorus ${v}: no keys yet`;
-  return `Phosphorus ${v}: ${running ? "running" : "stopped"}, ${vpn ? "VPN on" : "VPN off"}`;
+  return `Phosphorus ${v}: ${running ? "running" : "stopped"}, ${vpn ? "on the mesh" : "off the mesh"}`;
 }
 
 // the status line and items set from the host's state, all off while busy
@@ -237,7 +237,7 @@ async function startup(background: boolean) {
   const { keys, domain } = await keyState();
   if (!keys.MESH_KEY) await openKeys();
   else if (!background) os.openURL(frontendURL(domain));
-  // the menu kept current with changes made elsewhere (the cli, the Tailscale app)
+  // the menu kept current with changes made elsewhere (the cli, another window)
   for (let tick = 1; ; tick++) {
     await sleep(2000);
     if (tick % 10 === 0 && !busy) await refresh();

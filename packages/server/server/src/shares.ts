@@ -178,7 +178,7 @@ export const withHop = (u: string) => u + (u.includes("?") ? "&hop=1" : "?hop=1"
 // pingPeer the client's ping carried on to host over the tailnet
 export async function pingPeer(host: string, signal?: AbortSignal): Promise<string> {
   const ip = await tailnetIP(host);
-  if (!ip) return `can't find ${host} on the tailnet`;
+  if (!ip) return `can't find ${host} on the mesh`;
   let res: Response;
   try {
     const signals = [AbortSignal.timeout(5000), ...(signal ? [signal] : [])];

@@ -47,7 +47,7 @@ export const frontendUp = "http://127.0.0.1:8090/";
 
 export const nativeEnvFile = () => at("state", "run", "native.env");
 
-// tool a fetched binary: tailscale, tailscaled
+// tool a fetched binary in the tools folder
 export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".exe" : name);
 
 // --- the baked env ------------------------------------------------------------
@@ -131,7 +131,7 @@ export function runEnv(): Record<string, string> {
 const pathSep = isWindows ? ";" : ":";
 
 export function withPath(env: Record<string, string>): Record<string, string> {
-  const extra = [os.libexec(), ...os.tailscaleDirs()].join(pathSep);
+  const extra = os.libexec();
   for (const k of Object.keys(env)) {
     if (k.toLowerCase() === "path") {
       env[k] = extra + pathSep + env[k];
@@ -212,10 +212,7 @@ export async function rebuild() {
       say("already up to date, nothing to restart");
       return;
     }
-    await os.tailscaleReady();
-
     writeEnvFile(nativeEnvFile(), env);
-    await os.tailscaleStart();
     if (up && inService()) {
       await notifyUpdating();
       writeFileSync(at("state", "run", "native-sig"), sig + "\n", { mode: 0o644 });

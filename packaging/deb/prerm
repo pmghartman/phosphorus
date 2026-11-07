@@ -5,6 +5,5 @@ set -e
 if [ -d /run/systemd/system ]; then
     systemctl disable --now phosphorus-update.path >/dev/null 2>&1 || true
     systemctl disable --now phosphorus.service >/dev/null 2>&1 || true
-    systemctl disable --now phosphorus-tailscaled.service >/dev/null 2>&1 || true
 fi
 exit 0

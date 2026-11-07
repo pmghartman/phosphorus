@@ -52,7 +52,6 @@ export async function needSetup(): Promise<string> {
   if (!(await sshdUp())) return os.sshdName;
   if (readTrim(sshInc) !== sshInclude()) return "ssh to hosts by name";
   if (!linked()) return "phosphorus on PATH";
-  if (!os.tailscaleInstalled()) return "Tailscale";
   return "";
 }
 
@@ -75,7 +74,6 @@ export async function setupOS() {
       symlinkSync(binPath("phosphorus"), l);
     }
   }
-  if (!os.tailscaleInstalled()) await os.tailscaleInstall();
 }
 
 const LOCK_EX = 2,

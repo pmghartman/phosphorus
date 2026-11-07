@@ -21,6 +21,7 @@ import {
   challenge,
   challengeRel,
   type Domain,
+  dnsRecords,
   domain,
   ports,
   tls,
@@ -29,7 +30,7 @@ import {
 } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
-import { ControlBehindPort, env, errText, marshal, Notes, now, obj, publicIPv4, tailnetIP } from "@phosphorus/util";
+import { env, errText, marshal, Notes, now, obj, publicIPv4, tailnetIP } from "@phosphorus/util";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
 import { baseDomain, getPlatform, selfHost } from "./config.ts";
@@ -95,12 +96,6 @@ function zoneSpec(d: Domain): dns.ZoneSpec {
   const all = edgeIPs(d);
   const up = edgeIPs(d, upSet());
   const hosts: Record<string, string[]> = {};
-  const c = peers.control.control();
-  if (c) {
-    const name = new URL(c.url).hostname;
-    const ip = publicHosts().find((h) => h.host === c.host)?.ip;
-    if (ip && name.endsWith(`.${d.name}`)) hosts[name.slice(0, -(d.name.length + 1))] = [ip];
-  }
   const srv: dns.Srv[] = [];
   for (const p of ports())
     if (p.srv) srv.push({ name: p.name, service: p.srv, proto: p.proto, port: p.pub, target: `${p.name}.${d.name}` });
@@ -108,7 +103,33 @@ function zoneSpec(d: Domain): dns.ZoneSpec {
   const txt: Record<string, string[]> = {};
   for (const [n, v] of Object.entries(challenge()))
     txt[n === d.name ? "" : n.endsWith(`.${d.name}`) ? n.slice(0, -(d.name.length + 1)) : n] = v;
-  return { domain: d.name, edges: up.length ? up : all, hosts, txt, srv, serial: 0 };
+  return { domain: d.name, edges: up.length ? up : all, hosts, txt, srv, records: dnsRecords(), serial: 0 };
+}
+
+// the records phosphorus serves on its own, as settings › network lists them
+export type ZoneRow = { name: string; type: string; value: string; why: string };
+export function builtInRecords(): ZoneRow[] {
+  const d = domain();
+  if (!d) return [];
+  const spec = zoneSpec(d);
+  const z = dns.build(spec);
+  const rows: ZoneRow[] = [];
+  for (const ip of spec.edges) rows.push({ name: "", type: "A", value: ip, why: "the desktop, at the edge hosts" });
+  for (const ip of spec.edges) rows.push({ name: "*", type: "A", value: ip, why: "every service, at the edge hosts" });
+  for (const ns of z.nameservers) {
+    const rel = ns.slice(0, -(d.name.length + 1));
+    const ip = z.names.get(rel)?.find((r) => r.data.type === dns.Type.A)?.data;
+    rows.push({ name: rel, type: "A", value: ip && "ip" in ip ? ip.ip : "", why: "a nameserver, an edge host" });
+  }
+  for (const s of spec.srv ?? [])
+    rows.push({
+      name: `_${s.service}._${s.proto}.${s.name}`,
+      type: "SRV",
+      value: `${s.target}:${s.port}`,
+      why: "a public port's service",
+    });
+  rows.push({ name: "", type: "CAA", value: "letsencrypt.org", why: "the certificate's issuer alone" });
+  return rows;
 }
 
 function refreshZone(d: Domain) {
@@ -132,10 +153,10 @@ let tlsState = "off";
 let forwarded: Forwarded | undefined;
 let busy = false;
 
+// the public zone on the public address alone; the mesh's names are the hub's (meshdns.ts)
 async function serveDNS(on: boolean) {
   const ip = publicIPv4();
-  const tail = await tailnetIP(selfHost);
-  const addrs = on ? [ip, tail].filter(Boolean) : [];
+  const addrs = on && ip ? [ip] : [];
   const key = addrs.join(",");
   if (key === servedAddrs && (served || !on)) return;
   served?.close();
@@ -178,9 +199,6 @@ function serveTLS(on: boolean) {
       return;
     }
   }
-  const c = peers.control.control();
-  if (c && c.host === selfHost) splitter.setControl(new URL(c.url).hostname, ControlBehindPort);
-  else splitter.setControl("", 0);
   const t = tls();
   const sig = t ? `${t.at}:${t.notAfter}` : "";
   if (sig === tlsSig) return;

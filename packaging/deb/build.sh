@@ -1,6 +1,6 @@
 #!/bin/sh
 # Linux package: the release and its binary under /usr/lib/phosphorus, the service's and
-# update agent's units, the apt feed; tailscale fetched by the host itself
+# update agent's units, the apt feed
 # Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN   Env: PHOSPHORUS_APT_KEY (binary keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -16,7 +16,7 @@ install -Dm755 "$BIN" "$T/usr/lib/phosphorus/bin/phosphorus"
 # the licenses where Debian looks for them too
 install -Dm644 "$PAYLOAD/LICENSE" "$T/usr/share/doc/phosphorus/copyright"
 install -Dm644 "$PAYLOAD/THIRD_PARTY_NOTICES.txt" "$T/usr/share/doc/phosphorus/THIRD_PARTY_NOTICES.txt"
-for u in phosphorus.service phosphorus-tailscaled.service phosphorus-update.path phosphorus-update.service; do
+for u in phosphorus.service phosphorus-update.path phosphorus-update.service; do
     install -Dm644 "$HERE/$u" "$T/usr/lib/systemd/system/$u"
 done
 install -d "$T/DEBIAN"
@@ -41,7 +41,7 @@ Priority: optional
 Homepage: https://github.com/pmghartman/phosphorus
 Description: one service per machine, a mesh of hosts
  The phosphorus host: its services published, the others' polled, one web UI and cli.
- Runs under systemd, fetching its pinned tailscale; installed services run in Docker.
+ Runs under systemd, its hosts meshed over its own WireGuard; installed services run in Docker.
 CTL
 dpkg-deb --root-owner-group -Zxz -z9 --build "$T" "$OUT" >/dev/null
 echo "package: $OUT"

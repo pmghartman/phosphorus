@@ -17,8 +17,8 @@ import {
 } from "./base.ts";
 import { askKeys, desktopLinks, front, meshDomain } from "./front.ts";
 import { rebuild, waitFrontend } from "./native.ts";
+import { meshUp, readNetStatus } from "./net/status.ts";
 import { os } from "./os.ts";
-import { vpnState } from "./tailnet.ts";
 
 // start bring-up, safe to re-run: checks, the one-time admin setup, then
 // the rebuild, which starts the service and waits on the frontend
@@ -97,12 +97,17 @@ export async function overview(version: string) {
 // --json, for the app's tray
 export async function status(args: string[]) {
   const running = await os.svcActive(),
-    vpn = await vpnState();
+    net = readNetStatus();
   if (args[0] === "--json") {
-    println(JSON.stringify({ running, vpn: vpn === "Running" }));
+    println(JSON.stringify({ running, vpn: meshUp(net) }));
     return;
   }
-  println(`phosphorus ${running ? "running" : "stopped"}, tailscale ${vpn || "not answering"}`);
+  const tunnel = !net
+    ? "down"
+    : net.tun
+      ? `up as ${net.ip} on ${net.tun}${net.hub ? ", the hub" : meshUp(net) ? "" : ", the hub not answering"}`
+      : `waiting on ${net.waiting}`;
+  println(`phosphorus ${running ? "running" : "stopped"}, the mesh tunnel ${tunnel}`);
   println((await desktopLinks()).join("  "));
   if (!running) println(keysMissing() ? "run phos to enter the join key" : "phos start brings it up");
 }

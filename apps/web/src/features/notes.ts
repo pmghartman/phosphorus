@@ -97,7 +97,7 @@ const EDGE_SEEN = 'phosphorus-edge-seen';
 function notifyDomain(state: State): void {
   if (!st.acct?.admin) return;
   let why = '';
-  if (!state.domain) why = 'tailnet only: add a domain in settings › network for access from anywhere';
+  if (!state.domain) why = 'the mesh only: add a domain in settings › network for access from anywhere';
   else
     for (const [host, h] of Object.entries(state.hosts ?? {})) {
       const e = h.edge;

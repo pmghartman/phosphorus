@@ -6,8 +6,8 @@ import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, rmSync } from 
 import * as envfile from "@phosphorus/envfile";
 import { at, envPath, errText, home, say, selfArgv } from "../base.ts";
 import { ownerUid } from "../darwin.ts";
+import { meshUp } from "../net/status.ts";
 import { keySet } from "../start.ts";
-import { vpnState } from "../tailnet.ts";
 import { agentReport } from "../upgrade.ts";
 import { releaseKey, stageUpdate } from "./update.ts";
 
@@ -131,7 +131,7 @@ async function detached(args: string[]): Promise<{ code: number; output: string 
 // daemonDeps the requests as run serves them, running its round's word
 export function daemonDeps(running: () => boolean): Deps {
   return {
-    status: async () => ({ running: running(), vpn: (await vpnState()) === "Running" }),
+    status: async () => ({ running: running(), vpn: meshUp() }),
     keys() {
       envfile.ensure(envPath());
       const have = envfile.read(envPath());

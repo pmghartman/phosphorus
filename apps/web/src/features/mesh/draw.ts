@@ -1,6 +1,6 @@
 // drawing: a host's node, its model mark
 
-import type { Route, State, TailnetDevice } from '@phosphorus/wire';
+import type { NetInfo, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { svgEl } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
 import { hostSwitch, NODE_HALF } from './hosts.ts';
@@ -116,6 +116,45 @@ export const drawVars = {
   meshSig: '',
 };
 
+// --- the network as the tunnels report it -------------------------------------------
+
+// each host's tunnel from its info.json
+const netOf = (h: string): NetInfo | undefined => st.hostsInfo[h]?.net;
+
+// the host running the hub, blank before any tunnel says
+export function hubHost(): string {
+  for (const [h, i] of Object.entries(st.hostsInfo)) if (i.net?.hub && i.net.up) return h;
+  return '';
+}
+
+// how a host or device reaches the hub: home on the hub's own host, udp, the
+// relay over https, or down
+export type HubPath = 'home' | 'udp' | 'relay' | 'down';
+export function hubPath(name: string, isHost: boolean): HubPath {
+  const hub = hubHost();
+  if (isHost && name === hub) return 'home';
+  const carried = !!hub && !!netOf(hub)?.spokes.includes(name);
+  if (!isHost) return carried ? 'udp' : 'down';
+  const n = netOf(name);
+  if (!n?.up || !carried) return 'down';
+  return n.relay ? 'relay' : 'udp';
+}
+
+// host pairs with a direct session up, either side's word enough, as "a b" sorted
+export function directPairs(): Set<string> {
+  const out = new Set<string>();
+  for (const [h, i] of Object.entries(st.hostsInfo))
+    for (const o of i.net?.direct ?? []) out.add([h, o].sort().join(' '));
+  return out;
+}
+
+const pathWord: Record<HubPath, string> = {
+  home: 'runs the hub',
+  udp: 'on the hub over udp',
+  relay: 'on the hub through the relay over https',
+  down: 'not on the hub now',
+};
+
 export function renderMesh(routes: Route[], tailnet: TailnetDevice[]): void {
   meshRoutes = routes;
   meshTailnet = tailnet;
@@ -124,6 +163,7 @@ export function renderMesh(routes: Route[], tailnet: TailnetDevice[]): void {
     st.selfHost,
     routes.map((r) => [r.host, r.name]),
     tailnet.map((d) => [d.name, !!d.phosphorus, d.os || '']),
+    Object.entries(st.hostsInfo).map(([h, i]) => [h, i.net ?? null]),
   ]);
   if (sig === drawVars.meshSig) return;
   drawVars.meshSig = sig;
@@ -141,26 +181,33 @@ export function meshModelsFrom(state: State): void {
   if (modelChanged && !meshAnimFrame) drawMesh();
 }
 
-// the touched elements drawMesh() drew (hub spoke, peer arc, service stem)
-// via getPointAtLength(), so the pulse rides the real curve
+// the touched elements drawMesh() drew (hub spokes, a direct arc, service stem)
+// via getPointAtLength(), so the pulse rides the real path: in from the hub to
+// this host, then to the target directly or back through the hub
 
 export function pulsePoint(key: string, host: string, distFrac: number): DOMPoint | null {
-  const ids = ['mesh-hub-self'];
-  if (host !== st.selfHost) ids.push(`peer-${host}`);
-  ids.push(`stem-${key}`);
+  const ids: [string, boolean][] = [['mesh-hub-self', false]];
+  if (host !== st.selfHost) {
+    if (document.getElementById(`peer-${host}`)) ids.push([`peer-${host}`, false]);
+    else ids.push(['mesh-hub-self', true], [`spoke-${host}`, false]);
+  }
+  ids.push([`stem-${key}`, false]);
   const segs = ids
-    .map((id) => document.getElementById(id) as unknown as SVGGeometryElement | null)
-    .filter((s): s is SVGGeometryElement => !!s);
+    .map(([id, rev]) => ({ el: document.getElementById(id) as unknown as SVGGeometryElement | null, rev }))
+    .filter((s): s is { el: SVGGeometryElement; rev: boolean } => !!s.el);
   if (!segs.length) return null;
 
-  const lens = segs.map((el) => el.getTotalLength());
+  const lens = segs.map((s) => s.el.getTotalLength());
   const total = lens.reduce((a, b) => a + b, 0);
   let dist = distFrac * total;
   for (let i = 0; i < segs.length; i++) {
-    if (dist <= lens[i]! || i === segs.length - 1) return segs[i]!.getPointAtLength(Math.min(dist, lens[i]!));
+    if (dist <= lens[i]! || i === segs.length - 1) {
+      const d = Math.min(dist, lens[i]!);
+      return segs[i]!.el.getPointAtLength(segs[i]!.rev ? lens[i]! - d : d);
+    }
     dist -= lens[i]!;
   }
-  return segs[segs.length - 1]!.getPointAtLength(lens[lens.length - 1]!);
+  return null;
 }
 
 // one pulse/sec per connection: hub, self, target host if different, target
@@ -221,7 +268,7 @@ export function drawMesh(): void {
     if (!grouped.has(r.host)) grouped.set(r.host, []);
     grouped.get(r.host)!.push(r);
   }
-  // tailnet devices without phosphorus: no routes, known only to the tailnet list
+  // devices without phosphorus (phones, laptops on the WireGuard app): no routes
   const outside = new Map<string, TailnetDevice>();
   for (const d of tailnet) {
     if (d.phosphorus) {
@@ -237,7 +284,7 @@ export function drawMesh(): void {
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   meshCount.textContent = [
     hosts.length ? plural(hosts.length, 'host') : '',
-    others.length ? `${others.length} in-mesh` : '',
+    others.length ? plural(others.length, 'device') : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -369,64 +416,55 @@ export function drawMesh(): void {
   };
   const edgeFog = (a: Projected, b: Projected) => `stroke-opacity:${((a.fog + b.fog) / 2).toFixed(3)}`;
 
-  // fainter peer lines the more there are
-  const n = hosts.length;
-  const o = others.length;
-  meshSvg.style.setProperty(
-    '--fade',
-    Math.min(1, Math.sqrt(12 / Math.max(1, (n * (n - 1) + o * (o - 1)) / 2 + n * o))).toFixed(3),
-  );
-
-  // every device reaching every other, a line per pair, same-group pairs
-  // arced outward, the bulge itself rotating with the layout
-  const groupMesh = (names: string[], isHost: boolean) => {
-    const zoom = width / 232;
-    const bulgeStep = zoom * Math.min(7, 60 / Math.max(1, names.length - 2));
-    const bulgeAngle = t * (Math.PI / 2);
-    for (let i = 0; i < names.length; i++) {
-      for (let j = i + 1; j < names.length; j++) {
-        const p1 = posOf(names[i]!, isHost);
-        const p2 = posOf(names[j]!, isHost);
-        const bulge = 12 * zoom + (j - i - 1) * bulgeStep;
-        const cx = (p1.x + p2.x) / 2 + bulge * Math.cos(bulgeAngle);
-        const cy = (p1.y + p2.y) / 2 + bulge * Math.sin(bulgeAngle);
-        const other = names[i] === st.selfHost ? names[j] : names[j] === st.selfHost ? names[i] : null;
-        const touched = isHost && other && touchedHosts.has(other);
-        // flipped when self is p2, so the pulse runs self->target
-        const [start, end] = touched && names[j] === st.selfHost ? [p2, p1] : [p1, p2];
-        const attrs: Record<string, string> = {
-          d: `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`,
-          class: touched ? 'mesh-line-peer touched' : 'mesh-line-peer',
-          style: edgeFog(p1, p2),
-        };
-        if (touched) attrs.id = `peer-${other}`;
-        edges.appendChild(svgEl('path', attrs));
-      }
+  // a direct session between two hosts, an arc beside their spokes: traffic
+  // between them skips the hub; the bulge turning with the layout
+  const direct = directPairs();
+  meshSvg.style.setProperty('--fade', Math.min(1, Math.sqrt(6 / Math.max(1, direct.size))).toFixed(3));
+  const zoom = width / 232;
+  const bulgeAngle = t * (Math.PI / 2);
+  for (let i = 0; i < hosts.length; i++)
+    for (let j = i + 1; j < hosts.length; j++) {
+      const a = hosts[i]!;
+      const b = hosts[j]!;
+      if (!direct.has([a, b].sort().join(' '))) continue;
+      const p1 = posOf(a, true);
+      const p2 = posOf(b, true);
+      const bulge = 12 * zoom + (j - i - 1) * zoom * Math.min(7, 60 / Math.max(1, hosts.length - 2));
+      const cx = (p1.x + p2.x) / 2 + bulge * Math.cos(bulgeAngle);
+      const cy = (p1.y + p2.y) / 2 + bulge * Math.sin(bulgeAngle);
+      const other = a === st.selfHost ? b : b === st.selfHost ? a : null;
+      const touched = !!other && touchedHosts.has(other);
+      // flipped when self is p2, so the pulse runs self->target
+      const [start, end] = touched && b === st.selfHost ? [p2, p1] : [p1, p2];
+      const attrs: Record<string, string> = {
+        d: `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`,
+        class: touched ? 'mesh-line-peer direct touched' : 'mesh-line-peer direct',
+        style: edgeFog(p1, p2),
+      };
+      if (touched) attrs.id = `peer-${other}`;
+      const title = svgEl('title', {});
+      title.textContent = `${a} and ${b} direct, past the hub`;
+      const arc = svgEl('path', attrs);
+      arc.appendChild(title);
+      edges.appendChild(arc);
     }
-  };
-  groupMesh(hosts, true);
-  groupMesh(others, false);
-  for (const name of others) {
-    for (const m of hosts) {
-      const p1 = posOf(m, true);
-      const p2 = posOf(name, false);
-      edges.appendChild(
-        svgEl('line', {
-          x1: p1.x,
-          y1: p1.y,
-          x2: p2.x,
-          y2: p2.y,
-          class: 'mesh-line-peer',
-          style: edgeFog(p1, p2),
-        }),
-      );
-    }
-  }
 
+  // the hub: the mesh's domain, where every host and device meets, run by one host
+  const runBy = hubHost();
   const hubR = 4 * hub.s;
-  meshSvg.appendChild(
-    svgEl('rect', { x: hubX - hubR, y: hubY - hubR, width: hubR * 2, height: hubR * 2, class: 'mesh-hub' }),
-  );
+  const hubSq = svgEl('rect', {
+    x: hubX - hubR,
+    y: hubY - hubR,
+    width: hubR * 2,
+    height: hubR * 2,
+    class: runBy ? 'mesh-hub' : 'mesh-hub down',
+  });
+  const hubTitle = svgEl('title', {});
+  hubTitle.textContent = runBy
+    ? `the hub on ${runBy}: every host and device meets here, over udp or the relay at ${st.meshDomain || 'the domain'}`
+    : 'no hub answering';
+  hubSq.appendChild(hubTitle);
+  meshSvg.appendChild(hubSq);
   const hubDns = svgEl('text', {
     x: hubX,
     y: hubY + 12 * hub.s + 4,
@@ -434,24 +472,34 @@ export function drawMesh(): void {
     class: 'mesh-hub-dns',
     style: `font-size:${6 * hub.s}px`,
   });
-  hubDns.textContent = st.meshDomain || 'tailnet';
+  hubDns.textContent = st.meshDomain || 'mesh';
   meshSvg.appendChild(hubDns);
 
-  // spokes to the hub, the mesh's domain or the tailnet, only this node's highlighted
-  hosts.forEach((m) => {
-    const p = posOf(m, true);
-    const isSelf = m === st.selfHost;
-    const spoke: Record<string, string | number> = {
-      x1: hubX,
-      y1: hubY,
-      x2: p.x,
-      y2: p.y,
-      class: isSelf ? 'mesh-line-hub self' : 'mesh-line-hub',
+  // a spoke to the hub per host and device, drawn by how it gets there; this
+  // host's runs host to hub, the rest hub out, so a pulse rides them in order
+  const spoke = (name: string, isHost: boolean, p: Projected) => {
+    const path = hubPath(name, isHost);
+    const isSelf = isHost && name === st.selfHost;
+    const touched = isHost && touchedHosts.has(name) && !isSelf;
+    const [a, b] = isSelf ? [p, hub] : [hub, p];
+    const line: Record<string, string | number> = {
+      x1: a.x,
+      y1: a.y,
+      x2: b.x,
+      y2: b.y,
+      class: `mesh-line-hub ${path}${isSelf ? ' self' : ''}${touched ? ' touched' : ''}`,
       style: edgeFog(hub, p),
     };
-    if (isSelf) spoke.id = 'mesh-hub-self';
-    edges.appendChild(svgEl('line', spoke));
-  });
+    if (isSelf) line.id = 'mesh-hub-self';
+    else if (touched) line.id = `spoke-${name}`;
+    const el = svgEl('line', line);
+    const title = svgEl('title', {});
+    title.textContent = `${name} ${pathWord[path]}`;
+    el.appendChild(title);
+    edges.appendChild(el);
+  };
+  for (const m of hosts) spoke(m, true, posOf(m, true));
+  for (const name of others) spoke(name, false, posOf(name, false));
 
   // far to near, so nearer squares overlap farther ones
   const byDepth = hosts.map((m): [string, Projected] => [m, posOf(m, true)]).sort((a, b) => a[1].s - b[1].s);
@@ -461,12 +509,20 @@ export function drawMesh(): void {
     // the new self pulsing until a switch is answered
     const cls = isSelf ? (hostSwitch ? 'self pending' : 'self') : own.length ? 'active' : 'idle';
     const os = hostPlatform.get(m);
-    drawNode(p.x, p.y, m, cls, `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}`, {
-      host: isSelf ? '' : m,
-      desk: m,
-      scale: p.s,
-      opacity: p.fog,
-    });
+    const via = pathWord[hubPath(m, true)];
+    drawNode(
+      p.x,
+      p.y,
+      m,
+      cls,
+      `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}, ${via}`,
+      {
+        host: isSelf ? '' : m,
+        desk: m,
+        scale: p.s,
+        opacity: p.fog,
+      },
+    );
     if (meshModels.has(m)) drawModelMarker(p.x, p.y, meshModels.get(m)!, p.s, p.fog);
     const flat = flatOf(m, true);
 
@@ -504,15 +560,23 @@ export function drawMesh(): void {
     });
   });
 
-  // no spoke, not a phosphorus host
+  // a device on the WireGuard app: its spoke alone, no services
   others.forEach((name) => {
     const { os } = outside.get(name)!;
     const p = posOf(name, false);
-    drawNode(p.x, p.y, name, 'outside', `${name}${os ? ` (${os})` : ''}: in-mesh`, {
-      scale: p.s,
-      opacity: p.fog,
-      desk: name,
-    });
+    const path = hubPath(name, false);
+    drawNode(
+      p.x,
+      p.y,
+      name,
+      path === 'down' ? 'outside down' : 'outside',
+      `${name}${os ? ` (${os})` : ''}: a device, ${pathWord[path]}`,
+      {
+        scale: p.s,
+        opacity: p.fog,
+        desk: name,
+      },
+    );
   });
   fitMesh(width, height + grow, t ? expanded : collapsed);
 }

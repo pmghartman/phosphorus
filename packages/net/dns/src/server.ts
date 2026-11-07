@@ -1,8 +1,10 @@
 // the authoritative server: UDP and TCP on each given address, every
-// question answered from the zone handed back by zone()
+// question answered from the zone handed back by zone(), one outside it
+// forwarded when there's somewhere to forward it
 
 import type { Socket, TCPSocketListener, udp } from "bun";
-import { MinUDP, parseQuery, writeReply } from "./wire.ts";
+import type { Forward } from "./forward.ts";
+import { MinUDP, parseQuery, Rcode, writeReply } from "./wire.ts";
 import { answer, type Zone } from "./zone.ts";
 
 export type Served = {
@@ -15,6 +17,7 @@ type Opts = {
   addrs: string[];
   port: number;
   zone: () => Zone | undefined;
+  forward?: Forward;
   log?: (m: string) => void;
 };
 
@@ -23,11 +26,17 @@ type TCPData = { buf: Uint8Array };
 
 const maxTCP = 64 * 1024;
 
-function handle(zone: () => Zone | undefined, b: Uint8Array, max: number): Uint8Array | undefined {
+async function handle(o: Opts, b: Uint8Array, max: number): Promise<Uint8Array | undefined> {
   const q = parseQuery(b);
   // a response or noise dropped, never answered
   if (!q || q.bad === "response") return;
-  return writeReply(answer(zone(), q), max);
+  const r = answer(o.zone(), q);
+  if (r.rcode === Rcode.REFUSED && !r.aa && o.forward && q.question) {
+    const got = await o.forward(b);
+    if (got) return got;
+    return writeReply({ ...r, rcode: Rcode.SERVFAIL }, max);
+  }
+  return writeReply(r, max);
 }
 
 export async function serve(o: Opts): Promise<Served> {
@@ -66,8 +75,7 @@ export async function serve(o: Opts): Promise<Served> {
                 if (d.buf.length < 2 + n) break;
                 const msg = d.buf.slice(2, 2 + n);
                 d.buf = d.buf.slice(2 + n);
-                const out = handle(o.zone, msg, Number.POSITIVE_INFINITY);
-                if (out) send(s, out);
+                void handle(o, msg, Number.POSITIVE_INFINITY).then((out) => out && send(s, out));
               }
             },
             timeout(s) {
@@ -119,8 +127,8 @@ function bindUDP(o: Opts, addr: string, port: number) {
     socket: {
       data(s, buf, from, fromAddr) {
         const q = parseQuery(buf);
-        const out = handle(o.zone, buf, q?.edns ?? MinUDP);
-        if (out) s.send(out, from, fromAddr);
+        const msg = buf.slice();
+        void handle(o, msg, q?.edns ?? MinUDP).then((out) => out && s.send(out, from, fromAddr));
       },
       error(_s, e) {
         o.log?.(`udp ${addr}: ${e.message}`);

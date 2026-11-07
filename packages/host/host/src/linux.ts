@@ -1,5 +1,5 @@
-// Linux: systemd's units shipped by the package, the machine's tailscaled or
-// the bundled one, distro packages, run's children by group
+// Linux: systemd's units shipped by the package, distro packages, run's
+// children by group
 
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -36,8 +36,7 @@ import {
   unixOnly,
 } from "./unix.ts";
 
-const unit = "phosphorus.service",
-  tsUnit = "phosphorus-tailscaled.service";
+const unit = "phosphorus.service";
 // runDir systemd's RuntimeDirectory
 const runDir = "/run/phosphorus";
 
@@ -45,8 +44,6 @@ const libexec = () => at("state", "cache", "tools");
 const tool = (name: string) => join(libexec(), name);
 
 const unitActive = (u: string) => quiet("systemctl", "is-active", "--quiet", u);
-// the machine's own tailscaled, asked for on each use as Go did, synchronously
-const systemTailscale = () => runSync(["systemctl", "is-active", "--quiet", "tailscaled.service"]).ok;
 
 // installed already as the package's dependency: enabled only
 async function enableSSHD() {
@@ -155,7 +152,6 @@ export const linux: OS = {
   elevateUninstall,
   ...unixOnly,
   libexec,
-  ownTailscale: () => !systemTailscale(),
   logHint: () => "journalctl -u phosphorus",
   async svcInstall() {
     if (!fileExists("/run/systemd/system"))
@@ -180,36 +176,6 @@ export const linux: OS = {
     if (!ok) throw fail("systemctl restart failed");
   },
   svcRemove() {},
-  tailscaleDirs: () => [],
-  tailscaleCLI: () => (systemTailscale() ? "tailscale" : tool("tailscale")),
-  // tailscaleInstalled tailscaled fetched by the rebuild, nothing for setup to install
-  tailscaleInstalled: () => true,
-  async tailscaleInstall() {},
-  async tailscaleKeepUp() {},
-  async tailscaleReady() {
-    if (!systemTailscale() && !fileExists(tool("tailscaled")))
-      throw fail(`no tailscaled in ${libexec()}: run sudo phosphorus start`);
-  },
-  // tailscaleStart the bundled tailscaled, its CLI on PATH when the machine has none
-  async tailscaleStart() {
-    if (systemTailscale()) {
-      if (await unitActive(tsUnit)) await quiet("systemctl", "disable", "--now", tsUnit);
-      return;
-    }
-    mkdirSync(at("tailscale"), { recursive: true, mode: 0o700 });
-    if (!(await run("systemctl", "enable", "--now", tsUnit))) throw fail("couldn't start tailscaled");
-    // the CLI on PATH when the machine has none, a dangling link replaced
-    if (!has("tailscale"))
-      try {
-        rmSync("/usr/local/bin/tailscale", { force: true });
-        symlinkSync(tool("tailscale"), "/usr/local/bin/tailscale");
-      } catch {}
-    for (let i = 0; i < 60; i++) {
-      if (await quiet(tool("tailscale"), "status", "--json")) return;
-      await sleep(500);
-    }
-  },
-  tailscaleUpFlags: () => ["--accept-dns=true"],
   missingDeps,
   aptInstall,
   deferRebuild,

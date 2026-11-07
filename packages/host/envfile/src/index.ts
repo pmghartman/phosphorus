@@ -42,14 +42,14 @@ export function missing(file: string): string[] {
   return read(file).MESH_KEY ? [] : ["MESH_KEY"];
 }
 
-// a mesh join key's parts: the control server's URL and a headscale preauth key
-export type MeshKey = { url: string; key: string };
+// a mesh join key's parts: the control server's URL and a join token
+export type MeshKey = { url: string; token: string };
 
-const meshKeyPrefix = "phos1.";
+const meshKeyPrefix = "phos.";
 
-// phos1.<base64url JSON {u, k}>
+// phos.<base64url JSON {u, t}>
 export function formatMeshKey(m: MeshKey): string {
-  return meshKeyPrefix + Buffer.from(JSON.stringify({ u: m.url, k: m.key })).toString("base64url");
+  return meshKeyPrefix + Buffer.from(JSON.stringify({ u: m.url, t: m.token })).toString("base64url");
 }
 
 // a mesh join key's parts, undefined when it isn't one
@@ -59,9 +59,9 @@ export function parseMeshKey(s: string | undefined): MeshKey | undefined {
   try {
     const j = JSON.parse(Buffer.from(t.slice(meshKeyPrefix.length), "base64url").toString("utf8"));
     const url = typeof j?.u === "string" ? j.u.replace(/\/+$/, "") : "";
-    const key = typeof j?.k === "string" ? j.k : "";
-    if (!/^https:\/\/[^/\s]+$/.test(url) || !key) return undefined;
-    return { url, key };
+    const token = typeof j?.t === "string" ? j.t : "";
+    if (!/^https:\/\/[^/\s]+$/.test(url) || !/^[a-f0-9]{8}\.[A-Za-z0-9_-]{20,}$/.test(token)) return undefined;
+    return { url, token };
   } catch {
     return undefined;
   }

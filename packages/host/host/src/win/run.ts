@@ -24,7 +24,6 @@ import {
 } from "../base.ts";
 import type { OS, Reporter, Stop } from "../os.ts";
 import { newStop } from "../os.ts";
-import { tailscaleLogin } from "../tailnet.ts";
 import { agentReport } from "../upgrade.ts";
 import { ensureAfterglow } from "./afterglow.ts";
 import {
@@ -38,10 +37,6 @@ import {
   svcRecovery,
   svcStart,
   svcStop,
-  tailscaleCLI,
-  tailscaleDirs,
-  tailscaleInstall,
-  tailscaleInstalled,
   uninstallAdmin,
   unpath,
 } from "./service.ts";
@@ -329,7 +324,6 @@ export const windows: OS = {
   // elevateUninstall the admin half through UAC, waited on
   elevateUninstall: () => runAs(["uninstall", "--admin"]),
   libexec: () => at("state", "cache", "tools"),
-  ownTailscale: () => false,
   logHint: () => at("state", "log", "phosphorus.log"),
   async svcInstall() {
     if (!(await svcInstalled())) {
@@ -361,25 +355,6 @@ export const windows: OS = {
     await svcStart();
   },
   svcRemove() {},
-  tailscaleDirs,
-  tailscaleCLI,
-  tailscaleInstalled,
-  tailscaleInstall,
-  // tailscaleKeepUp an existing install's node kept up signed out of Windows, for the service
-  async tailscaleKeepUp() {
-    await quiet(tailscaleCLI(), "set", "--unattended");
-  },
-  async tailscaleReady() {
-    if (!fileExists(tailscaleCLI()))
-      throw fail("no Tailscale here: install Tailscale for Windows (tailscale.com/download), then phos start");
-    // tailscaleLaunch its service, set to start by the installer
-    await tailscaleLogin(
-      async () => void (await quiet("net", "start", "Tailscale")),
-      () => "start Tailscale from the Start menu",
-    );
-  },
-  async tailscaleStart() {},
-  tailscaleUpFlags: () => ["--unattended"],
   missingDeps: async () => [],
   async aptInstall() {},
   async deferRebuild() {},

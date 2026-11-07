@@ -20,7 +20,7 @@ const netBucketMS = 5 * 60 * 1000;
 const dayMS = 24 * 3600 * 1000;
 
 export const sys: Sys = process.platform === "linux" ? linux : process.platform === "darwin" ? darwin : win32;
-const tunnelIf = /^(tailscale|wg|tun|utun|phos)/i;
+const tunnelIf = /^(wg|tun|utun|phos)/i;
 
 // --- the last day: net totals, cpu, memory, disk and gpu in 5 minute buckets ------
 // kept two days, so each hour of the last one has a whole day of net behind it

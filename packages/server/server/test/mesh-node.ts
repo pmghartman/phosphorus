@@ -55,6 +55,10 @@ Bun.serve({
         return Response.json({ ok: true });
       case "mesh.remove":
         return Response.json({ removed: peers.registry.removeHost(a.host) });
+      case "control": {
+        const [status, body] = await peers.control.controlOp(a.name, a.body ?? {});
+        return Response.json({ status, body });
+      }
       case "app.install":
         return Response.json(await webapps.Install(a.id));
       case "app.running":
